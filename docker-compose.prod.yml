@@ -1,0 +1,117 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: loot_mysql_prod
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data_prod:/var/lib/mysql
+    networks:
+      - loot_network_prod
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migration:
+    build:
+      context: ./migration
+      dockerfile: Dockerfile
+    container_name: loot_migration_prod
+    restart: "no"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+      MIGRATIONS_DIR: /migrations
+    volumes:
+      - ./migration/sql:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - loot_network_prod
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: loot_phpmyadmin_prod
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    expose:
+      - "80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - loot_network_prod
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: loot_backend_prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    expose:
+      - "5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - loot_network_prod
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: /api
+    container_name: loot_frontend_prod
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    networks:
+      - loot_network_prod
+
+  nginx:
+    image: nginx:alpine
+    container_name: loot_nginx_prod
+    restart: always
+    ports:
+      - "80:80"
+      - "3305:3305"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+      - phpmyadmin
+    networks:
+      - loot_network_prod
+
+volumes:
+  mysql_data_prod:
+
+networks:
+  loot_network_prod:
+    driver: bridge

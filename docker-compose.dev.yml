@@ -1,0 +1,110 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: zynk_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zynk_db}
+      MYSQL_USER: ${MYSQL_USER:-zynk_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zynkpassword}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - zynk_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  migration:
+    build:
+      context: ./migration
+      dockerfile: Dockerfile
+    container_name: zynk_migration
+    restart: "no"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      DB_NAME: ${MYSQL_DATABASE:-zynk_db}
+      MIGRATIONS_DIR: /migrations
+    volumes:
+      - ./migration/sql:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - zynk_network
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: zynk_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+    ports:
+      - "3305:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - zynk_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: zynk_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-zynk_db}
+      DB_USER: ${MYSQL_USER:-zynk_user}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-zynkpassword}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - zynk_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: zynk_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:5000/api
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - zynk_network
+
+volumes:
+  mysql_data:
+
+networks:
+  zynk_network:
+    driver: bridge
