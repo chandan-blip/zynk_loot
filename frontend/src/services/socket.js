@@ -122,6 +122,41 @@ class SocketService {
     return () => this.socket.off('offer:rejected', callback);
   }
 
+  // Subscribe to ticket matching updates
+  onTicketUpdate(callback) {
+    if (!this.socket) return;
+    this.socket.on('ticket:update', callback);
+    return () => this.socket.off('ticket:update', callback);
+  }
+
+  // Subscribe to ticket cash-out events
+  onTicketCashedOut(callback) {
+    if (!this.socket) return;
+    this.socket.on('ticket:cashed_out', callback);
+    return () => this.socket.off('ticket:cashed_out', callback);
+  }
+
+  // Subscribe to prize pool updates
+  onPrizePoolUpdated(callback) {
+    if (!this.socket) return;
+    this.socket.on('prizePool:updated', callback);
+    return () => this.socket.off('prizePool:updated', callback);
+  }
+
+  // Subscribe to user's numbers updated (after buy/sell)
+  onUserNumbersUpdated(callback) {
+    if (!this.socket) return;
+    this.socket.on('user:numbersUpdated', callback);
+    return () => this.socket.off('user:numbersUpdated', callback);
+  }
+
+  // Subscribe to vote reward notifications
+  onVoteReward(callback) {
+    if (!this.socket) return;
+    this.socket.on('vote:reward', callback);
+    return () => this.socket.off('vote:reward', callback);
+  }
+
   getSocket() {
     return this.socket;
   }

@@ -94,7 +94,7 @@ function AdminDeposits() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Deposit Management</h1>

@@ -19,6 +19,7 @@ const walletRoutes = require('./routes/wallet');
 const usersRoutes = require('./routes/users');
 const LotteryService = require('./services/lotteryService');
 const CronService = require('./services/cronService');
+const TicketService = require('./services/ticketService');
 
 const app = express();
 const server = http.createServer(app);
@@ -36,9 +37,14 @@ const io = new Server(server, {
 });
 
 // Initialize services
-const lotteryService = new LotteryService(io);
-const cronService = new CronService(io, lotteryService);
+const ticketService = new TicketService(io);
+const lotteryService = new LotteryService(io, ticketService);
+const cronService = new CronService(io, ticketService);
 
+// Wire up cross-service dependencies
+lotteryService.setTicketService(ticketService);
+
+app.set('ticketService', ticketService);
 app.set('lotteryService', lotteryService);
 app.set('cronService', cronService);
 app.set('io', io);

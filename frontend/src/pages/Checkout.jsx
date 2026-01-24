@@ -365,7 +365,7 @@ export default function Checkout() {
   const priceUsd = selectedPackage ? (selectedPackage.zynk_amount * zynkToUsd).toFixed(2) : 0;
 
   return (
-    <div className="mx-auto space-y-6">
+    <div className="mx-auto space-y-3">
       {/* Header Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -515,7 +515,7 @@ export default function Checkout() {
                 exit={{ opacity: 0, x: 20 }}
                 className="bg-dark-700 rounded-xl border border-dark-600 p-6"
               >
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-3">
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold text-white mb-1">Confirm Payment</h2>
                     <p className="text-gray-500 text-sm">Enter your payment details for verification</p>

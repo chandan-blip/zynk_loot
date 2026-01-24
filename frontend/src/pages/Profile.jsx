@@ -20,12 +20,14 @@ import {
   FiDownload,
   FiShield,
   FiStar,
+  FiThumbsUp,
 } from "react-icons/fi";
 import { GiTwoCoins, GiTrophy, GiPodium } from "react-icons/gi";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import toast from "react-hot-toast";
 import CountUp from "react-countup";
-import { getUserProfile } from "../services/api";
+import { getUserProfile, getMyNumbers, getMyVotes, cashOutTicket } from "../services/api";
+import socketService from "../services/socket";
 import { useCurrency } from "../contexts/CurrencyContext";
 
 function Profile() {
@@ -35,7 +37,6 @@ function Profile() {
     currencies,
     formatCurrency,
     formatCurrencyFull,
-    zynkToUsd,
   } = useCurrency();
 
   const [profile, setProfile] = useState(null);
@@ -43,9 +44,62 @@ function Profile() {
   const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
+  const [myTickets, setMyTickets] = useState([]);
+  const [myVotes, setMyVotes] = useState([]);
+  const [cashingOut, setCashingOut] = useState(null);
+
+  // Multiplier mapping
+  const MULTIPLIER_MAP = { 0: 0, 1: 2, 2: 4, 3: 9, 4: 16, 5: 25, 6: 36, 7: 49 };
 
   useEffect(() => {
     fetchProfile();
+    fetchMyTickets();
+    fetchMyVotes();
+
+    // Subscribe to ticket updates
+    const token = localStorage.getItem("token");
+    socketService.connect(token);
+
+    const unsubTicketUpdate = socketService.onTicketUpdate?.((data) => {
+      setMyTickets(prev => prev.map(t =>
+        t.id === data.numberId ? {
+          ...t,
+          matchedDigits: data.matchedDigits,
+          multiplier: data.multiplier,
+          currentReturn: data.currentReturn,
+          status: data.status
+        } : t
+      ));
+    });
+
+    const unsubCashedOut = socketService.onTicketCashedOut?.((data) => {
+      setMyTickets(prev => prev.map(t =>
+        t.id === data.numberId ? { ...t, status: 'cashed_out' } : t
+      ));
+      toast.success(`Cashed out ${data.number} for ${data.payout} Z!`);
+    });
+
+    // Listen for user's numbers update (after buying)
+    const unsubUserNumbers = socketService.onUserNumbersUpdated?.((data) => {
+      if (data.action === 'bought') {
+        fetchMyTickets();
+        fetchProfile(); // Also refresh balance
+      }
+    });
+
+    // Listen for vote rewards
+    const unsubVoteReward = socketService.onVoteReward?.((data) => {
+      toast.success(`You earned ${data.reward} Z for predicting ${data.number}!`);
+      fetchProfile(); // Refresh balance
+      fetchMyVotes(); // Refresh votes
+    });
+
+    return () => {
+      unsubTicketUpdate?.();
+      unsubCashedOut?.();
+      unsubUserNumbers?.();
+      unsubVoteReward?.();
+    };
   }, []);
 
   const fetchProfile = async () => {
@@ -57,6 +111,46 @@ function Profile() {
       toast.error("Failed to load profile");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMyTickets = async () => {
+    try {
+      const response = await getMyNumbers();
+      setMyTickets(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch tickets:", error);
+    }
+  };
+
+  const fetchMyVotes = async () => {
+    try {
+      const response = await getMyVotes();
+      setMyVotes(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch votes:", error);
+    }
+  };
+
+  const handleCashOut = async (ticketId, number) => {
+    if (cashingOut) return;
+    setCashingOut(ticketId);
+
+    try {
+      const response = await cashOutTicket(ticketId);
+      if (response.data.success) {
+        toast.success(`Cashed out ${number} for ${response.data.data.payout} Z!`);
+        // Update local state
+        setMyTickets(prev => prev.map(t =>
+          t.id === ticketId ? { ...t, status: 'cashed_out' } : t
+        ));
+        // Refresh profile to update balance
+        fetchProfile();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to cash out");
+    } finally {
+      setCashingOut(null);
     }
   };
 
@@ -144,7 +238,7 @@ function Profile() {
     );
   }
 
-  const { user: userData, stats, recentActivity, myNumbers } = profile;
+  const { user: userData, stats, recentActivity } = profile;
 
   // Chart data for balance breakdown
   const balanceData = [
@@ -158,7 +252,7 @@ function Profile() {
   ].filter((d) => d.value > 0);
 
   return (
-    <div className="mx-auto space-y-6">
+    <div className="mx-auto space-y-3">
       {/* Header with Currency Selector */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -390,6 +484,7 @@ function Profile() {
         {[
           { id: "overview", label: "Overview", icon: FiActivity },
           { id: "numbers", label: "My Numbers", icon: FiHash },
+          { id: "votes", label: "My Votes", icon: FiThumbsUp },
           { id: "activity", label: "Activity", icon: FiClock },
         ].map((tab) => (
           <button
@@ -597,54 +692,251 @@ function Profile() {
             <div className="p-4 border-b border-dark-600">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <FiHash className="text-accent" />
-                My Numbers ({myNumbers?.length || 0})
+                My Tickets ({myTickets?.length || 0})
               </h3>
             </div>
-            {myNumbers && myNumbers.length > 0 ? (
+            {myTickets && myTickets.length > 0 ? (
               <div className="divide-y divide-dark-600">
-                {myNumbers.map((num, i) => (
+                {myTickets.map((ticket, i) => {
+                  const matchedDigits = ticket.matchedDigits || 0;
+                  const multiplier = ticket.multiplier || MULTIPLIER_MAP[matchedDigits];
+                  const currentReturn = ticket.currentReturn || ((ticket.buyAmount || ticket.price) * multiplier);
+                  const status = ticket.status || 'active';
+                  const canCashOut = ticket.canCashOut && matchedDigits > 0 && !['cashed_out', 'sold', 'lost'].includes(status);
+
+                  return (
+                    <motion.div
+                      key={ticket.number}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className={`p-4 hover:bg-dark-700 transition-colors ${
+                        status === 'lost' ? 'opacity-60' : ''
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          {/* Number with match highlighting */}
+                          <div className="flex gap-1">
+                            {ticket.number.split("").map((digit, idx) => (
+                              <span
+                                key={idx}
+                                className={`w-8 h-10 rounded-lg font-mono font-bold flex items-center justify-center ${
+                                  idx < matchedDigits
+                                    ? 'bg-accent/20 text-accent border border-accent/30'
+                                    : status === 'lost' && idx === matchedDigits
+                                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                    : 'bg-dark-600 text-gray-400'
+                                }`}
+                              >
+                                {digit}
+                              </span>
+                            ))}
+                          </div>
+
+                          {/* Status badges and info */}
+                          <div className="flex flex-col gap-1">
+                            <div className="flex flex-wrap gap-2">
+                              {status === 'lost' && (
+                                <span className="px-2 py-1 rounded-full bg-rose-500/20 text-rose-400 text-xs font-semibold">
+                                  LOST
+                                </span>
+                              )}
+                              {status === 'won' && (
+                                <span className="px-2 py-1 rounded-full bg-gold/20 text-gold-light text-xs font-semibold animate-pulse">
+                                  <GiTrophy className="inline w-3 h-3 mr-1" />
+                                  WINNER!
+                                </span>
+                              )}
+                              {status === 'cashed_out' && (
+                                <span className="px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-semibold">
+                                  CASHED OUT
+                                </span>
+                              )}
+                              {status === 'matching' && matchedDigits > 0 && (
+                                <span className="px-2 py-1 rounded-full bg-accent/20 text-accent text-xs font-semibold">
+                                  {matchedDigits}/7 MATCH
+                                </span>
+                              )}
+                              {ticket.sessionNumber && (
+                                <span className="px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs font-semibold">
+                                  Session {ticket.sessionNumber}
+                                </span>
+                              )}
+                            </div>
+                            {/* Purchase info */}
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              {ticket.periodId && (
+                                <span>#{ticket.periodId}</span>
+                              )}
+                              {ticket.purchasedAt && (
+                                <span className="flex items-center gap-1">
+                                  <FiClock className="w-3 h-3" />
+                                  {formatTimeAgo(ticket.purchasedAt)}
+                                </span>
+                              )}
+                              <span className="text-gray-600">
+                                Bought for {ticket.buyAmount || ticket.price} Z
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Stats and actions */}
+                        <div className="flex items-center gap-4">
+                          {/* Match stats */}
+                          {matchedDigits > 0 && status !== 'lost' && (
+                            <div className="flex gap-3 text-sm">
+                              <div className="text-center">
+                                <p className="text-purple-light font-bold">{multiplier}x</p>
+                                <p className="text-gray-500 text-xs">multiplier</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-gold-light font-bold">{currentReturn} Z</p>
+                                <p className="text-gray-500 text-xs">return</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Cash out button */}
+                          {canCashOut ? (
+                            <button
+                              onClick={() => handleCashOut(ticket.id, ticket.number)}
+                              disabled={cashingOut === ticket.id}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gold/20 text-gold-light font-semibold text-sm hover:bg-gold/30 border border-gold/30 transition-colors disabled:opacity-50"
+                            >
+                              {cashingOut === ticket.id ? (
+                                <div className="w-4 h-4 border-2 border-gold-light border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <GiTwoCoins className="w-4 h-4" />
+                              )}
+                              <span>Cash Out</span>
+                            </button>
+                          ) : status === 'cashed_out' ? (
+                            <div className="text-right">
+                              <p className="text-emerald-400 font-medium">
+                                +{ticket.cashout_payout || currentReturn} Z
+                              </p>
+                              <p className="text-gray-500 text-xs">cashed out</p>
+                            </div>
+                          ) : (
+                            <div className="text-right">
+                              <p className="text-white font-medium">
+                                {ticket.votes || 0} votes
+                              </p>
+                              <p className="text-gray-500 text-xs">
+                                {formatTimeAgo(ticket.created_at)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-12 text-center">
+                <FiHash className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-400">You don't own any tickets yet</p>
+                <p className="text-gray-500 text-sm">
+                  Buy numbers to participate in draws!
+                </p>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {activeTab === "votes" && (
+          <motion.div
+            key="votes"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="rounded-xl bg-dark-800 border border-dark-600 overflow-hidden"
+          >
+            <div className="p-4 border-b border-dark-600">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <FiThumbsUp className="text-accent" />
+                My Votes ({myVotes?.length || 0})
+              </h3>
+            </div>
+            {myVotes && myVotes.length > 0 ? (
+              <div className="divide-y divide-dark-600">
+                {myVotes.map((vote, i) => (
                   <motion.div
-                    key={num.number}
+                    key={vote.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    className="p-4 flex items-center justify-between hover:bg-dark-700 transition-colors"
+                    className="p-4 hover:bg-dark-700 transition-colors"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="flex gap-1">
-                        {num.number.split("").map((digit, idx) => (
-                          <span
-                            key={idx}
-                            className="w-8 h-10 rounded-lg bg-accent/20 text-accent font-mono font-bold flex items-center justify-center"
-                          >
-                            {digit}
-                          </span>
-                        ))}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        {/* Number display */}
+                        <div className="flex gap-1">
+                          {vote.number.split("").map((digit, idx) => (
+                            <span
+                              key={idx}
+                              className={`w-7 h-9 rounded-md font-mono font-bold flex items-center justify-center text-sm ${
+                                vote.voteStatus === 'won'
+                                  ? 'bg-accent/20 text-accent border border-accent/30'
+                                  : vote.voteStatus === 'lost'
+                                  ? 'bg-dark-600 text-gray-500'
+                                  : 'bg-dark-600 text-gray-300'
+                              }`}
+                            >
+                              {digit}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Status badges */}
+                        <div className="flex flex-wrap gap-2">
+                          {vote.voteStatus === 'won' && (
+                            <span className="px-2 py-1 rounded-full bg-accent/20 text-accent text-xs font-semibold">
+                              <GiTrophy className="inline w-3 h-3 mr-1" />
+                              WON +{vote.reward} Z
+                            </span>
+                          )}
+                          {vote.voteStatus === 'lost' && (
+                            <span className="px-2 py-1 rounded-full bg-gray-500/20 text-gray-400 text-xs font-semibold">
+                              LOST
+                            </span>
+                          )}
+                          {vote.voteStatus === 'pending' && (
+                            <span className="px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs font-semibold">
+                              PENDING
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {num.times_won > 0 && (
-                        <span className="px-2 py-1 rounded-full bg-gold/20 text-gold-light text-xs font-semibold">
-                          <GiTrophy className="inline w-3 h-3 mr-1" />
-                          {num.times_won}x Winner
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <p className="text-white font-medium">
-                        {num.total_votes} votes
-                      </p>
-                      <p className="text-gray-500 text-xs">
-                        {formatTimeAgo(num.created_at)}
-                      </p>
+
+                      {/* Vote info */}
+                      <div className="flex items-center gap-4 text-sm">
+                        {vote.periodId && (
+                          <div className="text-center">
+                            <p className="text-gray-400 font-medium">Session {vote.sessionNumber || '-'}</p>
+                            <p className="text-gray-500 text-xs">{vote.periodId}</p>
+                          </div>
+                        )}
+                        <div className="text-right">
+                          <p className="text-gray-400">{vote.totalVotes} total votes</p>
+                          <p className="text-gray-500 text-xs">
+                            {formatTimeAgo(vote.votedAt)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
                 ))}
               </div>
             ) : (
               <div className="p-12 text-center">
-                <FiHash className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-400">You don't own any numbers yet</p>
+                <FiThumbsUp className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-400">You haven't voted yet</p>
                 <p className="text-gray-500 text-sm">
-                  Buy numbers to participate in draws!
+                  Vote on numbers to predict winners and earn 10 Z rewards!
                 </p>
               </div>
             )}

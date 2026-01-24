@@ -11,16 +11,20 @@ const settingIcons = {
   generate_time: FiClock,
   result_time: FiClock,
   prize_pool_percentage: FiPercent,
-  current_period_id: FiSettings
+  current_period_id: FiSettings,
+  price_multiplier_offset: GiTwoCoins,
+  vote_reward: GiTwoCoins
 };
 
 const settingLabels = {
-  number_base_price: 'Number Base Price',
+  number_base_price: 'Number Base Price (Z)',
   vote_cost: 'Vote Cost',
-  generate_time: 'Generate Time (8 PM)',
-  result_time: 'Result Time (9 PM)',
+  generate_time: 'Generate Time',
+  result_time: 'Result Time',
   prize_pool_percentage: 'Prize Pool %',
-  current_period_id: 'Current Period ID'
+  current_period_id: 'Current Period ID',
+  price_multiplier_offset: 'Price Multiplier Offset',
+  vote_reward: 'Vote Reward (Z)'
 };
 
 function AdminSettings() {
@@ -80,7 +84,7 @@ function AdminSettings() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
@@ -151,41 +155,109 @@ function AdminSettings() {
         })}
       </div>
 
-      {/* Info */}
+      {/* Session Schedule Info */}
       <div className="bg-dark-800/50 border border-dark-600 rounded-xl p-5">
         <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
           <FiClock className="text-accent" />
-          Timing Info
+          Session Schedule (3 Sessions Daily)
+        </h3>
+        <div className="grid sm:grid-cols-3 gap-4 text-sm">
+          {[
+            { session: 1, generate: '02:00', result: '08:00', label: 'Morning' },
+            { session: 2, generate: '10:00', result: '16:00', label: 'Afternoon' },
+            { session: 3, generate: '18:00', result: '00:00', label: 'Night' }
+          ].map(s => (
+            <div key={s.session} className="p-4 bg-dark-700/50 rounded-lg">
+              <p className="text-accent font-medium mb-2">Session {s.session} ({s.label})</p>
+              <div className="space-y-1">
+                <p className="text-gray-400 text-xs">Generate: <span className="text-white">{s.generate}</span></p>
+                <p className="text-gray-400 text-xs">Result: <span className="text-white">{s.result}</span></p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 p-4 bg-dark-700/50 rounded-lg">
+          <p className="text-gray-400 mb-2">Digit Reveal Schedule (per session)</p>
+          <p className="text-gray-500 text-xs mb-2">7 digits revealed over 6 hours (1 digit per hour)</p>
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 5, 6, 7].map(digit => (
+              <div key={digit} className="px-3 py-1.5 bg-dark-600 rounded text-xs">
+                <span className="text-accent font-medium">#{digit}</span>
+                <span className="text-gray-400 ml-1">+{digit - 1}h</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Dynamic Pricing Info */}
+      <div className="bg-dark-800/50 border border-dark-600 rounded-xl p-5">
+        <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+          <GiTwoCoins className="text-accent" />
+          Dynamic Pricing Formula
+        </h3>
+        <div className="p-4 bg-dark-700/50 rounded-lg mb-4">
+          <p className="text-gray-400 mb-2">Number Price Calculation</p>
+          <code className="text-accent text-sm">Price = BasePrice × (RevealedDigits + 10)</code>
+          <p className="text-gray-500 text-xs mt-2">Numbers without owner use dynamic price based on revealed digits</p>
+        </div>
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 text-xs">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map(digits => (
+            <div key={digits} className="p-2 bg-dark-600 rounded text-center">
+              <p className="text-gray-500">{digits} digits</p>
+              <p className="text-white font-medium">{10 * (digits + 10)}Z</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Multiplier Returns Info */}
+      <div className="bg-dark-800/50 border border-dark-600 rounded-xl p-5">
+        <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+          <FiPercent className="text-accent" />
+          Win Multipliers
+        </h3>
+        <p className="text-gray-500 text-xs mb-3">Return multipliers based on matching digits from the winning number</p>
+        <div className="grid grid-cols-7 gap-2 text-xs">
+          {[
+            { digits: 1, mult: '2x' },
+            { digits: 2, mult: '4x' },
+            { digits: 3, mult: '7x' },
+            { digits: 4, mult: '14x' },
+            { digits: 5, mult: '21x' },
+            { digits: 6, mult: '35x' },
+            { digits: 7, mult: '49x' }
+          ].map(item => (
+            <div key={item.digits} className="p-2 bg-dark-600 rounded text-center">
+              <p className="text-gray-500">{item.digits} match</p>
+              <p className="text-accent font-bold">{item.mult}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Vote System Info */}
+      <div className="bg-dark-800/50 border border-dark-600 rounded-xl p-5">
+        <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+          <FiSettings className="text-accent" />
+          Vote System
         </h3>
         <div className="grid sm:grid-cols-2 gap-4 text-sm">
           <div className="p-4 bg-dark-700/50 rounded-lg">
-            <p className="text-gray-400 mb-1">Draw Generation</p>
-            <p className="text-white font-medium">8:00 PM (20:00) IST</p>
-            <p className="text-gray-500 text-xs mt-1">New number generated, first digit revealed immediately</p>
+            <p className="text-gray-400 mb-1">Vote Rules</p>
+            <ul className="text-gray-500 text-xs space-y-1">
+              <li>• One vote per user per number</li>
+              <li>• Users can vote/unvote (toggle)</li>
+              <li>• Voting is free (prediction only)</li>
+            </ul>
           </div>
           <div className="p-4 bg-dark-700/50 rounded-lg">
-            <p className="text-gray-400 mb-1">Result Reveal</p>
-            <p className="text-white font-medium">9:00 PM (21:00) IST</p>
-            <p className="text-gray-500 text-xs mt-1">All 7 digits revealed, winners processed</p>
-          </div>
-        </div>
-        <div className="mt-4 p-4 bg-dark-700/50 rounded-lg">
-          <p className="text-gray-400 mb-1">Digit Reveal Schedule</p>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {[
-              { digit: 1, time: '8:00 PM' },
-              { digit: 2, time: '8:10 PM' },
-              { digit: 3, time: '8:20 PM' },
-              { digit: 4, time: '8:30 PM' },
-              { digit: 5, time: '8:40 PM' },
-              { digit: 6, time: '8:50 PM' },
-              { digit: 7, time: '9:00 PM' },
-            ].map(item => (
-              <div key={item.digit} className="px-3 py-1.5 bg-dark-600 rounded text-xs">
-                <span className="text-accent font-medium">#{item.digit}</span>
-                <span className="text-gray-400 ml-1">{item.time}</span>
-              </div>
-            ))}
+            <p className="text-gray-400 mb-1">Vote Rewards</p>
+            <ul className="text-gray-500 text-xs space-y-1">
+              <li>• Correct prediction: <span className="text-accent">10Z reward</span></li>
+              <li>• Rewards paid when draw completes</li>
+              <li>• Visible in user's My Votes tab</li>
+            </ul>
           </div>
         </div>
       </div>

@@ -273,7 +273,7 @@ function Layout() {
         </header>
 
         {/* Page Content */}
-        <main className="p-2 sm:px-0 sm:py-4 min-h-[calc(100vh-4rem)]">
+        <main className="p-2 2xl:px-0 sm:px-4 sm:py-4 min-h-[calc(100vh-4rem)]">
           <Outlet />
           <div className="h-36"></div>
         </main>

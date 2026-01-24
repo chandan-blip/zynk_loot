@@ -152,7 +152,7 @@ export default function AdminOrders() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -577,7 +577,7 @@ export default function AdminOrders() {
                 </button>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-3">
                 {/* UPI */}
                 <div>
                   <h4 className="text-sm font-medium text-gray-300 mb-3">UPI Details</h4>

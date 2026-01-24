@@ -2,16 +2,84 @@ const cron = require('node-cron');
 const db = require('../config/database');
 
 class CronService {
-  constructor(io) {
+  constructor(io, ticketService = null) {
     this.io = io;
-    this.GENERATE_HOUR = 20; // 8 PM
-    this.REVEAL_HOUR = 21;   // 9 PM
+    this.ticketService = ticketService;
     this.TOTAL_DIGITS = 7;
+    this.TIMEZONE = 'Asia/Kolkata';
+
+    // Session configuration: 3 sessions per day with hourly digit reveals
+    // Each session has 6 hours of reveal time (7 digits, 1st immediate + 6 hourly)
+    this.SESSION_CONFIG = {
+      1: {
+        generateHour: 8,   // 8 AM: Generate number
+        revealStartHour: 9,  // 9 AM: Start reveals (1st digit immediate at 8 AM)
+        revealEndHour: 15    // 3 PM: All 7 digits revealed
+      },
+      2: {
+        generateHour: 15,  // 3 PM: Generate number
+        revealStartHour: 17, // 5 PM: Start reveals (1st digit immediate at 3 PM)
+        revealEndHour: 23    // 11 PM: All 7 digits revealed
+      },
+      3: {
+        generateHour: 23,  // 11 PM: Generate number
+        revealStartHour: 0,  // 12 AM: Start reveals (crosses midnight)
+        revealEndHour: 6     // 6 AM: All 7 digits revealed
+      }
+    };
+  }
+
+  // Get current time in IST timezone
+  getNowIST() {
+    const now = new Date();
+    // Convert to IST string and parse back to get IST components
+    const istString = now.toLocaleString('en-US', { timeZone: this.TIMEZONE });
+    return new Date(istString);
+  }
+
+  // Get current hour in IST
+  getCurrentHourIST() {
+    return this.getNowIST().getHours();
+  }
+
+  // Get current time components in IST
+  getCurrentTimeIST() {
+    const now = this.getNowIST();
+    return {
+      hours: now.getHours(),
+      minutes: now.getMinutes(),
+      seconds: now.getSeconds(),
+      date: now
+    };
+  }
+
+  // Get current session based on time of day (IST)
+  getCurrentSession() {
+    const hour = this.getCurrentHourIST();
+
+    // Session 1: 8 AM - 3 PM (hours 8-14)
+    if (hour >= 8 && hour < 15) {
+      return 1;
+    }
+    // Session 2: 3 PM - 11 PM (hours 15-22)
+    if (hour >= 15 && hour < 23) {
+      return 2;
+    }
+    // Session 3: 11 PM - 6 AM (hours 23, 0-5)
+    // This handles both before and after midnight
+    return 3;
+  }
+
+  // Get session config, handling the overnight session specially
+  getSessionConfig(sessionNumber) {
+    return this.SESSION_CONFIG[sessionNumber];
   }
 
   // Generate unique period ID: YYYYMMDD + sequence number (001, 002, etc.)
   async generatePeriodId() {
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    // Use IST date for period ID
+    const now = this.getNowIST();
+    const today = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
 
     const [existing] = await db.pool.query(
       `SELECT period_id FROM daily_draws
@@ -34,80 +102,141 @@ class CronService {
     return String(Math.floor(Math.random() * 10000000)).padStart(7, '0');
   }
 
-  // Calculate revealed digits based on current time (8 PM to 9 PM = 7 digits)
-  calculateRevealedDigits() {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinutes = now.getMinutes();
-    const currentSeconds = now.getSeconds();
+  // Calculate revealed digits based on current time (hourly reveals, IST)
+  // First digit reveals at generate time, then 1 per hour for 6 hours
+  calculateRevealedDigits(sessionNumber = null) {
+    const currentHour = this.getCurrentHourIST();
 
-    // Before 8 PM - no digits revealed for current draw
-    if (currentHour < this.GENERATE_HOUR) {
+    // Use provided session or determine from current time
+    const session = sessionNumber || this.getCurrentSession();
+    const config = this.getSessionConfig(session);
+
+    // Handle overnight session (Session 3: 11 PM - 6 AM)
+    if (session === 3) {
+      return this._calculateRevealedDigitsOvernight(currentHour, config);
+    }
+
+    // Standard session (doesn't cross midnight)
+    // Before generate time - no digits revealed
+    if (currentHour < config.generateHour) {
       return 0;
     }
 
-    // After 9 PM - all digits revealed
-    if (currentHour >= this.REVEAL_HOUR) {
+    // After reveal end time - all digits revealed
+    if (currentHour >= config.revealEndHour) {
       return this.TOTAL_DIGITS;
     }
 
-    // Between 8 PM and 9 PM - progressive reveal
-    // First digit shows immediately at 8 PM, remaining 6 digits over 60 minutes
-    // 60 minutes / 6 remaining digits = 10 minutes per digit
-    const minutesSince8PM = (currentHour - this.GENERATE_HOUR) * 60 + currentMinutes;
-    const secondsSince8PM = minutesSince8PM * 60 + currentSeconds;
-
-    // Total seconds in reveal period (1 hour), 6 remaining digits after first
-    const totalRevealSeconds = 60 * 60;
-    const secondsPerDigit = totalRevealSeconds / (this.TOTAL_DIGITS - 1); // ~600 seconds = 10 min
-
-    // Start with 1 digit, add more as time passes
-    const additionalDigits = Math.floor(secondsSince8PM / secondsPerDigit);
-    return Math.min(1 + additionalDigits, this.TOTAL_DIGITS);
+    // During reveal period: 1 digit at generate time, then 1 per hour
+    const hoursSinceGenerate = currentHour - config.generateHour;
+    return Math.min(1 + hoursSinceGenerate, this.TOTAL_DIGITS);
   }
 
-  // Get time until next digit reveal (in seconds)
-  getNextRevealTime() {
-    const now = new Date();
+  // Handle overnight session digit calculation (crosses midnight)
+  _calculateRevealedDigitsOvernight(currentHour, config) {
+    // Before 11 PM on current day - no digits (unless we're in early morning of session)
+    // After 6 AM - all revealed (session complete)
+
+    // Early morning hours (0-6) - we're in the reveal phase
+    if (currentHour < config.revealEndHour) {
+      // Hours since 11 PM: hours until midnight + hours after midnight
+      // At 12 AM: 1 hour since 11 PM → 2 digits
+      // At 1 AM: 2 hours since 11 PM → 3 digits
+      // etc.
+      const hoursSinceGenerate = (24 - config.generateHour) + currentHour;
+      return Math.min(1 + hoursSinceGenerate, this.TOTAL_DIGITS);
+    }
+
+    // Between 6 AM and 11 PM - either completed or not yet started
+    if (currentHour >= config.revealEndHour && currentHour < config.generateHour) {
+      return this.TOTAL_DIGITS; // Previous session completed
+    }
+
+    // At or after 11 PM - session just started
+    if (currentHour >= config.generateHour) {
+      const hoursSinceGenerate = currentHour - config.generateHour;
+      return Math.min(1 + hoursSinceGenerate, this.TOTAL_DIGITS);
+    }
+
+    return 0;
+  }
+
+  // Get time until next digit reveal (in seconds, IST)
+  getNextRevealTime(sessionNumber = null) {
+    const time = this.getCurrentTimeIST();
+    const currentMinutes = time.minutes;
+    const currentSeconds = time.seconds;
+
+    const session = sessionNumber || this.getCurrentSession();
+    const currentRevealedDigits = this.calculateRevealedDigits(session);
+
+    // All digits revealed
+    if (currentRevealedDigits >= this.TOTAL_DIGITS) {
+      return this._getTimeUntilNextSession();
+    }
+
+    // Calculate time until next hour (when next digit reveals)
+    const secondsIntoCurrentHour = currentMinutes * 60 + currentSeconds;
+    const secondsUntilNextHour = 3600 - secondsIntoCurrentHour;
+
+    return secondsUntilNextHour;
+  }
+
+  // Get time until next session starts (IST)
+  _getTimeUntilNextSession() {
+    const now = this.getNowIST();
     const currentHour = now.getHours();
 
-    // Before 8 PM - return time until 8 PM
-    if (currentHour < this.GENERATE_HOUR) {
-      const next8PM = new Date(now);
-      next8PM.setHours(this.GENERATE_HOUR, 0, 0, 0);
-      return Math.floor((next8PM - now) / 1000);
+    let nextGenerateHour;
+    let addDay = false;
+
+    if (currentHour < 8) {
+      nextGenerateHour = 8; // Next is session 1
+    } else if (currentHour < 15) {
+      nextGenerateHour = 15; // Next is session 2
+    } else if (currentHour < 23) {
+      nextGenerateHour = 23; // Next is session 3
+    } else {
+      nextGenerateHour = 8; // Next is session 1 tomorrow
+      addDay = true;
     }
 
-    // After 9 PM - return time until next day's 8 PM
-    if (currentHour >= this.REVEAL_HOUR) {
-      const tomorrow8PM = new Date(now);
-      tomorrow8PM.setDate(tomorrow8PM.getDate() + 1);
-      tomorrow8PM.setHours(this.GENERATE_HOUR, 0, 0, 0);
-      return Math.floor((tomorrow8PM - now) / 1000);
+    const nextSession = new Date(now);
+    if (addDay) {
+      nextSession.setDate(nextSession.getDate() + 1);
     }
+    nextSession.setHours(nextGenerateHour, 0, 0, 0);
 
-    // During reveal period - calculate time to next digit
-    const currentRevealedDigits = this.calculateRevealedDigits();
-    if (currentRevealedDigits >= this.TOTAL_DIGITS) {
-      return 0;
-    }
-
-    // Calculate when next digit reveals (first digit immediate, then every 10 min)
-    const secondsPerDigit = 3600 / (this.TOTAL_DIGITS - 1); // ~600 seconds = 10 min
-    const today8PM = new Date(now);
-    today8PM.setHours(this.GENERATE_HOUR, 0, 0, 0);
-
-    // Next digit time: (currentRevealedDigits - 1) * secondsPerDigit since first is immediate
-    const nextDigitRevealTime = new Date(today8PM.getTime() + (currentRevealedDigits) * secondsPerDigit * 1000);
-    return Math.max(0, Math.floor((nextDigitRevealTime - now) / 1000));
+    return Math.floor((nextSession - now) / 1000);
   }
 
-  // Create a new draw at 8 PM (pending status)
-  async createNewDraw() {
+  // Create a new draw (accepts session number parameter)
+  async createNewDraw(sessionNumber = null) {
     try {
+      // Use provided session or determine from current time
+      const session = sessionNumber || this.getCurrentSession();
+      const config = this.getSessionConfig(session);
+
       const periodId = await this.generatePeriodId();
       const winningNumber = this.generateWinningNumber();
-      const today = new Date().toISOString().split('T')[0];
+      // Use IST date
+      const now = this.getNowIST();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+      // Calculate generate_time and result_time based on session
+      // Result time is when last digit is revealed: generateHour + 6 hours (7 digits: 1 immediate + 6 hourly)
+      const generateTime = `${String(config.generateHour).padStart(2, '0')}:00:00`;
+      const resultHour = (config.generateHour + 6) % 24;
+      const resultTime = `${String(resultHour).padStart(2, '0')}:00:00`;
+
+      // Calculate initial revealed digits based on current time
+      const initialRevealedDigits = this.calculateRevealedDigits(session);
+
+      // Determine initial status based on revealed digits
+      let initialStatus = 'revealing';
+      if (initialRevealedDigits >= this.TOTAL_DIGITS) {
+        initialStatus = 'completed';
+      }
 
       // First, complete any active/revealing draws
       await db.pool.query(
@@ -115,11 +244,11 @@ class CronService {
          WHERE status IN ('active', 'revealing')`
       );
 
-      // Create new draw with 'pending' status
+      // Create new draw with session_number and correct initial revealed_digits
       const [result] = await db.pool.query(
-        `INSERT INTO daily_draws (period_id, draw_date, winning_number, status, revealed_digits, generate_time, result_time)
-         VALUES (?, ?, ?, 'pending', 0, '20:00:00', '21:00:00')`,
-        [periodId, today, winningNumber]
+        `INSERT INTO daily_draws (period_id, draw_date, session_number, winning_number, status, revealed_digits, generate_time, result_time)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [periodId, today, session, winningNumber, initialStatus, initialRevealedDigits, generateTime, resultTime]
       );
 
       // Update current period in settings
@@ -128,31 +257,41 @@ class CronService {
         [periodId]
       );
 
-      console.log(`[CRON] New draw created - Period: ${periodId}, Status: pending`);
+      // Calculate revealed number for broadcast
+      const revealedNumber = winningNumber.substring(0, initialRevealedDigits) + 'X'.repeat(this.TOTAL_DIGITS - initialRevealedDigits);
 
-      // Broadcast new draw event
+      console.log(`[CRON] New draw created - Period: ${periodId}, Session: ${session}, Status: ${initialStatus}, Revealed: ${initialRevealedDigits} digits`);
+
+      // Broadcast new draw event with correct revealed info
       if (this.io) {
         this.io.emit('draw:new', {
           periodId,
-          status: 'pending',
-          message: 'New draw created! Revealing starts now.'
+          sessionNumber: session,
+          status: initialStatus,
+          revealedDigits: initialRevealedDigits,
+          revealedNumber,
+          message: `Session ${session} draw created! ${initialRevealedDigits} digit(s) revealed.`
         });
       }
 
-      // Immediately start revealing (change to 'revealing' status)
-      await db.pool.query(
-        `UPDATE daily_draws SET status = 'revealing' WHERE id = ?`,
-        [result.insertId]
-      );
+      // Reset all tickets for new draw
+      if (this.ticketService) {
+        try {
+          await this.ticketService.resetTicketsForNewDraw(result.insertId);
+          console.log(`[CRON] Tickets reset for new draw ${periodId}`);
+        } catch (ticketError) {
+          console.error('[CRON] Error resetting tickets:', ticketError);
+        }
+      }
 
-      return { periodId, winningNumber, drawId: result.insertId };
+      return { periodId, winningNumber, drawId: result.insertId, sessionNumber: session, revealedDigits: initialRevealedDigits, status: initialStatus };
     } catch (error) {
       console.error('[CRON] Error creating new draw:', error);
       throw error;
     }
   }
 
-  // Complete draw at 9 PM and process winners
+  // Complete draw and process winners
   async completeAndProcessWinners() {
     try {
       // Get current revealing draw
@@ -176,12 +315,13 @@ class CronService {
       // Process winners
       await this.processWinners(draw);
 
-      console.log(`[CRON] Draw completed - Period: ${draw.period_id}, Winning: ${draw.winning_number}`);
+      console.log(`[CRON] Draw completed - Period: ${draw.period_id}, Session: ${draw.session_number}, Winning: ${draw.winning_number}`);
 
       // Broadcast completion
       if (this.io) {
         this.io.emit('draw:complete', {
           periodId: draw.period_id,
+          sessionNumber: draw.session_number,
           winningNumber: draw.winning_number,
           status: 'completed'
         });
@@ -200,7 +340,6 @@ class CronService {
     try {
       const winningNumber = draw.winning_number;
       const prefix = winningNumber.substring(0, 6); // First 6 digits
-      const winningLastDigit = winningNumber.charAt(6); // Last digit
       const totalPool = parseFloat(draw.total_pool);
 
       // Prize distribution
@@ -295,13 +434,55 @@ class CronService {
       }
 
       console.log(`[CRON] Winners processed - Exact: ${exactMatches.length}, Near: ${nearMatches.length}`);
+
+      // Reward voters who voted for the winning number (10 Z each)
+      const VOTE_REWARD = 10;
+      const [winningNumberRecord] = await db.pool.query(
+        `SELECT id FROM numbers WHERE number = ?`,
+        [winningNumber]
+      );
+
+      if (winningNumberRecord.length > 0) {
+        const [voters] = await db.pool.query(
+          `SELECT DISTINCT v.user_id FROM votes v
+           WHERE v.number_id = ? AND v.draw_id = ?`,
+          [winningNumberRecord[0].id, draw.id]
+        );
+
+        for (const voter of voters) {
+          // Credit the reward
+          await db.pool.query(
+            `UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?`,
+            [VOTE_REWARD, VOTE_REWARD, voter.user_id]
+          );
+
+          // Record transaction
+          await db.pool.query(
+            `INSERT INTO transactions (user_id, type, amount, description)
+             VALUES (?, 'prize', ?, ?)`,
+            [voter.user_id, VOTE_REWARD, `Vote reward for predicting winning number ${winningNumber}`]
+          );
+
+          console.log(`[CRON] Vote reward: User ${voter.user_id}, Reward: ${VOTE_REWARD} Z`);
+
+          if (this.io) {
+            this.io.to(`user:${voter.user_id}`).emit('vote:reward', {
+              periodId: draw.period_id,
+              number: winningNumber,
+              reward: VOTE_REWARD
+            });
+          }
+        }
+
+        console.log(`[CRON] Vote rewards processed - ${voters.length} voters rewarded`);
+      }
     } catch (error) {
       console.error('[CRON] Error processing winners:', error);
       throw error;
     }
   }
 
-  // Get current draw with calculated revealed digits (PUBLIC - secure version)
+  // Get current draw - returns DB data directly (DB is source of truth)
   async getCurrentDraw() {
     // Get the most recent draw that's not completed
     let [draws] = await db.pool.query(
@@ -315,74 +496,89 @@ class CronService {
       );
     }
 
+    // No draws exist - return clear fallback data
     if (draws.length === 0) {
-      return null;
+      const currentSession = this.getCurrentSession();
+      return {
+        id: null,
+        periodId: null,
+        drawDate: null,
+        sessionNumber: currentSession,
+        status: 'none',
+        revealedNumber: 'XXXXXXX',
+        revealedDigits: 0,
+        totalDigits: this.TOTAL_DIGITS,
+        digitsRemaining: this.TOTAL_DIGITS,
+        totalPool: 0,
+        generateTime: null,
+        resultTime: null,
+        nextRevealIn: this._getTimeUntilNextSession(),
+        timeUntilComplete: 0,
+        isComplete: false,
+        message: 'No active draw. Waiting for next session to start.'
+      };
     }
 
     const draw = draws[0];
     const isComplete = draw.status === 'completed';
-
-    // Calculate revealed digits: use the MAX of database value and time-based calculation
-    // This ensures admin manual reveals are respected, while also allowing time-based auto-reveal
-    const timeBasedDigits = this.calculateRevealedDigits();
-    const dbDigits = draw.revealed_digits || 0;
-    const actualRevealedDigits = isComplete ? this.TOTAL_DIGITS : Math.max(timeBasedDigits, dbDigits);
+    const sessionNumber = draw.session_number || this.getCurrentSession();
+    const revealedDigits = parseInt(draw.revealed_digits) || 0;
 
     // SECURITY: Only send revealed portion - NEVER send full number to client
-    // Mask unrevealed digits with X on the SERVER side
-    const revealedNumber = draw.winning_number.substring(0, actualRevealedDigits) +
-                          'X'.repeat(this.TOTAL_DIGITS - actualRevealedDigits);
+    // If no winning number exists yet or 0 digits revealed, show all X's
+    let revealedNumber = 'XXXXXXX';
+    if (draw.winning_number && revealedDigits > 0) {
+      revealedNumber = draw.winning_number.substring(0, revealedDigits) + 'X'.repeat(this.TOTAL_DIGITS - revealedDigits);
+    }
 
-    // Calculate time until next reveal
-    const nextRevealIn = this.getNextRevealTime();
+    // Simple time calculations
+    const now = this.getNowIST();
+    const currentMinutes = now.getMinutes();
+    const currentSeconds = now.getSeconds();
+    const currentHour = now.getHours();
 
-    // Calculate time until full reveal (9 PM)
-    const now = new Date();
-    const today9PM = new Date(now);
-    today9PM.setHours(this.REVEAL_HOUR, 0, 0, 0);
-    const timeUntilComplete = now >= today9PM ? 0 : Math.floor((today9PM - now) / 1000);
+    // Time until next hour (when next digit reveals)
+    const nextRevealIn = isComplete ? 0 : (3600 - (currentMinutes * 60 + currentSeconds));
 
-    // Calculate remaining digits info
-    const digitsRemaining = this.TOTAL_DIGITS - actualRevealedDigits;
-    const secondsPerDigit = Math.floor(3600 / (this.TOTAL_DIGITS - 1));
+    // Calculate time until complete (when all 7 digits revealed)
+    // Result hour = generateHour + 6
+    const config = this.getSessionConfig(sessionNumber);
+    const resultHour = (config.generateHour + 6) % 24;
+    let timeUntilComplete = 0;
 
-    // Build reveal schedule (when each remaining digit will be revealed)
-    const revealSchedule = [];
-    if (!isComplete && actualRevealedDigits < this.TOTAL_DIGITS) {
-      const now = new Date();
-      const today8PM = new Date(now);
-      today8PM.setHours(this.GENERATE_HOUR, 0, 0, 0);
-
-      for (let i = actualRevealedDigits + 1; i <= this.TOTAL_DIGITS; i++) {
-        // First digit is immediate at 8 PM, then each subsequent every ~10 min
-        const revealTime = new Date(today8PM.getTime() + (i - 1) * secondsPerDigit * 1000);
-        const secondsUntil = Math.max(0, Math.floor((revealTime - now) / 1000));
-        revealSchedule.push({
-          digitNumber: i,
-          revealsIn: secondsUntil,
-          revealTime: revealTime.toISOString()
-        });
+    if (!isComplete) {
+      // Calculate hours remaining until result time
+      let hoursRemaining;
+      if (sessionNumber === 3 && currentHour >= config.generateHour) {
+        // Overnight session, before midnight: hours until midnight + hours after midnight until result
+        hoursRemaining = (24 - currentHour) + resultHour;
+      } else if (sessionNumber === 3 && currentHour < resultHour) {
+        // Overnight session, after midnight: hours until result
+        hoursRemaining = resultHour - currentHour;
+      } else {
+        // Normal session
+        hoursRemaining = resultHour - currentHour;
       }
+      // Convert to seconds and subtract elapsed time in current hour
+      timeUntilComplete = Math.max(0, (hoursRemaining * 3600) - (currentMinutes * 60 + currentSeconds));
     }
 
     return {
-      id: draw.id,
-      periodId: draw.period_id,
-      drawDate: draw.draw_date,
-      status: draw.status,
-      // SECURE: Only send the masked number - unrevealed digits are hidden server-side
+      id: draw.id || null,
+      periodId: draw.period_id || null,
+      drawDate: draw.draw_date || null,
+      sessionNumber,
+      status: draw.status || 'unknown',
       revealedNumber,
-      revealedDigits: actualRevealedDigits,
+      revealedDigits,
       totalDigits: this.TOTAL_DIGITS,
-      digitsRemaining,
-      totalPool: parseFloat(draw.total_pool || 0),
-      generateTime: draw.generate_time,
-      resultTime: draw.result_time,
+      digitsRemaining: this.TOTAL_DIGITS - revealedDigits,
+      totalPool: parseFloat(draw.total_pool) || 0,
+      generateTime: draw.generate_time || null,
+      resultTime: draw.result_time || null,
       nextRevealIn,
       timeUntilComplete,
-      isComplete,
-      secondsPerDigit,
-      revealSchedule
+      isComplete
     };
   }
 
@@ -398,33 +594,40 @@ class CronService {
       );
     }
 
+    // No draws exist - return clear fallback data
     if (draws.length === 0) {
-      return null;
+      return {
+        id: null,
+        periodId: null,
+        drawDate: null,
+        sessionNumber: this.getCurrentSession(),
+        status: 'none',
+        winningNumber: null,
+        revealedDigits: 0,
+        totalDigits: this.TOTAL_DIGITS,
+        totalPool: 0,
+        isComplete: false,
+        message: 'No draws exist. Create a new draw to start.'
+      };
     }
 
     const draw = draws[0];
-    const isComplete = draw.status === 'completed';
-
-    // Use MAX of database value and time-based calculation
-    const timeBasedDigits = this.calculateRevealedDigits();
-    const dbDigits = draw.revealed_digits || 0;
-    const actualRevealedDigits = isComplete ? this.TOTAL_DIGITS : Math.max(timeBasedDigits, dbDigits);
 
     return {
-      id: draw.id,
-      periodId: draw.period_id,
-      drawDate: draw.draw_date,
-      status: draw.status,
-      // Admin can see full number for management
-      winningNumber: draw.winning_number,
-      revealedDigits: actualRevealedDigits,
+      id: draw.id || null,
+      periodId: draw.period_id || null,
+      drawDate: draw.draw_date || null,
+      sessionNumber: draw.session_number || this.getCurrentSession(),
+      status: draw.status || 'unknown',
+      winningNumber: draw.winning_number || null,
+      revealedDigits: parseInt(draw.revealed_digits) || 0,
       totalDigits: this.TOTAL_DIGITS,
-      totalPool: parseFloat(draw.total_pool || 0),
-      isComplete
+      totalPool: parseFloat(draw.total_pool) || 0,
+      isComplete: draw.status === 'completed'
     };
   }
 
-  // Auto-reveal digits based on time and broadcast to users
+  // Auto-reveal digits based on time and broadcast to users (hourly)
   async autoRevealDigits() {
     try {
       // Get active/revealing draw
@@ -437,8 +640,9 @@ class CronService {
       }
 
       const draw = draws[0];
+      const sessionNumber = draw.session_number || 1;
       const currentDbDigits = draw.revealed_digits || 0;
-      const timeBasedDigits = this.calculateRevealedDigits();
+      const timeBasedDigits = this.calculateRevealedDigits(sessionNumber);
 
       // Only update if time-based calculation is ahead of database
       if (timeBasedDigits > currentDbDigits && timeBasedDigits <= this.TOTAL_DIGITS) {
@@ -448,26 +652,36 @@ class CronService {
           [timeBasedDigits, draw.id]
         );
 
+        // Process ticket matching for all active tickets
+        if (this.ticketService) {
+          try {
+            await this.ticketService.processReveal(draw, timeBasedDigits);
+          } catch (ticketError) {
+            console.error('[CRON] Error processing ticket reveals:', ticketError);
+          }
+        }
+
         // Calculate revealed number portion
         const revealedNumber = draw.winning_number.substring(0, timeBasedDigits) +
                               'X'.repeat(this.TOTAL_DIGITS - timeBasedDigits);
 
         // Calculate next reveal time
-        const nextRevealIn = this.getNextRevealTime();
+        const nextRevealIn = this.getNextRevealTime(sessionNumber);
 
-        // Calculate digits remaining and time for each
+        // Calculate digits remaining
         const digitsRemaining = this.TOTAL_DIGITS - timeBasedDigits;
-        const secondsPerDigit = Math.floor(3600 / (this.TOTAL_DIGITS - 1));
+        const secondsPerDigit = 3600; // 1 hour per digit
 
-        console.log(`[CRON] Auto-revealed digit ${timeBasedDigits} - ${revealedNumber}`);
+        console.log(`[CRON] Auto-revealed digit ${timeBasedDigits} for session ${sessionNumber} - ${revealedNumber}`);
 
-        // Broadcast to all connected users (use same event as admin reveal)
+        // Broadcast to all connected users
         if (this.io) {
           this.io.emit('draw:digit-revealed', {
             revealedNumber,
             revealedDigits: timeBasedDigits,
             totalDigits: this.TOTAL_DIGITS,
             digitsRemaining,
+            sessionNumber,
             nextRevealIn,
             secondsPerDigit,
             isAutoReveal: true
@@ -478,6 +692,7 @@ class CronService {
           revealedDigits: timeBasedDigits,
           revealedNumber,
           digitsRemaining,
+          sessionNumber,
           nextRevealIn
         };
       }
@@ -489,40 +704,92 @@ class CronService {
     }
   }
 
-  // Start all cron jobs
+  // Start all cron jobs for 3 sessions per day
   start() {
-    // At 8 PM: Create new draw and start revealing
-    cron.schedule('0 20 * * *', async () => {
-      console.log('[CRON] 8 PM - Creating new draw and starting reveal...');
-      await this.createNewDraw();
+    // Session 1: Generate at 8 AM
+    cron.schedule('0 8 * * *', async () => {
+      console.log('[CRON] 8 AM - Creating Session 1 draw...');
+      await this.createNewDraw(1);
     }, {
       timezone: 'Asia/Kolkata'
     });
 
-    // Every minute during reveal period (8 PM - 9 PM): Auto-reveal digits
-    cron.schedule('* 20 * * *', async () => {
-      await this.autoRevealDigits();
+    // Session 2: Generate at 3 PM
+    cron.schedule('0 15 * * *', async () => {
+      console.log('[CRON] 3 PM - Creating Session 2 draw...');
+      await this.createNewDraw(2);
     }, {
       timezone: 'Asia/Kolkata'
     });
 
-    // At 9 PM: Complete current draw and process winners
-    cron.schedule('0 21 * * *', async () => {
-      console.log('[CRON] 9 PM - Completing draw and processing winners...');
+    // Session 3: Generate at 11 PM
+    cron.schedule('0 23 * * *', async () => {
+      console.log('[CRON] 11 PM - Creating Session 3 draw...');
+      await this.createNewDraw(3);
+    }, {
+      timezone: 'Asia/Kolkata'
+    });
+
+    // Session 1: Complete at 3 PM (before session 2 starts)
+    cron.schedule('0 15 * * *', async () => {
+      console.log('[CRON] 3 PM - Completing Session 1...');
       await this.completeAndProcessWinners();
     }, {
       timezone: 'Asia/Kolkata'
     });
 
-    console.log('[CRON] Cron jobs scheduled:');
-    console.log('  - 8:00 PM: Generate new number, start revealing');
-    console.log('  - 8:00-9:00 PM: Auto-reveal digits every minute');
-    console.log('  - 9:00 PM: Complete reveal, process winners');
+    // Session 2: Complete at 11 PM (before session 3 starts)
+    cron.schedule('0 23 * * *', async () => {
+      console.log('[CRON] 11 PM - Completing Session 2...');
+      await this.completeAndProcessWinners();
+    }, {
+      timezone: 'Asia/Kolkata'
+    });
+
+    // Session 3: Complete at 6 AM
+    cron.schedule('0 6 * * *', async () => {
+      console.log('[CRON] 6 AM - Completing Session 3...');
+      await this.completeAndProcessWinners();
+    }, {
+      timezone: 'Asia/Kolkata'
+    });
+
+    // Hourly auto-reveal during all active windows
+    // Run at the top of each hour to reveal digits
+    cron.schedule('0 * * * *', async () => {
+      const session = this.getCurrentSession();
+      const config = this.getSessionConfig(session);
+      const hour = this.getCurrentHourIST();
+
+      // Check if we're in a reveal window
+      let inRevealWindow = false;
+
+      if (session === 3) {
+        // Overnight session: 11 PM - 6 AM
+        inRevealWindow = hour >= config.generateHour || hour < config.revealEndHour;
+      } else {
+        // Normal sessions
+        inRevealWindow = hour >= config.generateHour && hour < config.revealEndHour;
+      }
+
+      if (inRevealWindow) {
+        console.log(`[CRON] Hourly reveal check for session ${session} at IST hour ${hour}...`);
+        await this.autoRevealDigits();
+      }
+    }, {
+      timezone: 'Asia/Kolkata'
+    });
+
+    console.log('[CRON] Cron jobs scheduled for 3 sessions/day:');
+    console.log('  Session 1: Generate 8 AM, Reveal 9 AM-3 PM, Complete 3 PM');
+    console.log('  Session 2: Generate 3 PM, Reveal 5 PM-11 PM, Complete 11 PM');
+    console.log('  Session 3: Generate 11 PM, Reveal 12 AM-6 AM, Complete 6 AM');
+    console.log('  - Hourly auto-reveal during active windows');
   }
 
   // Manual triggers for testing
-  async triggerNewDraw() {
-    return await this.createNewDraw();
+  async triggerNewDraw(sessionNumber = null) {
+    return await this.createNewDraw(sessionNumber);
   }
 
   async triggerComplete() {

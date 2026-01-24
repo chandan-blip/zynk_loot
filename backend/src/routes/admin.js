@@ -200,13 +200,24 @@ router.get('/draws/current', async (req, res) => {
 });
 
 // Manually trigger new draw (for testing)
+// Accepts optional session parameter (1, 2, or 3)
 router.post('/draws/trigger-new', async (req, res) => {
   try {
     const cronService = req.app.get('cronService');
-    const result = await cronService.triggerNewDraw();
+    const { session } = req.body;
+
+    // Validate session if provided
+    if (session !== undefined && ![1, 2, 3].includes(Number(session))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid session number. Must be 1, 2, or 3.'
+      });
+    }
+
+    const result = await cronService.triggerNewDraw(session ? Number(session) : null);
     res.json({
       success: true,
-      message: 'New draw created',
+      message: `Session ${result.sessionNumber} draw created`,
       data: result
     });
   } catch (error) {

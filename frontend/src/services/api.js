@@ -37,18 +37,25 @@ export const getMe = () => api.get('/auth/me');
 
 // Lottery
 export const getCurrentDraw = () => api.get('/lottery/draw');
-export const getNumbers = (limit = 50) => api.get(`/lottery/numbers?limit=${limit}`);
+export const getNumbers = ({ limit = 20, offset = 0, search = '' } = {}) =>
+  api.get(`/lottery/numbers?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}`);
 export const getNumberDetails = (number) => api.get(`/lottery/numbers/${number}`);
 export const buyNumber = (number) => api.post(`/lottery/numbers/${number}/buy`);
-export const voteForNumber = (number) => api.post(`/lottery/numbers/${number}/vote`);
+export const voteForNumber = (number) => api.post(`/lottery/numbers/${number}/vote`, { action: 'vote' });
+export const unvoteForNumber = (number) => api.post(`/lottery/numbers/${number}/vote`, { action: 'unvote' });
 export const createOffer = (number, amount) => api.post(`/lottery/numbers/${number}/offer`, { amount });
 export const getNumberOffers = (number) => api.get(`/lottery/numbers/${number}/offers`);
 export const getMyNumbers = () => api.get('/lottery/my-numbers');
+export const getMyVotes = () => api.get('/lottery/my-votes');
 export const getOffers = () => api.get('/lottery/offers');
 export const respondToOffer = (offerId, accept) => api.post(`/lottery/offers/${offerId}/respond`, { accept });
 export const getDrawHistory = (limit = 30) => api.get(`/lottery/history?limit=${limit}`);
 export const getPrizePool = () => api.get('/lottery/prize-pool');
 export const getRecentWinners = (limit = 10) => api.get(`/lottery/winners?limit=${limit}`);
+
+// Tickets (matching system)
+export const getTicketDetails = (ticketId) => api.get(`/lottery/tickets/${ticketId}`);
+export const cashOutTicket = (ticketId) => api.post(`/lottery/tickets/${ticketId}/cashout`);
 
 // Wallet
 export const getWalletBalance = () => api.get('/wallet/balance');

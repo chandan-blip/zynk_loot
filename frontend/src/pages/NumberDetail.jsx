@@ -13,7 +13,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, LineChart, Line
 } from 'recharts';
-import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer } from '../services/api';
+import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer, cashOutTicket } from '../services/api';
 import socketService from '../services/socket';
 import useStore from '../store/useStore';
 
@@ -75,18 +75,18 @@ function StatCard({ icon: Icon, label, value, subValue, color = "accent", trend 
 
   return (
     <div className="p-3 rounded-xl bg-dark-700 border border-dark-600">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-center justify-between mb-2">
         <div className={`w-8 h-8 rounded-lg ${colorClasses[color]} flex items-center justify-center`}>
           <Icon className="w-4 h-4" />
         </div>
-        {trend !== undefined && (
+        <p className="text-white font-bold text-lg">{value}</p>
+      </div>
+      {trend !== undefined && (
           <span className={`text-xs font-medium flex items-center gap-0.5 ${trend >= 0 ? 'text-emerald-light' : 'text-rose-light'}`}>
             {trend >= 0 ? <FiTrendingUp className="w-3 h-3" /> : <FiTrendingDown className="w-3 h-3" />}
             {trend > 0 ? '+' : ''}{trend}%
           </span>
         )}
-      </div>
-      <p className="text-white font-bold text-lg">{value}</p>
       <p className="text-gray-500 text-xs">{label}</p>
       {subValue && <p className="text-gray-600 text-[10px] mt-0.5">{subValue}</p>}
     </div>
@@ -132,6 +132,36 @@ function NumberDetail() {
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [voteCount, setVoteCount] = useState(1);
   const [pendingOffers, setPendingOffers] = useState([]);
+  const [cashingOut, setCashingOut] = useState(false);
+
+  // Helper to merge backend data with demo fallbacks
+  const mergeWithDemoData = (data, demoData) => {
+    // Format dates in arrays
+    const formatDate = (dateStr) => {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
+    return {
+      ...demoData,
+      ...data,
+      priceHistory: data.priceHistory?.length > 0
+        ? data.priceHistory.map(p => ({ ...p, date: formatDate(p.date) }))
+        : demoData.priceHistory,
+      votesByHour: data.votesByHour?.some(v => v.votes > 0) ? data.votesByHour : demoData.votesByHour,
+      activities: data.activities?.length > 0 ? data.activities.map(a => ({
+        ...a,
+        icon: a.type === 'vote' ? FiThumbsUp : a.type === 'buy' ? GiTwoCoins : a.type === 'offer' ? FiDollarSign : FiRepeat
+      })) : demoData.activities,
+      ownershipHistory: data.ownershipHistory?.length > 0 ? data.ownershipHistory : demoData.ownershipHistory,
+      similarNumbers: data.similarNumbers?.length > 0 ? data.similarNumbers : demoData.similarNumbers,
+      voteHistory: data.voteHistory?.length > 0
+        ? data.voteHistory.map(v => ({ ...v, date: formatDate(v.date) }))
+        : demoData.voteHistory,
+      digits: demoData.digits
+    };
+  };
 
   // Generate comprehensive demo data
   const generateDemoData = (num, basePrice = 10) => {
@@ -252,7 +282,7 @@ function NumberDetail() {
         const res = await getNumberDetails(number);
         const data = res.data.data;
         const demoData = generateDemoData(number, data.price || 10);
-        setNumberData({ ...demoData, ...data, priceHistory: demoData.priceHistory });
+        setNumberData(mergeWithDemoData(data, demoData));
       } catch (error) {
         console.error('Failed to fetch number:', error);
         setNumberData(generateDemoData(number, 10));
@@ -277,6 +307,36 @@ function NumberDetail() {
       }
     });
     return () => unsub?.();
+  }, [number]);
+
+  // Listen for ticket updates (matching digits)
+  useEffect(() => {
+    const unsubTicket = socketService.onTicketUpdate((data) => {
+      if (data.number === number) {
+        setNumberData(prev => prev ? {
+          ...prev,
+          matchedDigits: data.matchedDigits,
+          currentReturn: data.currentReturn,
+          ticketStatus: data.ticketStatus,
+          canCashOut: data.matchedDigits > 0 && !['cashed_out', 'sold', 'lost', 'won'].includes(data.ticketStatus)
+        } : prev);
+      }
+    });
+    const unsubCashOut = socketService.onTicketCashedOut((data) => {
+      if (data.number === number) {
+        setNumberData(prev => prev ? {
+          ...prev,
+          ticketStatus: 'cashed_out',
+          matchedDigits: data.matchedDigits,
+          currentReturn: 0,
+          canCashOut: false
+        } : prev);
+      }
+    });
+    return () => {
+      unsubTicket?.();
+      unsubCashOut?.();
+    };
   }, [number]);
 
   const formatNumber = (num) => num.toString().padStart(7, '0').split('').join(' ');
@@ -341,7 +401,7 @@ function NumberDetail() {
       const res = await getNumberDetails(number);
       const data = res.data.data;
       const demoData = generateDemoData(number, data.price || 10);
-      setNumberData({ ...demoData, ...data, priceHistory: demoData.priceHistory });
+      setNumberData(mergeWithDemoData(data, demoData));
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to accept offer');
     }
@@ -354,6 +414,25 @@ function NumberDetail() {
       fetchOffers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to reject offer');
+    }
+  };
+
+  const handleCashOut = async () => {
+    if (!numberData?.id) return;
+    setCashingOut(true);
+    try {
+      const res = await cashOutTicket(numberData.id);
+      const { payout, matchedDigits } = res.data.data;
+      toast.success(`Cashed out ${payout} Z with ${matchedDigits} matched digits!`);
+      // Refresh number data
+      const refreshRes = await getNumberDetails(number);
+      const data = refreshRes.data.data;
+      const demoData = generateDemoData(number, data.price || 10);
+      setNumberData(mergeWithDemoData(data, demoData));
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to cash out');
+    } finally {
+      setCashingOut(false);
     }
   };
 
@@ -401,7 +480,7 @@ function NumberDetail() {
             )}
           </div>
 
-          <div className="text-center mb-6">
+          <div className="text-center my-6">
             <p className="text-gray-500 text-sm mb-2">Number</p>
             <p className="text-white text-2xl sm:text-5xl font-mono font-extrabold tracking-[0.3em] mb-3">
               {formatNumber(numberData?.number)}
@@ -416,9 +495,37 @@ function NumberDetail() {
             </div>
           </div>
 
-          {/* Win Chance & Quick Stats */}
-          <div className="flex flex-col sm:flex-row items-center gap-6 justify-center">
+          {/* Win Chance & Multiplier Details */}
+          <div className="flex flex-col lg:flex-row items-center gap-6 justify-center">
             <RadialChart percentage={winChance} size={100} strokeWidth={8} label="Win Chance" />
+
+            {/* Multiplier Table */}
+            <div className="flex-1 w-full max-w-md">
+              <p className="text-gray-400 text-xs font-medium mb-2 text-center lg:text-left">Return Multipliers</p>
+              <div className="grid grid-cols-4 gap-1.5 text-xs">
+                {[
+                  { digits: 1, mult: '2x', color: 'text-gray-300' },
+                  { digits: 2, mult: '4x', color: 'text-gray-300' },
+                  { digits: 3, mult: '9x', color: 'text-blue-400' },
+                  { digits: 4, mult: '16x', color: 'text-purple-400' },
+                  { digits: 5, mult: '25x', color: 'text-accent' },
+                  { digits: 6, mult: '36x', color: 'text-gold-light' },
+                  { digits: 7, mult: '49x', color: 'text-gold-light font-bold' },
+                ].map((item) => (
+                  <div key={item.digits} className="flex flex-col items-center p-2 rounded-lg bg-dark-800/50 border border-dark-600/30">
+                    <span className="text-gray-500 text-[10px]">{item.digits} match</span>
+                    <span className={`font-semibold ${item.color}`}>{item.mult}</span>
+                  </div>
+                ))}
+                <div className="flex flex-col items-center p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
+                  <span className="text-gray-500 text-[10px]">0 match</span>
+                  <span className="text-rose-400 font-semibold">Lost</span>
+                </div>
+              </div>
+              <p className="text-gray-500 text-[10px] mt-2 text-center">
+                Buy for {numberData?.price || 10} Z → Match 3 digits = {(numberData?.price || 10) * 9} Z return
+              </p>
+            </div>
           </div>
         </div>
 
@@ -509,6 +616,99 @@ function NumberDetail() {
             </div>
           </div>
         </div>
+
+        {/* Ticket Matching Status & Cash Out (for owner) */}
+        {isOwner && (
+          <div className="p-4 border-t border-dark-600">
+            <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-xl bg-dark-800/50 border border-dark-600/50">
+              {/* Ticket Status Badge */}
+              <div className="flex items-center gap-3">
+                {numberData?.ticketStatus === 'lost' && (
+                  <span className="px-3 py-1.5 rounded-full bg-rose/20 text-rose-light text-sm font-bold border border-rose/30">
+                    LOST
+                  </span>
+                )}
+                {numberData?.ticketStatus === 'won' && (
+                  <span className="px-3 py-1.5 rounded-full bg-gold/20 text-gold-light text-sm font-bold border border-gold/30">
+                    WON
+                  </span>
+                )}
+                {numberData?.ticketStatus === 'cashed_out' && (
+                  <span className="px-3 py-1.5 rounded-full bg-emerald/20 text-emerald-light text-sm font-bold border border-emerald/30">
+                    CASHED OUT
+                  </span>
+                )}
+                {(numberData?.ticketStatus === 'active' || !numberData?.ticketStatus) && (
+                  <span className="px-3 py-1.5 rounded-full bg-accent/20 text-accent text-sm font-bold border border-accent/30">
+                    {(numberData?.matchedDigits || 0) > 0 ? `${numberData.matchedDigits} MATCHED` : 'ACTIVE'}
+                  </span>
+                )}
+              </div>
+
+              {/* Matched Digits Display */}
+              <div className="flex-1 text-center">
+                <p className="text-gray-500 text-xs mb-1">Matched Digits</p>
+                <div className="flex items-center justify-center gap-1">
+                  {numberData?.number?.split('').map((digit, idx) => {
+                    const isMatched = idx < (numberData?.matchedDigits || 0);
+                    return (
+                      <span
+                        key={idx}
+                        className={`w-8 h-10 flex items-center justify-center rounded font-mono text-lg font-bold ${
+                          isMatched
+                            ? 'bg-accent/30 text-accent border border-accent/50'
+                            : 'bg-dark-700 text-gray-500 border border-dark-600'
+                        }`}
+                      >
+                        {digit}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Current Return & Cash Out */}
+              <div className="text-center">
+                {(numberData?.matchedDigits || 0) > 0 && numberData?.canCashOut && (
+                  <>
+                    <p className="text-gray-500 text-xs mb-1">Current Return</p>
+                    <p className="text-gold-light text-xl font-bold mb-2">
+                      {numberData?.currentReturn || 0} Z
+                    </p>
+                    <button
+                      onClick={handleCashOut}
+                      disabled={cashingOut}
+                      className="px-5 py-2 rounded-lg bg-gold/20 text-gold-light font-semibold text-sm hover:bg-gold/30 border border-gold/30 transition-colors disabled:opacity-50"
+                    >
+                      {cashingOut ? 'Cashing out...' : 'Cash Out'}
+                    </button>
+                  </>
+                )}
+                {(numberData?.matchedDigits || 0) > 0 && !numberData?.canCashOut && numberData?.ticketStatus === 'active' && (
+                  <>
+                    <p className="text-gray-500 text-xs mb-1">Current Return</p>
+                    <p className="text-gold-light text-xl font-bold mb-2">
+                      {numberData?.currentReturn || 0} Z
+                    </p>
+                    <p className="text-gray-400 text-xs">Matching in progress...</p>
+                  </>
+                )}
+                {(numberData?.matchedDigits || 0) === 0 && (numberData?.ticketStatus === 'active' || !numberData?.ticketStatus) && (
+                  <p className="text-gray-400 text-sm">Waiting for reveal...</p>
+                )}
+                {numberData?.ticketStatus === 'cashed_out' && (
+                  <p className="text-emerald-light text-sm font-medium">Already cashed out</p>
+                )}
+                {numberData?.ticketStatus === 'lost' && (
+                  <p className="text-rose-light text-sm font-medium">No match - try next draw!</p>
+                )}
+                {numberData?.ticketStatus === 'won' && (
+                  <p className="text-gold-light text-sm font-medium">Jackpot winner!</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

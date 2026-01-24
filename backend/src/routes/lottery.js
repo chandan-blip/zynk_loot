@@ -17,25 +17,222 @@ router.get('/draw', async (req, res) => {
   }
 });
 
-// Get trending numbers
+// Get numbers with pagination, search, and virtual number generation
 router.get('/numbers', async (req, res) => {
   try {
-    const lotteryService = req.app.get('lotteryService');
-    const limit = parseInt(req.query.limit) || 50;
-    const numbers = await lotteryService.getTrendingNumbers(limit);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const offset = parseInt(req.query.offset) || 0;
+    const search = req.query.search || '';
 
-    res.json({
-      success: true,
-      data: numbers.map(n => ({
+    // Get base price from settings
+    const [settings] = await db.pool.query(
+      "SELECT setting_value FROM settings WHERE setting_key = 'number_base_price'"
+    );
+    const basePrice = parseFloat(settings[0]?.setting_value || 10);
+
+    // Get current draw info to know revealed digits
+    const [currentDraw] = await db.pool.query(
+      `SELECT winning_number, revealed_digits, status
+       FROM daily_draws
+       WHERE status IN ('pending', 'revealing', 'active')
+       ORDER BY created_at DESC LIMIT 1`
+    );
+
+    const draw = currentDraw[0] || null;
+    const revealedDigits = draw?.revealed_digits || 0;
+    const winningNumber = draw?.winning_number || '';
+    const revealedPrefix = winningNumber.substring(0, revealedDigits);
+
+    // Calculate current price based on revealed digits
+    // Price multiplier: (revealedDigits + 1)x
+    // 0 digits = 1x, 1 digit = 2x, 2 digits = 3x, etc.
+    const priceMultiplier = revealedDigits + 10;
+    const currentPrice = basePrice * priceMultiplier;
+
+    // Helper to check if a number matches revealed digits
+    const matchesRevealed = (num) => {
+      if (revealedDigits === 0) return true; // No digits revealed yet, all numbers valid
+      return num.substring(0, revealedDigits) === revealedPrefix;
+    };
+
+    // Helper to determine virtual number status based on revealed digits
+    const getVirtualStatus = (num) => {
+      if (revealedDigits === 0) return null; // Draw not started
+      if (matchesRevealed(num)) return 'available'; // Still in the running
+      return 'would_lose'; // Doesn't match revealed prefix
+    };
+
+    // If searching for a specific number
+    if (search && search.length > 0) {
+      // Check if number exists in database
+      const [existingNumbers] = await db.pool.query(
+        `SELECT n.*, u.username as owner_name
+         FROM numbers n
+         LEFT JOIN users u ON n.owner_id = u.id
+         WHERE n.number LIKE ?
+         ORDER BY n.total_votes DESC
+         LIMIT ?`,
+        [`%${search}%`, limit]
+      );
+
+      const results = existingNumbers.map(n => ({
         id: n.id,
         number: n.number,
         owner: n.owner_name,
         ownerId: n.owner_id,
         price: parseFloat(n.price),
-        votes: n.total_votes,
-        trend: parseFloat(n.vote_trend),
-        timesWon: n.times_won
-      }))
+        votes: n.total_votes || 0,
+        trend: parseFloat(n.vote_trend) || 0,
+        timesWon: n.times_won || 0,
+        isVirtual: false,
+        ticketStatus: n.ticket_status || 'active',
+        matchesRevealed: matchesRevealed(n.number)
+      }));
+
+      // Add virtual number for search if not in DB
+      if (search.length >= 1 && search.length <= 7) {
+        const exactNumber = search.padStart(7, '0');
+        const exists = results.some(r => r.number === exactNumber);
+        if (!exists) {
+          const virtualStatus = getVirtualStatus(exactNumber);
+          const matchesRevealedDigits = matchesRevealed(exactNumber);
+          results.unshift({
+            id: null,
+            number: exactNumber,
+            owner: null,
+            ownerId: null,
+            // Price depends on revealed digits - higher as more digits revealed
+            price: matchesRevealedDigits ? currentPrice : basePrice,
+            votes: 0,
+            trend: 0,
+            timesWon: 0,
+            isVirtual: true,
+            ticketStatus: virtualStatus,
+            matchesRevealed: matchesRevealedDigits
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        data: results,
+        hasMore: false,
+        total: results.length,
+        revealedDigits,
+        revealedPrefix,
+        basePrice,
+        currentPrice,
+        priceMultiplier
+      });
+    }
+
+    // Get existing numbers from DB with pagination
+    const [numbers] = await db.pool.query(
+      `SELECT n.*, u.username as owner_name
+       FROM numbers n
+       LEFT JOIN users u ON n.owner_id = u.id
+       ORDER BY n.total_votes DESC, n.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    // Get total count for pagination
+    const [countResult] = await db.pool.query('SELECT COUNT(*) as total FROM numbers');
+    const totalInDb = countResult[0].total;
+
+    // Map existing numbers
+    // Numbers without owner use dynamic price based on revealed digits
+    const existingNumbers = numbers.map(n => ({
+      id: n.id,
+      number: n.number,
+      owner: n.owner_name,
+      ownerId: n.owner_id,
+      price: n.owner_id ? parseFloat(n.price) : (matchesRevealed(n.number) ? currentPrice : basePrice),
+      votes: n.total_votes || 0,
+      trend: parseFloat(n.vote_trend) || 0,
+      timesWon: n.times_won || 0,
+      isVirtual: false,
+      ticketStatus: n.ticket_status || 'active',
+      matchesRevealed: matchesRevealed(n.number)
+    }));
+
+    // Generate virtual numbers that match revealed prefix
+    const virtualNumbers = [];
+    if (existingNumbers.length < limit) {
+      const neededVirtual = limit - existingNumbers.length;
+      const existingSet = new Set(numbers.map(n => n.number));
+
+      // Generate virtual numbers that match the revealed prefix
+      const generateValidVirtualNumber = (seed) => {
+        // If digits are revealed, generate numbers starting with that prefix
+        if (revealedDigits > 0 && revealedPrefix) {
+          const remainingDigits = 7 - revealedDigits;
+          // Generate random remaining digits
+          const suffix = String(Math.floor(Math.random() * Math.pow(10, remainingDigits))).padStart(remainingDigits, '0');
+          return revealedPrefix + suffix;
+        }
+
+        // No digits revealed - generate interesting patterns
+        const patterns = [
+          () => String(Math.floor(Math.random() * 10)).repeat(7),
+          () => '1234567',
+          () => '7654321',
+          () => String(Math.floor(1000000 + Math.random() * 9000000)),
+          () => {
+            const d = Math.floor(Math.random() * 10);
+            return `${d}${d}${d}${d}${d}${d}${d}`;
+          },
+          () => {
+            const start = Math.floor(Math.random() * 4);
+            return Array.from({ length: 7 }, (_, i) => (start + i) % 10).join('');
+          },
+          () => {
+            const half = String(Math.floor(1000 + Math.random() * 9000));
+            return half + half.slice(0, 3).split('').reverse().join('');
+          }
+        ];
+        return patterns[seed % patterns.length]().padStart(7, '0').slice(0, 7);
+      };
+
+      let attempts = 0;
+      const maxAttempts = neededVirtual * 10;
+      while (virtualNumbers.length < neededVirtual && attempts < maxAttempts) {
+        attempts++;
+        const virtualNum = generateValidVirtualNumber(offset + attempts + Date.now() % 1000);
+
+        if (!existingSet.has(virtualNum) &&
+            !virtualNumbers.some(v => v.number === virtualNum) &&
+            matchesRevealed(virtualNum)) {
+          virtualNumbers.push({
+            id: null,
+            number: virtualNum,
+            owner: null,
+            ownerId: null,
+            // Price increases with revealed digits
+            price: currentPrice,
+            votes: 0,
+            trend: 0,
+            timesWon: 0,
+            isVirtual: true,
+            ticketStatus: 'available',
+            matchesRevealed: true
+          });
+        }
+      }
+    }
+
+    const allNumbers = [...existingNumbers, ...virtualNumbers];
+
+    res.json({
+      success: true,
+      data: allNumbers,
+      hasMore: offset + limit < totalInDb + 1000,
+      total: totalInDb,
+      revealedDigits,
+      revealedPrefix,
+      basePrice,
+      currentPrice,
+      priceMultiplier
     });
   } catch (error) {
     console.error('Get numbers error:', error);
@@ -47,21 +244,67 @@ router.get('/numbers', async (req, res) => {
 router.get('/numbers/:number', async (req, res) => {
   try {
     const lotteryService = req.app.get('lotteryService');
-    const number = await lotteryService.getNumberDetails(req.params.number);
+    const numberStr = req.params.number.padStart(7, '0');
+    const number = await lotteryService.getNumberDetails(numberStr);
+
+    // Get current draw info for pricing
+    const [settings] = await db.pool.query(
+      "SELECT setting_value FROM settings WHERE setting_key = 'number_base_price'"
+    );
+    const basePrice = parseFloat(settings[0]?.setting_value || 10);
+
+    const [currentDraw] = await db.pool.query(
+      `SELECT winning_number, revealed_digits, status
+       FROM daily_draws
+       WHERE status IN ('pending', 'revealing', 'active')
+       ORDER BY created_at DESC LIMIT 1`
+    );
+
+    const draw = currentDraw[0] || null;
+    const revealedDigits = draw?.revealed_digits || 0;
+    const winningNumber = draw?.winning_number || '';
+    const revealedPrefix = winningNumber.substring(0, revealedDigits);
+    const priceMultiplier = revealedDigits + 1;
+    const currentPrice = basePrice * priceMultiplier;
+
+    // Check if number matches revealed digits
+    const matchesRevealed = revealedDigits === 0 || numberStr.startsWith(revealedPrefix);
 
     if (!number) {
       return res.json({
         success: true,
         data: {
-          number: req.params.number,
+          number: numberStr,
           owner: null,
-          price: 10,
+          price: matchesRevealed ? currentPrice : basePrice,
+          basePrice,
+          priceMultiplier: matchesRevealed ? priceMultiplier : 1,
           votes: 0,
           trend: 0,
-          voteHistory: []
+          voteHistory: [],
+          priceHistory: [],
+          votesByHour: Array.from({ length: 24 }, (_, i) => ({ hour: `${i}:00`, votes: 0 })),
+          activities: [],
+          ownershipHistory: [],
+          similarNumbers: [],
+          uniqueVoters: 0,
+          totalTransactions: 0,
+          avgDailyVotes: 0,
+          peakVotes: 0,
+          rank: 0,
+          totalPoolVotes: 150000,
+          createdAt: 'Not created',
+          isVirtual: true,
+          matchesRevealed,
+          ticketStatus: matchesRevealed ? 'available' : 'would_lose'
         }
       });
     }
+
+    // Calculate canCashOut
+    const matchedDigits = number.matched_digits || 0;
+    const ticketStatus = number.ticket_status || 'active';
+    const canCashOut = matchedDigits > 0 && !['cashed_out', 'sold', 'lost', 'won'].includes(ticketStatus);
 
     res.json({
       success: true,
@@ -72,10 +315,31 @@ router.get('/numbers/:number', async (req, res) => {
         ownerId: number.owner_id,
         price: parseFloat(number.price),
         votes: number.total_votes,
-        trend: parseFloat(number.vote_trend),
-        timesWon: number.times_won,
-        lastWon: number.last_won_date,
-        voteHistory: number.voteHistory
+        trend: parseFloat(number.vote_trend) || 0,
+        timesWon: number.times_won || 0,
+        lastWon: number.last_won_date || 'Never',
+        // Analytics data
+        voteHistory: number.voteHistory || [],
+        priceHistory: number.priceHistory || [],
+        votesByHour: number.votesByHour || [],
+        activities: number.activities || [],
+        ownershipHistory: number.ownershipHistory || [],
+        similarNumbers: number.similarNumbers || [],
+        // Stats
+        uniqueVoters: number.uniqueVoters || 0,
+        totalTransactions: number.totalTransactions || 0,
+        avgDailyVotes: number.avgDailyVotes || 0,
+        peakVotes: number.peakVotes || 0,
+        rank: number.rank || 1,
+        totalPoolVotes: number.totalPoolVotes || 150000,
+        createdAt: number.createdAt || 'Unknown',
+        // Ticket matching fields
+        drawId: number.draw_id,
+        matchedDigits: matchedDigits,
+        currentReturn: parseFloat(number.current_return) || 0,
+        ticketStatus: ticketStatus,
+        buyAmount: parseFloat(number.buy_amount || number.price),
+        canCashOut: canCashOut
       }
     });
   } catch (error) {
@@ -94,14 +358,40 @@ router.post('/numbers/:number/buy', authenticateToken, async (req, res) => {
     const [settings] = await db.pool.query(
       "SELECT setting_value FROM settings WHERE setting_key = 'number_base_price'"
     );
-    const price = parseFloat(settings[0]?.setting_value || 10);
+    const basePrice = parseFloat(settings[0]?.setting_value || 10);
+
+    // Get current draw to check revealed digits
+    const [currentDraw] = await db.pool.query(
+      `SELECT winning_number, revealed_digits, status
+       FROM daily_draws
+       WHERE status IN ('pending', 'revealing', 'active')
+       ORDER BY created_at DESC LIMIT 1`
+    );
+
+    const draw = currentDraw[0] || null;
+    const revealedDigits = draw?.revealed_digits || 0;
+    const winningNumber = draw?.winning_number || '';
+    const revealedPrefix = winningNumber.substring(0, revealedDigits);
+
+    // Check if number matches revealed digits
+    if (revealedDigits > 0 && !numberStr.startsWith(revealedPrefix)) {
+      return res.status(400).json({
+        success: false,
+        message: `This number doesn't match the revealed digits (${revealedPrefix}...). It would lose this draw.`
+      });
+    }
+
+    // Calculate price based on revealed digits
+    // Price multiplier: (revealedDigits + 1)x
+    const priceMultiplier = revealedDigits + 1;
+    const price = basePrice * priceMultiplier;
 
     const result = await lotteryService.buyNumber(req.user.id, numberStr, price);
 
     res.json({
       success: true,
-      message: 'Number purchased successfully',
-      data: result
+      message: `Number purchased for ${price} Z (${priceMultiplier}x multiplier)`,
+      data: { ...result, price, priceMultiplier }
     });
   } catch (error) {
     console.error('Buy number error:', error);
@@ -109,23 +399,18 @@ router.post('/numbers/:number/buy', authenticateToken, async (req, res) => {
   }
 });
 
-// Vote for a number
+// Vote/Unvote for a number
 router.post('/numbers/:number/vote', authenticateToken, async (req, res) => {
   try {
     const lotteryService = req.app.get('lotteryService');
     const numberStr = req.params.number.padStart(7, '0');
+    const action = req.body.action || 'vote'; // 'vote' or 'unvote'
 
-    // Get vote cost from settings
-    const [settings] = await db.pool.query(
-      "SELECT setting_value FROM settings WHERE setting_key = 'vote_cost'"
-    );
-    const voteCost = parseFloat(settings[0]?.setting_value || 1);
-
-    const result = await lotteryService.voteForNumber(req.user.id, numberStr, voteCost);
+    const result = await lotteryService.voteForNumber(req.user.id, numberStr, action);
 
     res.json({
       success: true,
-      message: 'Vote recorded',
+      message: action === 'unvote' ? 'Vote removed' : 'Vote recorded',
       data: result
     });
   } catch (error) {
@@ -228,7 +513,7 @@ router.post('/offers/:id/respond', authenticateToken, [
   }
 });
 
-// Get user's numbers
+// Get user's numbers/tickets with matching info
 router.get('/my-numbers', authenticateToken, async (req, res) => {
   try {
     const lotteryService = req.app.get('lotteryService');
@@ -240,13 +525,116 @@ router.get('/my-numbers', authenticateToken, async (req, res) => {
         id: n.id,
         number: n.number,
         price: parseFloat(n.price),
+        buyAmount: parseFloat(n.buy_amount || n.price),
         votes: n.total_votes,
-        trend: parseFloat(n.vote_trend)
+        trend: parseFloat(n.vote_trend || 0),
+        // Ticket matching fields (arc.md #14)
+        matchedDigits: n.matched_digits || 0,
+        multiplier: n.multiplier || 0,
+        currentReturn: parseFloat(n.current_return || 0),
+        status: n.ticket_status || 'active',
+        canCashOut: n.canCashOut || false,
+        // Session info
+        sessionNumber: n.session_number || null,
+        periodId: n.period_id || null,
+        purchasedAt: n.created_at || null,
+        // Next reveal info
+        nextRevealAt: null // Calculated by cronService, frontend should use draw info
       }))
     });
   } catch (error) {
     console.error('Get my numbers error:', error);
     res.status(500).json({ success: false, message: 'Failed to get numbers' });
+  }
+});
+
+// Get user's vote history
+router.get('/my-votes', authenticateToken, async (req, res) => {
+  try {
+    const db = require('../config/database');
+    const [votes] = await db.pool.query(
+      `SELECT v.id, v.vote_count, v.created_at,
+              n.number, n.total_votes,
+              d.period_id, d.winning_number, d.status as draw_status, d.session_number,
+              CASE
+                WHEN d.status = 'completed' AND n.number = d.winning_number THEN 'won'
+                WHEN d.status = 'completed' THEN 'lost'
+                ELSE 'pending'
+              END as vote_status,
+              CASE
+                WHEN d.status = 'completed' AND n.number = d.winning_number THEN 10
+                ELSE 0
+              END as reward
+       FROM votes v
+       JOIN numbers n ON v.number_id = n.id
+       LEFT JOIN daily_draws d ON v.draw_id = d.id
+       WHERE v.user_id = ?
+       ORDER BY v.created_at DESC
+       LIMIT 100`,
+      [req.user.id]
+    );
+
+    res.json({
+      success: true,
+      data: votes.map(v => ({
+        id: v.id,
+        number: v.number,
+        totalVotes: v.total_votes,
+        voteCount: v.vote_count,
+        votedAt: v.created_at,
+        periodId: v.period_id,
+        sessionNumber: v.session_number,
+        drawStatus: v.draw_status,
+        voteStatus: v.vote_status,
+        winningNumber: v.draw_status === 'completed' ? v.winning_number : null,
+        reward: v.reward
+      }))
+    });
+  } catch (error) {
+    console.error('Get my votes error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get votes' });
+  }
+});
+
+// Cash out a ticket
+router.post('/tickets/:id/cashout', authenticateToken, async (req, res) => {
+  try {
+    const ticketService = req.app.get('ticketService');
+    if (!ticketService) {
+      return res.status(500).json({ success: false, message: 'Ticket service not available' });
+    }
+
+    const result = await ticketService.cashOut(req.user.id, req.params.id);
+
+    res.json({
+      success: true,
+      message: `Cashed out with ${result.multiplier}x multiplier`,
+      data: result
+    });
+  } catch (error) {
+    console.error('Cash out error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Get ticket details
+router.get('/tickets/:id', authenticateToken, async (req, res) => {
+  try {
+    const ticketService = req.app.get('ticketService');
+    if (!ticketService) {
+      return res.status(500).json({ success: false, message: 'Ticket service not available' });
+    }
+
+    const ticket = await ticketService.getTicketDetails(req.params.id, req.user.id);
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    res.json({ success: true, data: ticket });
+  } catch (error) {
+    console.error('Get ticket error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get ticket' });
   }
 });
 

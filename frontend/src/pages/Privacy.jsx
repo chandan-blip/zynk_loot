@@ -95,7 +95,7 @@ function Privacy() {
       </motion.div>
 
       {/* Sections */}
-      <div className="space-y-4 sm:space-y-6">
+      <div className="space-y-4 sm:space-y-3">
         {sections.map((section, index) => (
           <motion.div
             key={section.title}
