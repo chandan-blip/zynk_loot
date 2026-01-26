@@ -37,6 +37,7 @@ export const getMe = () => api.get('/auth/me');
 
 // Lottery
 export const getCurrentDraw = () => api.get('/lottery/draw');
+export const getUpcomingSession = () => api.get('/lottery/upcoming-session');
 export const getNumbers = ({ limit = 20, offset = 0, search = '' } = {}) =>
   api.get(`/lottery/numbers?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}`);
 export const getNumberDetails = (number) => api.get(`/lottery/numbers/${number}`);
@@ -161,5 +162,24 @@ export const updatePaymentAccount = (id, data) => api.put(`/admin/payment-accoun
 export const deletePaymentAccount = (id) => api.delete(`/admin/payment-accounts/${id}`);
 export const togglePaymentAccount = (id) => api.post(`/admin/payment-accounts/${id}/toggle`);
 export const resetDailyUsage = () => api.post('/admin/payment-accounts/reset-daily');
+
+// Support Chat - User
+export const getSupportConversation = () => api.get('/support/conversation');
+export const sendSupportMessage = (message) => api.post('/support/message', { message });
+export const markSupportRead = () => api.post('/support/read');
+export const getSupportUnread = () => api.get('/support/unread');
+
+// Support Chat - Admin
+export const getAdminConversations = (status = '', limit = 50, offset = 0) =>
+  api.get(`/support/admin/conversations?limit=${limit}&offset=${offset}${status ? `&status=${status}` : ''}`);
+export const getAdminConversationMessages = (id, limit = 50, offset = 0) =>
+  api.get(`/support/admin/conversations/${id}/messages?limit=${limit}&offset=${offset}`);
+export const sendAdminSupportMessage = (conversationId, message) =>
+  api.post(`/support/admin/conversations/${conversationId}/message`, { message });
+export const markAdminSupportRead = (conversationId) =>
+  api.post(`/support/admin/conversations/${conversationId}/read`);
+export const updateConversationStatus = (conversationId, status) =>
+  api.put(`/support/admin/conversations/${conversationId}/status`, { status });
+export const getAdminSupportUnread = () => api.get('/support/admin/unread');
 
 export default api;

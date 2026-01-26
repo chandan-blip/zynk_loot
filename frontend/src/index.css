@@ -124,18 +124,13 @@
 
   /* Premium Button */
   .btn-premium {
-    @apply relative px-6 py-3 rounded-lg font-semibold text-dark-900 overflow-hidden;
-    background: linear-gradient(135deg, #22c55e 0%, #2bf171 100%);
-    box-shadow:
-      0 4px 15px rgba(0, 212, 170, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    @apply relative px-6 py-3 rounded-lg font-semibold text-dark-900 overflow-hidden bg-accent;
     transition: all 0.3s ease;
   }
 
   .btn-premium::before {
     content: '';
     @apply absolute inset-0 opacity-0 transition-opacity duration-300;
-    background: linear-gradient(135deg, #22c55e 0%, #2bf171 100%);
   }
 
   .btn-premium:hover::before {
@@ -144,9 +139,6 @@
 
   .btn-premium:hover {
     transform: translateY(-2px);
-    box-shadow:
-      0 8px 25px rgba(0, 212, 170, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
 
   .btn-premium:active {

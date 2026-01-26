@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiSearch,
-  FiTrendingUp,
   FiClock,
   FiZap,
   FiAward,
@@ -10,10 +9,16 @@ import {
   FiDollarSign,
   FiChevronRight,
   FiLoader,
+  FiArrowUpRight,
+  FiArrowDownRight,
+  FiSend,
+  FiShoppingCart,
+  FiHeart,
 } from "react-icons/fi";
 import { GiTwoCoins, GiTrophy, GiPodium } from "react-icons/gi";
 import LootCard from "../components/LootCard";
-import { getNumbers, getCurrentDraw, getPrizePool, getRecentWinners, getMyNumbers, getMyVotes, cashOutTicket, buyNumber, voteForNumber, unvoteForNumber } from "../services/api";
+import OnboardingGuide from "../components/OnboardingGuide";
+import { getNumbers, getCurrentDraw, getUpcomingSession, getPrizePool, getRecentWinners, getMyNumbers, getMyVotes, cashOutTicket, buyNumber, voteForNumber, unvoteForNumber } from "../services/api";
 import toast from "react-hot-toast";
 import socketService from "../services/socket";
 import useStore from "../store/useStore";
@@ -92,9 +97,14 @@ function Home() {
     timeUntilComplete: 0,
     isComplete: false,
   });
+  const [upcomingSession, setUpcomingSession] = useState(null);
   const [myTickets, setMyTickets] = useState({});
   const [myVotedNumbers, setMyVotedNumbers] = useState(new Set());
   const [cashingOut, setCashingOut] = useState(null);
+  const [recentActivities, setRecentActivities] = useState([]);
+
+  // Helper to check if there's an active draw (not none/completed)
+  const hasActiveDraw = draw && draw.id && draw.status !== 'none' && draw.status !== 'completed';
 
   // Refs for infinite scroll
   const loadMoreRef = useRef(null);
@@ -120,6 +130,69 @@ function Home() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // Demo activity data generator
+  useEffect(() => {
+    const activityTypes = [
+      { type: 'vote', icon: FiHeart, color: 'text-pink-400', bgColor: 'bg-pink-500/20' },
+      { type: 'buy', icon: FiShoppingCart, color: 'text-accent', bgColor: 'bg-accent/20' },
+      { type: 'sell', icon: FiArrowUpRight, color: 'text-purple-light', bgColor: 'bg-purple/20' },
+      { type: 'win', icon: FiAward, color: 'text-gold-light', bgColor: 'bg-gold/20' },
+      { type: 'zynk_buy', icon: FiDollarSign, color: 'text-emerald-light', bgColor: 'bg-emerald/20' },
+      { type: 'transfer', icon: FiSend, color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
+      { type: 'withdrawal', icon: FiArrowDownRight, color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
+    ];
+
+    const usernames = ['CryptoKing', 'LuckyAce', 'NumberPro', 'ZynkMaster', 'LootHunter', 'BigWinner', 'FastTrader', 'GoldRush', 'DiamondHands', 'MoonShot'];
+
+    const generateActivity = () => {
+      const actType = activityTypes[Math.floor(Math.random() * activityTypes.length)];
+      const username = usernames[Math.floor(Math.random() * usernames.length)];
+      const number = String(Math.floor(Math.random() * 10000000)).padStart(7, '0');
+      const amount = Math.floor(Math.random() * 5000) + 10;
+
+      let description = '';
+      switch (actType.type) {
+        case 'vote': description = `voted for ${number}`; break;
+        case 'buy': description = `bought ${number} for ${amount}Z`; break;
+        case 'sell': description = `sold ${number} for ${amount}Z`; break;
+        case 'win': description = `won ${amount}Z with ${number}`; break;
+        case 'zynk_buy': description = `purchased ${amount}Z`; break;
+        case 'transfer': description = `sent ${amount}Z`; break;
+        case 'withdrawal': description = `withdrew ${amount}Z`; break;
+        default: description = `${actType.type}`;
+      }
+
+      return {
+        id: Date.now() + Math.random(),
+        ...actType,
+        username,
+        description,
+        amount,
+        time: 'Just now',
+        timestamp: Date.now(),
+      };
+    };
+
+    // Initialize with some activities
+    const initialActivities = Array.from({ length: 8 }, generateActivity);
+    setRecentActivities(initialActivities);
+
+    // Add new activity every 3-6 seconds
+    const interval = setInterval(() => {
+      setRecentActivities(prev => {
+        const newActivity = generateActivity();
+        const updated = [newActivity, ...prev].slice(0, 15); // Keep max 15
+        // Update times
+        return updated.map((act, idx) => ({
+          ...act,
+          time: idx === 0 ? 'Just now' : `${Math.floor((Date.now() - act.timestamp) / 1000)}s ago`
+        }));
+      });
+    }, Math.random() * 3000 + 3000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Sync reveal state with draw data from server (SERVER IS SOURCE OF TRUTH)
   const syncRevealStateWithDraw = useCallback((drawData) => {
@@ -212,6 +285,20 @@ function Home() {
 
         // Sync reveal state with server data
         syncRevealStateWithDraw(drawData);
+
+        // If no active draw, fetch upcoming session info
+        if (!drawData || !drawData.id || drawData.status === 'none' || drawData.status === 'completed') {
+          try {
+            const upcomingRes = await getUpcomingSession();
+            if (upcomingRes.data.success && upcomingRes.data.data.upcomingSession) {
+              setUpcomingSession(upcomingRes.data.data.upcomingSession);
+            }
+          } catch (e) {
+            console.log("Could not fetch upcoming session");
+          }
+        } else {
+          setUpcomingSession(null);
+        }
 
         // Set prize pool data
         const poolData = prizePoolRes.data.data;
@@ -319,17 +406,29 @@ function Home() {
     try {
       const response = await buyNumber(number);
       if (response.data.success) {
-        toast.success(`Successfully purchased ${number}!`);
+        const ticketData = response.data.data;
+        // Show message based on whether it's for current draw or upcoming session
+        const isForUpcoming = ticketData.status === 'pending' || ticketData.isForUpcomingSession;
+        const sessionName = ticketData.sessionName || upcomingSession?.sessionName || 'upcoming';
+
+        if (isForUpcoming) {
+          toast.success(`Purchased ${number} for ${sessionName} session!`);
+        } else {
+          toast.success(`Successfully purchased ${number}!`);
+        }
+
         // Update local state - add to my tickets
         setMyTickets(prev => ({
           ...prev,
           [number]: {
-            id: response.data.data.numberId,
+            id: ticketData.numberId || ticketData.id,
             number,
-            status: 'active',
+            status: ticketData.status || 'active',
             matchedDigits: 0,
             canCashOut: false,
-            buyAmount: price
+            buyAmount: price,
+            isForUpcomingSession: isForUpcoming,
+            sessionName: sessionName
           }
         }));
         // Update numbers list - mark as owned
@@ -577,8 +676,11 @@ function Home() {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Sticky Number Display Bar */}
+    <>
+      {/* Onboarding Guide Modal for First-Time Users */}
+      <OnboardingGuide />
+
+      {/* Sticky Number Display Bar - Outside main container to avoid space-y margin */}
       <AnimatePresence>
         {showStickyBar && (
           <motion.div
@@ -596,16 +698,16 @@ function Home() {
                     <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
                       <FiZap className="w-5 h-5 text-accent" />
                     </div>
-                    {!(draw?.isComplete || draw?.status === 'completed') && (
+                    {hasActiveDraw && !(draw?.isComplete || draw?.status === 'completed') && (
                       <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" />
                     )}
                   </div>
                   <div className="hidden sm:block">
                     <p className="text-white font-semibold text-sm">
-                      {draw ? "Today's Draw" : "No Active Draw"}
+                      {hasActiveDraw ? "Today's Draw" : (upcomingSession ? `Next: ${upcomingSession.sessionName}` : "No Active Draw")}
                     </p>
                     <p className="text-gray-500 text-xs">
-                      {draw ? `${parseInt(draw.revealedDigits) || 0} of ${TOTAL_DIGITS} digits` : "Waiting..."}
+                      {hasActiveDraw ? `${parseInt(draw.revealedDigits) || 0} of ${TOTAL_DIGITS} digits` : (upcomingSession ? "Buy for upcoming session" : "Waiting...")}
                     </p>
                   </div>
                 </div>
@@ -639,11 +741,13 @@ function Home() {
               {/* Countdown or Status */}
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs text-gray-500">
-                  {!draw
-                    ? "Waiting for draw..."
-                    : (draw.isComplete || draw.status === 'completed')
-                      ? "Draw Complete"
-                      : `${getOrdinal((parseInt(draw.revealedDigits) || 0) + 1)} digit in`
+                  {!hasActiveDraw && upcomingSession
+                    ? `${upcomingSession.sessionName} starts in`
+                    : !hasActiveDraw
+                      ? "Waiting for draw..."
+                      : (draw.isComplete || draw.status === 'completed')
+                        ? "Draw Complete"
+                        : `${getOrdinal((parseInt(draw.revealedDigits) || 0) + 1)} digit in`
                   }
                 </span>
                 {(draw?.isComplete || draw?.status === 'completed') ? (
@@ -651,6 +755,8 @@ function Home() {
                     <FiAward className="w-3.5 h-3.5" />
                     Result Announced!
                   </span>
+                ) : !hasActiveDraw && upcomingSession ? (
+                  <StickyUpcomingCountdown session={upcomingSession} />
                 ) : (
                   <div className="flex items-center gap-1">
                     {(() => {
@@ -711,6 +817,7 @@ function Home() {
         )}
       </AnimatePresence>
 
+      <div className="space-y-3">
       {/* Hero Section - Today's Draw */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -732,16 +839,18 @@ function Home() {
                   <div className="w-12 h-12 rounded-lg bg-accent/20 flex items-center justify-center">
                     <FiZap className="w-6 h-6 text-accent" />
                   </div>
-                  {!(draw?.isComplete || draw?.status === 'completed') && (
+                  {hasActiveDraw && !(draw?.isComplete || draw?.status === 'completed') && (
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
                   )}
                 </div>
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                    {draw ? (revealState.sessionName || 'Current') + ' Session' : 'No Active Draw'}
+                    {hasActiveDraw ? (revealState.sessionName || 'Current') + ' Session' : (
+                      upcomingSession ? `Next: ${upcomingSession.sessionName} Session` : 'No Active Draw'
+                    )}
                   </h1>
                   <p className="text-gray-400 text-sm">
-                    {draw ? (
+                    {hasActiveDraw ? (
                       <>
                         {draw.periodId && (
                           <span className="text-accent mr-2">#{draw.periodId}</span>
@@ -751,6 +860,8 @@ function Home() {
                         )} <br />
                         <span>{parseInt(draw.revealedDigits) || 0} of {TOTAL_DIGITS} digits revealed</span>
                       </>
+                    ) : upcomingSession ? (
+                      <span className="text-accent">Buy now for upcoming session</span>
                     ) : (
                       <span className="text-gray-500">Waiting for next draw to start...</span>
                     )}
@@ -766,7 +877,9 @@ function Home() {
                     <FiAward className="w-3 h-3 mr-1" />
                     Result Announced!
                   </span>
-                ) : !draw ? (
+                ) : !hasActiveDraw && upcomingSession ? (
+                  <UpcomingSessionCountdown session={upcomingSession} />
+                ) : !hasActiveDraw ? (
                   <span className="text-gray-500 text-sm">Waiting for next draw...</span>
                 ) : revealState.status === "waiting" ? (
                   <div className="flex flex-col gap-1">
@@ -842,6 +955,75 @@ function Home() {
                 })()}
               </div>
             </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Recent Activity Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="rounded-xl bg-dark-700/50 border border-dark-600 p-4 overflow-hidden"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+            <h3 className="text-white font-semibold text-sm">Live Activity</h3>
+          </div>
+          <span className="text-gray-500 text-xs">{recentActivities.length} recent</span>
+        </div>
+
+        <div className="relative">
+          {/* Gradient fade on edges */}
+          {/* <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-dark-700/50 to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-dark-700/50 to-transparent z-10 pointer-events-none" /> */}
+
+          {/* Scrolling activity feed */}
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
+            <AnimatePresence initial={false} mode="popLayout">
+              {recentActivities.map((activity, index) => {
+                const IconComponent = activity.icon;
+                return (
+                  <motion.div
+                    key={activity.id}
+                    layout
+                    initial={{
+                      opacity: 0,
+                    }}
+                    animate={{
+                      opacity: 1,
+                    }}
+                    exit={{
+                      opacity: 0,
+                    }}
+                    transition={{
+                      layout: { type: 'spring', stiffness: 300, damping: 30 },
+                      opacity: { duration: 0.4, delay: index === 0 ? 0.1 : 0 },
+                    }}
+                    className="flex-shrink-0 w-full sm:w-max justify-between flex items-center gap-2 px-3 py-3 rounded-lg bg-dark-800/80 border border-dark-600/50 hover:border-dark-500 overflow-hidden"
+                    style={{ willChange: 'opacity, transform' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-full ${activity.bgColor} flex items-center justify-center flex-shrink-0`}>
+                      <IconComponent className={`w-3.5 h-3.5 ${activity.color}`} />
+                    </div>
+                    <div className="flex flex-col flex-shrink-0">
+                      <span className="text-white text-xs font-medium whitespace-nowrap">
+                        {activity.username}
+                      </span>
+                      <span className="text-accent-500 text-[10px] whitespace-nowrap">
+                        {activity.description}
+                      </span>
+                    </div>
+                    </div>
+                    <span className="text-gray-600 text-[10px] ml-1 whitespace-nowrap flex-shrink-0">
+                      {activity.time}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
           </div>
         </div>
       </motion.div>
@@ -1161,7 +1343,8 @@ function Home() {
           <p>You've reached the end! Try searching for a specific number.</p>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -1221,6 +1404,114 @@ function TimeUnit({ value, label }) {
         {String(value).padStart(2, "0")}
       </span>
       <span className="text-gray-500 text-xs ml-0.5">{label}</span>
+    </div>
+  );
+}
+
+// Sticky bar upcoming countdown (compact version)
+function StickyUpcomingCountdown({ session }) {
+  const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
+
+  useEffect(() => {
+    if (session.nextRunAt) {
+      const nextRun = new Date(session.nextRunAt);
+      const now = new Date();
+      const diff = Math.max(0, Math.floor((nextRun - now) / 1000));
+      setTimeLeft(diff);
+    }
+  }, [session.nextRunAt]);
+
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+    const interval = setInterval(() => {
+      setTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timeLeft]);
+
+  const hrs = Math.floor(timeLeft / 3600);
+  const mins = Math.floor((timeLeft % 3600) / 60);
+  const secs = timeLeft % 60;
+
+  return (
+    <div className="flex items-center gap-1">
+      {hrs > 0 && (
+        <>
+          <div className="flex flex-col items-center">
+            <span className="bg-purple/20 text-purple-light px-2 py-1 rounded font-mono text-sm font-bold min-w-[28px] text-center">
+              {String(hrs).padStart(2, '0')}
+            </span>
+            <span className="text-[10px] text-gray-600 mt-0.5">HR</span>
+          </div>
+          <span className="text-gray-500 font-bold pb-3">:</span>
+        </>
+      )}
+      <div className="flex flex-col items-center">
+        <span className="bg-purple/20 text-purple-light px-2 py-1 rounded font-mono text-sm font-bold min-w-[28px] text-center">
+          {String(mins).padStart(2, '0')}
+        </span>
+        <span className="text-[10px] text-gray-600 mt-0.5">MIN</span>
+      </div>
+      <span className="text-gray-500 font-bold pb-3">:</span>
+      <div className="flex flex-col items-center">
+        <span className="bg-accent/20 text-accent px-2 py-1 rounded font-mono text-sm font-bold min-w-[28px] text-center">
+          {String(secs).padStart(2, '0')}
+        </span>
+        <span className="text-[10px] text-gray-600 mt-0.5">SEC</span>
+      </div>
+    </div>
+  );
+}
+
+// Upcoming Session Countdown Component
+function UpcomingSessionCountdown({ session }) {
+  const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
+
+  useEffect(() => {
+    // Calculate time left from nextRunAt
+    if (session.nextRunAt) {
+      const nextRun = new Date(session.nextRunAt);
+      const now = new Date();
+      const diff = Math.max(0, Math.floor((nextRun - now) / 1000));
+      setTimeLeft(diff);
+    }
+  }, [session.nextRunAt]);
+
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+
+    const interval = setInterval(() => {
+      setTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeLeft]);
+
+  const hours = Math.floor(timeLeft / 3600);
+  const minutes = Math.floor((timeLeft % 3600) / 60);
+  const seconds = timeLeft % 60;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-accent text-sm font-medium">
+          {session.sessionName} starts in
+        </span>
+        <div className="flex items-center gap-1">
+          {hours > 0 && (
+            <>
+              <TimeUnit value={hours} label="h" />
+              <span className="text-gray-600">:</span>
+            </>
+          )}
+          <TimeUnit value={minutes} label="m" />
+          <span className="text-gray-600">:</span>
+          <TimeUnit value={seconds} label="s" />
+        </div>
+      </div>
+      <span className="text-xs text-gray-500">
+        Buy now to participate in the upcoming session
+      </span>
     </div>
   );
 }

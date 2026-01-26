@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
+import { getAdminSupportUnread } from '../services/api';
+import socketService from '../services/socket';
 
 const navItems = [
   { path: '/admin', label: 'Dashboard', icon: FiHome },
@@ -16,14 +18,51 @@ const navItems = [
   { path: '/admin/currency', label: 'Currency', icon: FiDollarSign },
   { path: '/admin/deposits', label: 'Deposits', icon: FiDownload },
   { path: '/admin/withdrawals', label: 'Withdrawals', icon: FiUpload },
+  { path: '/admin/support', label: 'Support', icon: FiMessageCircle, badge: true },
   { path: '/admin/settings', label: 'Settings', icon: FiSettings },
 ];
 
 function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [supportUnread, setSupportUnread] = useState(0);
   const { user, logout } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Load initial unread count
+    const loadUnread = async () => {
+      try {
+        const response = await getAdminSupportUnread();
+        if (response.data.success) {
+          setSupportUnread(response.data.data.count || 0);
+        }
+      } catch (error) {
+        console.error('Failed to load support unread count:', error);
+      }
+    };
+
+    loadUnread();
+
+    // Subscribe to new messages to update badge
+    const unsubMessage = socketService.onSupportMessage(() => {
+      // Only increment if not on support page
+      if (!location.pathname.includes('/admin/support')) {
+        setSupportUnread(prev => prev + 1);
+      }
+    });
+
+    return () => {
+      unsubMessage?.();
+    };
+  }, [location.pathname]);
+
+  // Reset unread when visiting support page
+  useEffect(() => {
+    if (location.pathname === '/admin/support') {
+      setSupportUnread(0);
+    }
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -67,18 +106,26 @@ function AdminLayout() {
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
+            const badgeCount = item.badge && item.path === '/admin/support' ? supportUnread : 0;
             return (
               <Link key={item.path} to={item.path} onClick={closeSidebar}>
                 <motion.div
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                  className={`flex items-center justify-between px-4 py-3 rounded-lg transition-all ${
                     isActive
                       ? 'bg-accent/10 text-accent border-l-2 border-accent'
                       : 'text-gray-400 hover:text-white hover:bg-dark-600'
                   }`}
                   whileHover={{ x: 2 }}
                 >
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <item.icon className="w-5 h-5" />
+                    <span className="font-medium">{item.label}</span>
+                  </div>
+                  {badgeCount > 0 && (
+                    <span className="px-2 py-0.5 bg-accent text-dark-900 text-xs font-bold rounded-full min-w-[20px] text-center">
+                      {badgeCount > 99 ? '99+' : badgeCount}
+                    </span>
+                  )}
                 </motion.div>
               </Link>
             );

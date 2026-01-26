@@ -639,14 +639,14 @@ function Wallet() {
               <motion.div
                 key={pkg.id}
                 whileHover={{ scale: 1.02 }}
-                className={`relative p-5 rounded-xl border transition-all ${
+                className={`relative p-3 rounded-xl border transition-all ${
                   pkg.bonus_percent > 0
                     ? 'bg-gradient-to-br from-accent/10 to-dark-700 border-accent/30'
                     : 'bg-dark-700 border-dark-600'
                 }`}
               >
                 {pkg.bonus_percent > 0 && (
-                  <div className="absolute -top-2 -right-2 px-2 py-1 bg-accent text-dark-900 text-xs font-bold rounded-full">
+                  <div className="absolute -top-2 -right-2 px-2 py-1 border border-accent bg-accent/40 text-white text-[9px] font-bold rounded-full">
                     +{pkg.bonus_percent}% BONUS
                   </div>
                 )}

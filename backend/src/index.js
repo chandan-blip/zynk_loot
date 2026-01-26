@@ -17,9 +17,11 @@ const adminRoutes = require('./routes/admin');
 const lotteryRoutes = require('./routes/lottery');
 const walletRoutes = require('./routes/wallet');
 const usersRoutes = require('./routes/users');
+const supportRoutes = require('./routes/support');
 const LotteryService = require('./services/lotteryService');
 const CronService = require('./services/cronService');
 const TicketService = require('./services/ticketService');
+const SupportService = require('./services/supportService');
 
 const app = express();
 const server = http.createServer(app);
@@ -40,13 +42,16 @@ const io = new Server(server, {
 const ticketService = new TicketService(io);
 const lotteryService = new LotteryService(io, ticketService);
 const cronService = new CronService(io, ticketService);
+const supportService = new SupportService(io);
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
+lotteryService.setCronService(cronService);
 
 app.set('ticketService', ticketService);
 app.set('lotteryService', lotteryService);
 app.set('cronService', cronService);
+app.set('supportService', supportService);
 app.set('io', io);
 
 // Socket authentication middleware
@@ -82,6 +87,17 @@ io.on('connection', (socket) => {
     socket.leave(`number:${number}`);
   });
 
+  // Support chat - admin joins support room
+  socket.on('support:joinAdmin', () => {
+    socket.join('support:admin');
+    console.log(`Admin ${socket.userId} joined support room`);
+  });
+
+  socket.on('support:leaveAdmin', () => {
+    socket.leave('support:admin');
+    console.log(`Admin ${socket.userId} left support room`);
+  });
+
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
   });
@@ -105,6 +121,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/lottery', lotteryRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/support', supportRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -139,8 +156,8 @@ const startServer = async () => {
     // Seed demo data if not exists
     await seedDemo();
 
-    // Start cron jobs for scheduled draws
-    cronService.start();
+    // Start cron jobs for scheduled draws (loads config from DB first)
+    await cronService.start();
 
     // Check if there's an active draw, if not create one (for dev/testing)
     const currentDraw = await cronService.getCurrentDraw();

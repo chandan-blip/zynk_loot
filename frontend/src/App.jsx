@@ -26,6 +26,7 @@ import AdminPackages from './pages/admin/AdminPackages';
 import AdminCurrency from './pages/admin/AdminCurrency';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminPayments from './pages/admin/AdminPayments';
+import AdminSupport from './pages/admin/AdminSupport';
 import NumberDetail from './pages/NumberDetail';
 import Wallet from './pages/Wallet';
 import Checkout from './pages/Checkout';
@@ -129,6 +130,7 @@ function App() {
           <Route path="payments" element={<AdminPayments />} />
           <Route path="deposits" element={<AdminDeposits />} />
           <Route path="withdrawals" element={<AdminWithdrawals />} />
+          <Route path="support" element={<AdminSupport />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
 

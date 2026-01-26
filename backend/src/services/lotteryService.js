@@ -1,14 +1,20 @@
 const db = require('../config/database');
 
 class LotteryService {
-  constructor(io, ticketService = null) {
+  constructor(io, ticketService = null, cronService = null) {
     this.io = io;
     this.ticketService = ticketService;
+    this.cronService = cronService;
   }
 
   // Set ticket service (for late binding)
   setTicketService(ticketService) {
     this.ticketService = ticketService;
+  }
+
+  // Set cron service (for late binding)
+  setCronService(cronService) {
+    this.cronService = cronService;
   }
 
   // Check if we're in reveal execution window (block operations)
@@ -41,6 +47,15 @@ class LotteryService {
       // Get current active draw with full details
       const draw = await this.getCurrentActiveDraw();
 
+      // If no active draw, get upcoming session info
+      let upcomingSession = null;
+      let isForUpcomingSession = false;
+
+      if (!draw && this.cronService) {
+        upcomingSession = await this.cronService.getNextUpcomingSession();
+        isForUpcomingSession = true;
+      }
+
       // Calculate initial matched digits based on already revealed portion
       let initialMatchedDigits = 0;
       let revealedDigits = 0;
@@ -68,9 +83,11 @@ class LotteryService {
       const multiplier = MULTIPLIER_MAP[initialMatchedDigits] || 0;
       const initialReturn = price * multiplier;
 
-      // Determine ticket status - if already mismatched, it's lost
+      // Determine ticket status
       let ticketStatus = 'active';
-      if (revealedDigits > 0 && initialMatchedDigits < revealedDigits) {
+      if (isForUpcomingSession) {
+        ticketStatus = 'pending'; // Waiting for session to start
+      } else if (revealedDigits > 0 && initialMatchedDigits < revealedDigits) {
         ticketStatus = 'lost';
       }
 
@@ -180,7 +197,8 @@ class LotteryService {
         success: true,
         numberId,
         drawId: draw?.id || null,
-        sessionNumber: draw?.session_number || null,
+        sessionNumber: draw?.session_number || upcomingSession?.sessionNumber || null,
+        sessionName: upcomingSession?.sessionName || null,
         ticketStatus,
         matchedDigits: initialMatchedDigits,
         currentReturn: initialReturn,
@@ -189,7 +207,15 @@ class LotteryService {
         revealedNumber,
         totalDigits: 7,
         digitsRemaining: 7 - revealedDigits,
-        newTotalPool
+        newTotalPool,
+        // Upcoming session info when no active draw
+        isForUpcomingSession,
+        upcomingSession: isForUpcomingSession ? {
+          sessionNumber: upcomingSession?.sessionNumber,
+          sessionName: upcomingSession?.sessionName,
+          startsAt: upcomingSession?.nextRunAt,
+          timeUntilStart: upcomingSession?.timeUntilStart
+        } : null
       };
     } catch (error) {
       await connection.rollback();
@@ -213,11 +239,11 @@ class LotteryService {
       }
 
       // Calculate dynamic price based on revealed digits
-      // Price increases as more digits are revealed: 10Z base * (revealed + 10)
-      // 0 digits = 100Z, 1 digit = 110Z, 2 digits = 120Z, etc.
+      // Price increases as more digits are revealed: 10Z base * (revealed + 1)
+      // 0 digits = 10Z, 1 digit = 20Z, 2 digits = 30Z, etc.
       const revealedDigits = parseInt(draw.revealed_digits) || 0;
       const basePrice = 10;
-      const priceMultiplier = revealedDigits + 10;
+      const priceMultiplier = revealedDigits + 1;
       const dynamicPrice = basePrice * priceMultiplier;
 
       // Get or create number

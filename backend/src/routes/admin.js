@@ -348,6 +348,329 @@ router.post('/draws/set-number', async (req, res) => {
   }
 });
 
+// ============ CRON CONFIGURATION ============
+
+// Get cron configuration settings
+router.get('/cron-config', async (req, res) => {
+  try {
+    const cronService = req.app.get('cronService');
+    const config = cronService.getConfig();
+
+    // Also get raw settings from database
+    const [settings] = await db.pool.query(
+      `SELECT setting_key, setting_value, description FROM settings
+       WHERE setting_key IN (
+         'total_digits', 'timezone', 'cron_enabled', 'auto_reveal_enabled',
+         'exact_match_multiplier', 'near_match_multiplier', 'vote_reward',
+         'session_1_generate_hour', 'session_1_reveal_start_hour', 'session_1_reveal_end_hour',
+         'session_2_generate_hour', 'session_2_reveal_start_hour', 'session_2_reveal_end_hour',
+         'session_3_generate_hour', 'session_3_reveal_start_hour', 'session_3_reveal_end_hour'
+       )
+       ORDER BY setting_key`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        activeConfig: config,
+        settings: settings
+      }
+    });
+  } catch (error) {
+    console.error('Get cron config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get cron configuration' });
+  }
+});
+
+// Update cron configuration setting
+router.put('/cron-config/:key', async (req, res) => {
+  try {
+    const { value } = req.body;
+    const { key } = req.params;
+
+    // Validate key is a cron config setting
+    const validKeys = [
+      'total_digits', 'timezone', 'cron_enabled', 'auto_reveal_enabled',
+      'exact_match_multiplier', 'near_match_multiplier', 'vote_reward',
+      'session_1_generate_hour', 'session_1_reveal_start_hour', 'session_1_reveal_end_hour',
+      'session_2_generate_hour', 'session_2_reveal_start_hour', 'session_2_reveal_end_hour',
+      'session_3_generate_hour', 'session_3_reveal_start_hour', 'session_3_reveal_end_hour'
+    ];
+
+    if (!validKeys.includes(key)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid cron config key'
+      });
+    }
+
+    if (value === undefined) {
+      return res.status(400).json({ success: false, message: 'Value is required' });
+    }
+
+    // Validate value based on key type
+    if (key.includes('hour') || key === 'total_digits' || key === 'vote_reward') {
+      const numValue = parseInt(value);
+      if (isNaN(numValue) || numValue < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Value must be a non-negative number'
+        });
+      }
+      if (key.includes('hour') && numValue > 23) {
+        return res.status(400).json({
+          success: false,
+          message: 'Hour value must be between 0 and 23'
+        });
+      }
+    }
+
+    if (key.includes('multiplier')) {
+      const numValue = parseFloat(value);
+      if (isNaN(numValue) || numValue < 0 || numValue > 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Multiplier must be between 0 and 1'
+        });
+      }
+    }
+
+    // Update or insert the setting
+    await db.pool.query(
+      `INSERT INTO settings (setting_key, setting_value, description)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE setting_value = ?`,
+      [key, value, `Cron config: ${key}`, value]
+    );
+
+    res.json({
+      success: true,
+      message: `Setting ${key} updated. Use /cron-config/refresh to apply changes.`
+    });
+  } catch (error) {
+    console.error('Update cron config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update cron configuration' });
+  }
+});
+
+// Bulk update cron configuration
+router.put('/cron-config', async (req, res) => {
+  try {
+    const { settings } = req.body;
+
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Settings object is required'
+      });
+    }
+
+    const validKeys = [
+      'total_digits', 'timezone', 'cron_enabled', 'auto_reveal_enabled',
+      'exact_match_multiplier', 'near_match_multiplier', 'vote_reward',
+      'session_1_generate_hour', 'session_1_reveal_start_hour', 'session_1_reveal_end_hour',
+      'session_2_generate_hour', 'session_2_reveal_start_hour', 'session_2_reveal_end_hour',
+      'session_3_generate_hour', 'session_3_reveal_start_hour', 'session_3_reveal_end_hour'
+    ];
+
+    const updates = [];
+    for (const [key, value] of Object.entries(settings)) {
+      if (validKeys.includes(key)) {
+        await db.pool.query(
+          `INSERT INTO settings (setting_key, setting_value, description)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = ?`,
+          [key, value, `Cron config: ${key}`, value]
+        );
+        updates.push(key);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Updated ${updates.length} settings. Use /cron-config/refresh to apply changes.`,
+      data: { updatedKeys: updates }
+    });
+  } catch (error) {
+    console.error('Bulk update cron config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update cron configuration' });
+  }
+});
+
+// Refresh/reload cron configuration from database
+router.post('/cron-config/refresh', async (req, res) => {
+  try {
+    const cronService = req.app.get('cronService');
+    const newConfig = await cronService.refreshConfig();
+
+    res.json({
+      success: true,
+      message: 'Cron configuration refreshed and jobs rescheduled',
+      data: newConfig
+    });
+  } catch (error) {
+    console.error('Refresh cron config error:', error);
+    res.status(500).json({ success: false, message: 'Failed to refresh cron configuration' });
+  }
+});
+
+// Get cron job status
+router.get('/cron-status', async (req, res) => {
+  try {
+    const cronService = req.app.get('cronService');
+    const config = cronService.getConfig();
+
+    res.json({
+      success: true,
+      data: {
+        enabled: config.CRON_ENABLED,
+        autoRevealEnabled: config.AUTO_REVEAL_ENABLED,
+        timezone: config.TIMEZONE,
+        currentSession: cronService.getCurrentSession(),
+        currentHour: cronService.getCurrentHourIST(),
+        scheduledJobsCount: cronService.scheduledJobs ? cronService.scheduledJobs.length : 0,
+        sessions: {
+          1: config.SESSION_CONFIG[1],
+          2: config.SESSION_CONFIG[2],
+          3: config.SESSION_CONFIG[3]
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get cron status error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get cron status' });
+  }
+});
+
+// ============ JOB SCHEDULE MANAGEMENT ============
+
+// Get all scheduled jobs
+router.get('/jobs', async (req, res) => {
+  try {
+    const cronService = req.app.get('cronService');
+    const jobs = await cronService.getScheduledJobs();
+
+    res.json({
+      success: true,
+      data: jobs
+    });
+  } catch (error) {
+    console.error('Get scheduled jobs error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get scheduled jobs' });
+  }
+});
+
+// Get job execution history
+router.get('/jobs/history', async (req, res) => {
+  try {
+    const cronService = req.app.get('cronService');
+    const limit = parseInt(req.query.limit) || 50;
+    const jobId = req.query.jobId || null;
+
+    const history = await cronService.getJobHistory(limit, jobId);
+
+    res.json({
+      success: true,
+      data: history
+    });
+  } catch (error) {
+    console.error('Get job history error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get job history' });
+  }
+});
+
+// Get specific job details
+router.get('/jobs/:id', async (req, res) => {
+  try {
+    const [jobs] = await db.pool.query(
+      'SELECT * FROM job_schedule WHERE id = ?',
+      [req.params.id]
+    );
+
+    if (jobs.length === 0) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Get recent history for this job
+    const [history] = await db.pool.query(
+      `SELECT * FROM job_schedule_history WHERE job_id = ? ORDER BY started_at DESC LIMIT 10`,
+      [req.params.id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        job: jobs[0],
+        recentHistory: history
+      }
+    });
+  } catch (error) {
+    console.error('Get job details error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get job details' });
+  }
+});
+
+// Enable/disable a specific job
+router.put('/jobs/:id/toggle', async (req, res) => {
+  try {
+    const { enabled } = req.body;
+
+    const [result] = await db.pool.query(
+      `UPDATE job_schedule SET is_enabled = ?, status = ?, updated_at = NOW() WHERE id = ?`,
+      [enabled, enabled ? 'scheduled' : 'disabled', req.params.id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    res.json({
+      success: true,
+      message: `Job ${enabled ? 'enabled' : 'disabled'} successfully`
+    });
+  } catch (error) {
+    console.error('Toggle job error:', error);
+    res.status(500).json({ success: false, message: 'Failed to toggle job' });
+  }
+});
+
+// Get job statistics summary
+router.get('/jobs/stats/summary', async (req, res) => {
+  try {
+    const [stats] = await db.pool.query(`
+      SELECT
+        COUNT(*) as totalJobs,
+        SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduledJobs,
+        SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as runningJobs,
+        SUM(CASE WHEN status = 'disabled' THEN 1 ELSE 0 END) as disabledJobs,
+        SUM(run_count) as totalRuns,
+        SUM(success_count) as totalSuccesses,
+        SUM(fail_count) as totalFailures
+      FROM job_schedule
+    `);
+
+    const [recentFailures] = await db.pool.query(`
+      SELECT h.*, j.job_name
+      FROM job_schedule_history h
+      JOIN job_schedule j ON h.job_id = j.id
+      WHERE h.status = 'failed'
+      ORDER BY h.started_at DESC
+      LIMIT 5
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        summary: stats[0],
+        recentFailures
+      }
+    });
+  } catch (error) {
+    console.error('Get job stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get job statistics' });
+  }
+});
+
 // Get draw winners
 router.get('/draws/:periodId/winners', async (req, res) => {
   try {

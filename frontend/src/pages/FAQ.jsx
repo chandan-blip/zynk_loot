@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiHelpCircle, FiChevronDown } from 'react-icons/fi';
+import { FiHelpCircle, FiChevronDown, FiMessageCircle } from 'react-icons/fi';
+import useStore from '../store/useStore';
+import SupportChat from '../components/SupportChat';
 
 const faqs = [
   {
@@ -47,6 +49,8 @@ const faqs = [
 
 function FAQ() {
   const [openIndex, setOpenIndex] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const { isAuthenticated } = useStore();
 
   const toggleFAQ = (index) => {
     setOpenIndex(openIndex === index ? null : index);
@@ -116,10 +120,26 @@ function FAQ() {
         <p className="text-gray-400 text-sm sm:text-base mb-4">
           Our support team is here to help you
         </p>
-        <button className="px-6 py-3 bg-accent text-dark-900 font-semibold rounded-lg hover:bg-accent/90 transition-colors">
-          Contact Support
-        </button>
+        {isAuthenticated ? (
+          <button
+            onClick={() => setChatOpen(true)}
+            className="px-6 py-3 bg-accent text-dark-900 font-semibold rounded-lg hover:bg-accent/90 transition-colors inline-flex items-center gap-2"
+          >
+            <FiMessageCircle className="w-5 h-5" />
+            Contact Support
+          </button>
+        ) : (
+          <a
+            href="/login"
+            className="px-6 py-3 bg-accent text-dark-900 font-semibold rounded-lg hover:bg-accent/90 transition-colors inline-block"
+          >
+            Login to Contact Support
+          </a>
+        )}
       </div>
+
+      {/* Support Chat Modal */}
+      <SupportChat isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

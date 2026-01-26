@@ -17,6 +17,59 @@ router.get('/draw', async (req, res) => {
   }
 });
 
+// Get next upcoming session (when no active draw)
+router.get('/upcoming-session', async (req, res) => {
+  try {
+    const cronService = req.app.get('cronService');
+
+    // First check if there's an active draw
+    const currentDraw = await cronService.getCurrentDraw();
+
+    if (currentDraw && currentDraw.id && currentDraw.status !== 'completed' && currentDraw.status !== 'none') {
+      // There's an active draw, return it
+      return res.json({
+        success: true,
+        data: {
+          hasActiveDraw: true,
+          draw: currentDraw
+        }
+      });
+    }
+
+    // No active draw, get upcoming session from job_schedule
+    const upcomingSession = await cronService.getNextUpcomingSession();
+
+    if (!upcomingSession) {
+      return res.json({
+        success: true,
+        data: {
+          hasActiveDraw: false,
+          upcomingSession: null,
+          message: 'No upcoming sessions scheduled'
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        hasActiveDraw: false,
+        upcomingSession: {
+          sessionNumber: upcomingSession.sessionNumber,
+          sessionName: upcomingSession.sessionName,
+          startsAt: upcomingSession.nextRunAt,
+          timeUntilStart: upcomingSession.timeUntilStart,
+          status: upcomingSession.status
+        },
+        message: `Next draw: Session ${upcomingSession.sessionNumber} (${upcomingSession.sessionName})`
+      }
+    });
+  } catch (error) {
+    console.error('Get upcoming session error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get upcoming session' });
+  }
+});
+
 // Get numbers with pagination, search, and virtual number generation
 router.get('/numbers', async (req, res) => {
   try {
@@ -45,8 +98,8 @@ router.get('/numbers', async (req, res) => {
 
     // Calculate current price based on revealed digits
     // Price multiplier: (revealedDigits + 1)x
-    // 0 digits = 1x, 1 digit = 2x, 2 digits = 3x, etc.
-    const priceMultiplier = revealedDigits + 10;
+    // 0 digits = 1x (10Z), 1 digit = 2x (20Z), 2 digits = 3x (30Z), etc.
+    const priceMultiplier = revealedDigits + 1;
     const currentPrice = basePrice * priceMultiplier;
 
     // Helper to check if a number matches revealed digits
@@ -650,8 +703,8 @@ router.get('/prize-pool', async (req, res) => {
 
     // Get participant count (unique voters in current draw)
     const [participantCount] = await db.pool.query(
-      `SELECT COUNT(DISTINCT v.user_id) as count
-       FROM votes v
+      `SELECT COUNT(DISTINCT v.owner_id) as count
+       FROM numbers v
        JOIN daily_draws d ON v.draw_id = d.id
        WHERE d.status IN ('pending', 'revealing', 'active')`
     );

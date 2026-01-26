@@ -1,0 +1,31 @@
+-- Migration: Add cron service configuration to settings table
+
+INSERT INTO settings (setting_key, setting_value, description) VALUES
+    -- General draw settings
+    ('total_digits', '7', 'Total number of digits in winning number'),
+    ('timezone', 'Asia/Kolkata', 'Timezone for scheduling draws (IANA format)'),
+
+    -- Session 1 configuration (Morning: 8 AM - 3 PM)
+    ('session_1_generate_hour', '8', 'Hour to generate Session 1 draw (24h format)'),
+    ('session_1_reveal_start_hour', '9', 'Hour to start revealing digits for Session 1'),
+    ('session_1_reveal_end_hour', '15', 'Hour when all digits are revealed for Session 1'),
+
+    -- Session 2 configuration (Evening: 3 PM - 11 PM)
+    ('session_2_generate_hour', '15', 'Hour to generate Session 2 draw (24h format)'),
+    ('session_2_reveal_start_hour', '17', 'Hour to start revealing digits for Session 2'),
+    ('session_2_reveal_end_hour', '23', 'Hour when all digits are revealed for Session 2'),
+
+    -- Session 3 configuration (Night: 11 PM - 6 AM, crosses midnight)
+    ('session_3_generate_hour', '23', 'Hour to generate Session 3 draw (24h format)'),
+    ('session_3_reveal_start_hour', '0', 'Hour to start revealing digits for Session 3'),
+    ('session_3_reveal_end_hour', '6', 'Hour when all digits are revealed for Session 3'),
+
+    -- Winner prize multipliers
+    ('exact_match_multiplier', '0.4', 'Prize multiplier for exact match (40% of pool)'),
+    ('near_match_multiplier', '0.1', 'Prize multiplier for near match shared pool (10% of pool)'),
+    ('vote_reward', '10', 'Z reward for voters who predicted winning number'),
+
+    -- Cron enable/disable flags
+    ('cron_enabled', 'true', 'Master switch to enable/disable all cron jobs'),
+    ('auto_reveal_enabled', 'true', 'Enable/disable automatic digit reveal')
+ON DUPLICATE KEY UPDATE description = VALUES(description);

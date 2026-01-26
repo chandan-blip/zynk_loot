@@ -157,6 +157,31 @@ class SocketService {
     return () => this.socket.off('vote:reward', callback);
   }
 
+  // Support chat - admin joins/leaves support room
+  joinAdminSupport() {
+    if (!this.socket) return;
+    this.socket.emit('support:joinAdmin');
+  }
+
+  leaveAdminSupport() {
+    if (!this.socket) return;
+    this.socket.emit('support:leaveAdmin');
+  }
+
+  // Subscribe to support messages
+  onSupportMessage(callback) {
+    if (!this.socket) return;
+    this.socket.on('support:newMessage', callback);
+    return () => this.socket.off('support:newMessage', callback);
+  }
+
+  // Subscribe to support status changes
+  onSupportStatusChanged(callback) {
+    if (!this.socket) return;
+    this.socket.on('support:statusChanged', callback);
+    return () => this.socket.off('support:statusChanged', callback);
+  }
+
   getSocket() {
     return this.socket;
   }
