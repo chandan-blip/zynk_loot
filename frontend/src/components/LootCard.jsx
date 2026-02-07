@@ -58,9 +58,6 @@ function RadialChart({ percentage, size = 60, strokeWidth = 5 }) {
   );
 }
 
-// Multiplier mapping (from backend)
-const MULTIPLIER_MAP = { 0: 0, 1: 2, 2: 4, 3: 9, 4: 16, 5: 25, 6: 36, 7: 49 };
-
 function LootCard({
   id,
   number = "0000000",
@@ -259,7 +256,7 @@ function LootCard({
                     <FiTrendingUp className="w-3.5 h-3.5 text-purple-light" />
                     <div>
                       <p className="text-purple-light font-bold text-xs">
-                        {multiplier || MULTIPLIER_MAP[matchedDigits]}x
+                        {multiplier}x
                       </p>
                       <p className="text-gray-500 text-[9px]">multiplier</p>
                     </div>
@@ -270,9 +267,7 @@ function LootCard({
                     <GiTwoCoins className="w-4 h-4 text-gold-light" />
                     <div>
                       <p className="text-gold-light font-bold text-sm">
-                        {currentReturn ||
-                          (buyAmount || price) *
-                            (multiplier || MULTIPLIER_MAP[matchedDigits])}{" "}
+                        {currentReturn || (buyAmount || price) * multiplier}{" "}
                         Z
                       </p>
                       <p className="text-gray-500 text-[9px]">current return</p>
@@ -392,9 +387,7 @@ function LootCard({
                       onCashOut?.(
                         id,
                         number,
-                        currentReturn ||
-                          (buyAmount || price) *
-                            (multiplier || MULTIPLIER_MAP[matchedDigits]),
+                        currentReturn || (buyAmount || price) * multiplier,
                       );
                     }}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-md bg-accent text-dark-900 font-semibold text-sm hover:bg-accent-400 transition-colors"

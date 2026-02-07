@@ -97,10 +97,9 @@ router.get('/numbers', async (req, res) => {
     const revealedPrefix = winningNumber.substring(0, revealedDigits);
 
     // Calculate current price based on revealed digits
-    // Price multiplier: (revealedDigits + 1)x
-    // 0 digits = 1x (10Z), 1 digit = 2x (20Z), 2 digits = 3x (30Z), etc.
-    const priceMultiplier = revealedDigits + 1;
-    const currentPrice = basePrice * priceMultiplier;
+    // Price formula: basePrice + 5 * revealedDigits
+    // 0 digits = 10Z, 1 digit = 15Z, 2 digits = 20Z, etc.
+    const currentPrice = basePrice + 5 * revealedDigits;
 
     // Helper to check if a number matches revealed digits
     const matchesRevealed = (num) => {
@@ -174,8 +173,7 @@ router.get('/numbers', async (req, res) => {
         revealedDigits,
         revealedPrefix,
         basePrice,
-        currentPrice,
-        priceMultiplier
+        currentPrice
       });
     }
 
@@ -284,8 +282,7 @@ router.get('/numbers', async (req, res) => {
       revealedDigits,
       revealedPrefix,
       basePrice,
-      currentPrice,
-      priceMultiplier
+      currentPrice
     });
   } catch (error) {
     console.error('Get numbers error:', error);
@@ -317,8 +314,7 @@ router.get('/numbers/:number', async (req, res) => {
     const revealedDigits = draw?.revealed_digits || 0;
     const winningNumber = draw?.winning_number || '';
     const revealedPrefix = winningNumber.substring(0, revealedDigits);
-    const priceMultiplier = revealedDigits + 1;
-    const currentPrice = basePrice * priceMultiplier;
+    const currentPrice = basePrice + 5 * revealedDigits;
 
     // Check if number matches revealed digits
     const matchesRevealed = revealedDigits === 0 || numberStr.startsWith(revealedPrefix);
@@ -331,7 +327,6 @@ router.get('/numbers/:number', async (req, res) => {
           owner: null,
           price: matchesRevealed ? currentPrice : basePrice,
           basePrice,
-          priceMultiplier: matchesRevealed ? priceMultiplier : 1,
           votes: 0,
           trend: 0,
           voteHistory: [],
@@ -435,16 +430,15 @@ router.post('/numbers/:number/buy', authenticateToken, async (req, res) => {
     }
 
     // Calculate price based on revealed digits
-    // Price multiplier: (revealedDigits + 1)x
-    const priceMultiplier = revealedDigits + 1;
-    const price = basePrice * priceMultiplier;
+    // Price formula: basePrice + 5 * revealedDigits
+    const price = basePrice + 5 * revealedDigits;
 
     const result = await lotteryService.buyNumber(req.user.id, numberStr, price);
 
     res.json({
       success: true,
-      message: `Number purchased for ${price} Z (${priceMultiplier}x multiplier)`,
-      data: { ...result, price, priceMultiplier }
+      message: `Number purchased for ${price} Z`,
+      data: { ...result, price }
     });
   } catch (error) {
     console.error('Buy number error:', error);

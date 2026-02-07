@@ -22,14 +22,15 @@ class TicketService {
     this.LOCK_TIMEOUT_SECONDS = 30;
   }
 
-  // Get multiplier for given matched digits
-  getMultiplier(matchedDigits) {
-    return this.MULTIPLIER_MAP[matchedDigits] || 0;
+  // Get multiplier for given matched digits (adjusted for when ticket was purchased)
+  getMultiplier(matchedDigits, purchasedAtReveal = 0) {
+    const hiddenMatched = matchedDigits - purchasedAtReveal;
+    return this.MULTIPLIER_MAP[hiddenMatched] || 0;
   }
 
   // Calculate current return for a ticket
-  calculateCurrentReturn(buyAmount, matchedDigits) {
-    const multiplier = this.getMultiplier(matchedDigits);
+  calculateCurrentReturn(buyAmount, matchedDigits, purchasedAtReveal = 0) {
+    const multiplier = this.getMultiplier(matchedDigits, purchasedAtReveal);
     return parseFloat(buyAmount) * multiplier;
   }
 
@@ -135,10 +136,11 @@ class TicketService {
             results.matched++;
           }
 
-          // Calculate current return
+          // Calculate current return (adjusted for when ticket was purchased)
           const buyAmount = ticket.buy_amount || ticket.price || 10;
-          const currentReturn = this.calculateCurrentReturn(buyAmount, currentMatched);
-          const multiplier = this.getMultiplier(currentMatched);
+          const purchasedAtReveal = ticket.purchased_at_reveal || 0;
+          const currentReturn = this.calculateCurrentReturn(buyAmount, currentMatched, purchasedAtReveal);
+          const multiplier = this.getMultiplier(currentMatched, purchasedAtReveal);
 
           // Update ticket
           await connection.execute(
@@ -239,8 +241,9 @@ class TicketService {
       try {
         const matchedDigits = ticket.matched_digits;
         const buyAmount = ticket.buy_amount || ticket.price || 10;
-        const multiplier = this.getMultiplier(matchedDigits);
-        const payout = this.calculateCurrentReturn(buyAmount, matchedDigits);
+        const purchasedAtReveal = ticket.purchased_at_reveal || 0;
+        const multiplier = this.getMultiplier(matchedDigits, purchasedAtReveal);
+        const payout = this.calculateCurrentReturn(buyAmount, matchedDigits, purchasedAtReveal);
 
         // Update ticket to cashed_out
         await connection.execute(
@@ -327,7 +330,8 @@ class TicketService {
 
     const ticket = tickets[0];
     const buyAmount = ticket.buy_amount || ticket.price || 10;
-    const multiplier = this.getMultiplier(ticket.matched_digits || 0);
+    const purchasedAtReveal = ticket.purchased_at_reveal || 0;
+    const multiplier = this.getMultiplier(ticket.matched_digits || 0, purchasedAtReveal);
 
     return {
       id: ticket.id,
@@ -364,7 +368,8 @@ class TicketService {
 
     return tickets.map(ticket => {
       const buyAmount = ticket.buy_amount || ticket.price || 10;
-      const multiplier = this.getMultiplier(ticket.matched_digits || 0);
+      const purchasedAtReveal = ticket.purchased_at_reveal || 0;
+      const multiplier = this.getMultiplier(ticket.matched_digits || 0, purchasedAtReveal);
 
       return {
         id: ticket.id,
@@ -390,6 +395,7 @@ class TicketService {
        current_return = 0,
        ticket_status = 'active',
        last_reveal_index = 0,
+       purchased_at_reveal = 0,
        cashed_out_at = NULL,
        cashout_matched_digits = NULL,
        cashout_multiplier = NULL,

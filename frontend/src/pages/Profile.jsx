@@ -48,9 +48,6 @@ function Profile() {
   const [myVotes, setMyVotes] = useState([]);
   const [cashingOut, setCashingOut] = useState(null);
 
-  // Multiplier mapping
-  const MULTIPLIER_MAP = { 0: 0, 1: 2, 2: 4, 3: 9, 4: 16, 5: 25, 6: 36, 7: 49 };
-
   useEffect(() => {
     fetchProfile();
     fetchMyTickets();
@@ -699,7 +696,7 @@ function Profile() {
               <div className="divide-y divide-dark-600">
                 {myTickets.map((ticket, i) => {
                   const matchedDigits = ticket.matchedDigits || 0;
-                  const multiplier = ticket.multiplier || MULTIPLIER_MAP[matchedDigits];
+                  const multiplier = ticket.multiplier || 0;
                   const currentReturn = ticket.currentReturn || ((ticket.buyAmount || ticket.price) * multiplier);
                   const status = ticket.status || 'active';
                   const canCashOut = ticket.canCashOut && matchedDigits > 0 && !['cashed_out', 'sold', 'lost'].includes(status);

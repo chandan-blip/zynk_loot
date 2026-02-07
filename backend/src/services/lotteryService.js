@@ -78,9 +78,11 @@ class LotteryService {
         revealedNumber = revealedPortion + 'X'.repeat(7 - revealedDigits);
       }
 
-      // Calculate initial return based on matched digits
+      // Calculate initial return based on hidden matched digits
+      // At buy time, revealed digits that match are "known" — only hidden matches count
       const MULTIPLIER_MAP = { 0: 0, 1: 2, 2: 4, 3: 9, 4: 16, 5: 25, 6: 36, 7: 49 };
-      const multiplier = MULTIPLIER_MAP[initialMatchedDigits] || 0;
+      const hiddenMatched = initialMatchedDigits - revealedDigits;
+      const multiplier = MULTIPLIER_MAP[hiddenMatched] || 0;
       const initialReturn = price * multiplier;
 
       // Determine ticket status
@@ -102,9 +104,9 @@ class LotteryService {
       if (numbers.length === 0) {
         // Create new number with draw enrollment and current matching state
         const [result] = await connection.execute(
-          `INSERT INTO numbers (number, owner_id, price, buy_amount, draw_id, ticket_status, matched_digits, current_return, last_reveal_index)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [numberStr, userId, price, price, draw?.id || null, ticketStatus, initialMatchedDigits, initialReturn, revealedDigits]
+          `INSERT INTO numbers (number, owner_id, price, buy_amount, draw_id, ticket_status, matched_digits, current_return, last_reveal_index, purchased_at_reveal)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [numberStr, userId, price, price, draw?.id || null, ticketStatus, initialMatchedDigits, initialReturn, revealedDigits, revealedDigits]
         );
         numberId = result.insertId;
       } else {
@@ -124,12 +126,13 @@ class LotteryService {
            matched_digits = ?,
            current_return = ?,
            last_reveal_index = ?,
+           purchased_at_reveal = ?,
            cashed_out_at = NULL,
            cashout_matched_digits = NULL,
            cashout_multiplier = NULL,
            cashout_payout = NULL
            WHERE id = ?`,
-          [userId, price, draw?.id || null, ticketStatus, initialMatchedDigits, initialReturn, revealedDigits, number.id]
+          [userId, price, draw?.id || null, ticketStatus, initialMatchedDigits, initialReturn, revealedDigits, revealedDigits, number.id]
         );
         numberId = number.id;
       }
@@ -239,12 +242,11 @@ class LotteryService {
       }
 
       // Calculate dynamic price based on revealed digits
-      // Price increases as more digits are revealed: 10Z base * (revealed + 1)
-      // 0 digits = 10Z, 1 digit = 20Z, 2 digits = 30Z, etc.
+      // Price increases as more digits are revealed: 10 + 5 * revealedDigits
+      // 0 digits = 10Z, 1 digit = 15Z, 2 digits = 20Z, etc.
       const revealedDigits = parseInt(draw.revealed_digits) || 0;
       const basePrice = 10;
-      const priceMultiplier = revealedDigits + 1;
-      const dynamicPrice = basePrice * priceMultiplier;
+      const dynamicPrice = basePrice + 5 * revealedDigits;
 
       // Get or create number
       let [numbers] = await connection.execute(
@@ -609,15 +611,18 @@ class LotteryService {
       [userId]
     );
 
-    // Add computed multiplier field
+    // Add computed multiplier field (using hidden matched digits)
     const MULTIPLIER_MAP = { 0: 0, 1: 2, 2: 4, 3: 9, 4: 16, 5: 25, 6: 36, 7: 49 };
 
-    return numbers.map(n => ({
+    return numbers.map(n => {
+      const hiddenMatched = (n.matched_digits || 0) - (n.purchased_at_reveal || 0);
+      return {
       ...n,
-      multiplier: MULTIPLIER_MAP[n.matched_digits || 0] || 0,
+      multiplier: MULTIPLIER_MAP[hiddenMatched] || 0,
       canCashOut: (n.matched_digits || 0) > 0 &&
                   !['cashed_out', 'sold', 'lost'].includes(n.ticket_status)
-    }));
+    };
+    });
   }
 
   // Get number details with full analytics
