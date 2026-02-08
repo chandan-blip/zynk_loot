@@ -14,7 +14,9 @@ import {
   FiPlus,
   FiChevronRight,
   FiCreditCard,
-  FiUser
+  FiUser,
+  FiShare2,
+  FiTrendingUp
 } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
@@ -23,6 +25,8 @@ const navItems = [
   { path: '/', label: 'Home', icon: FiHome },
   { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true },
   { path: '/profile', label: 'Profile', icon: FiUser, authRequired: true },
+  { path: '/invest', label: 'Invest', icon: FiTrendingUp, authRequired: true },
+  { path: '/promote', label: 'Promote', icon: FiShare2, authRequired: true },
   { path: '/leaderboard', label: 'Leaderboard', icon: GiTrophy },
   { path: '/history', label: 'History', icon: FiClock },
 ];

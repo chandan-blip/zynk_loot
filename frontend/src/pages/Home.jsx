@@ -106,10 +106,24 @@ function Home() {
   // Helper to check if there's an active draw (not none/completed)
   const hasActiveDraw = draw && draw.id && draw.status !== 'none' && draw.status !== 'completed';
 
-  // Refs for infinite scroll
-  const loadMoreRef = useRef(null);
+  // Derived: all digits revealed (even if status isn't formally 'completed' yet)
+  const isAllRevealed = (parseInt(draw?.revealedDigits) || 0) >= TOTAL_DIGITS || draw?.isAllRevealed;
+  // Treat as complete if formally complete OR all digits have been revealed
+  const isEffectivelyComplete = draw?.isComplete || draw?.status === 'completed' || isAllRevealed;
+
+  // Infinite scroll — refs avoid stale closures in IntersectionObserver callbacks
   const offsetRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const fetchingRef = useRef(false);
+  const fetchIdRef = useRef(0);
+  const searchRef = useRef(search);
+  const observerRef = useRef(null);
+  const initializedRef = useRef(false);
   const ITEMS_PER_PAGE = 20;
+  const MAX_CLIENT_ITEMS = 200;
+
+  // Mirror search into ref so the stable fetchNumbers can read it
+  searchRef.current = search;
 
   // Handle scroll for sticky bar
   useEffect(() => {
@@ -200,75 +214,110 @@ function Home() {
 
     const serverRevealedDigits = drawData.revealedDigits || 0;
     const isComplete = drawData.isComplete || drawData.status === 'completed';
+    const allRevealed = serverRevealedDigits >= TOTAL_DIGITS || drawData.isAllRevealed;
     const sessionNumber = drawData.sessionNumber || 1;
 
     setRevealState({
       revealedDigits: serverRevealedDigits,
       isComplete,
-      status: isComplete ? 'completed' : (serverRevealedDigits > 0 ? 'revealing' : 'waiting'),
-      nextRevealIn: drawData.nextRevealIn || 0,
-      timeUntilComplete: drawData.timeUntilComplete || 0,
+      status: (isComplete || allRevealed) ? 'completed' : (serverRevealedDigits > 0 ? 'revealing' : 'waiting'),
+      nextRevealIn: (isComplete || allRevealed) ? 0 : (drawData.nextRevealIn || 0),
+      timeUntilComplete: (isComplete || allRevealed) ? 0 : (drawData.timeUntilComplete || 0),
       session: sessionNumber,
       sessionName: SESSION_NAMES[sessionNumber] || 'Current'
     });
   }, []);
 
-  // Fetch numbers with pagination
+  // Stable fetch — reads search from ref, uses fetchId to discard stale responses
   const fetchNumbers = useCallback(async (reset = false) => {
+    // Guard: for append, skip if already fetching, no more, or at client max
+    if (!reset && (fetchingRef.current || !hasMoreRef.current)) return;
+    if (!reset && offsetRef.current >= MAX_CLIENT_ITEMS) {
+      hasMoreRef.current = false;
+      setHasMore(false);
+      return;
+    }
+
+    const currentId = ++fetchIdRef.current;
+    fetchingRef.current = true;
+
+    // Set appropriate loading state
     if (reset) {
       offsetRef.current = 0;
-      setNumbers([]);
+      hasMoreRef.current = true;
+      if (!initializedRef.current) {
+        setLoading(true);
+      } else {
+        setNumbersLoading(true);
+      }
+    } else {
+      setLoadingMore(true);
     }
 
     try {
       const offset = reset ? 0 : offsetRef.current;
-      const res = await getNumbers({ limit: ITEMS_PER_PAGE, offset, search });
+      const res = await getNumbers({
+        limit: ITEMS_PER_PAGE,
+        offset,
+        search: searchRef.current,
+      });
 
-      const newNumbers = res.data.data || [];
-      setHasMore(res.data.hasMore);
+      // Discard if a newer fetch was started while this one was in flight
+      if (currentId !== fetchIdRef.current) return;
+
+      const incoming = res.data.data || [];
+      const nextOffset = reset ? incoming.length : offsetRef.current;
+      const more = res.data.hasMore && incoming.length > 0 && nextOffset + incoming.length < MAX_CLIENT_ITEMS;
+
+      hasMoreRef.current = more;
+      setHasMore(more);
 
       if (reset) {
-        setNumbers(newNumbers);
+        setNumbers(incoming);
+        offsetRef.current = incoming.length;
       } else {
-        setNumbers(prev => {
-          // Avoid duplicates
-          const existingIds = new Set(prev.map(n => n.number));
-          const uniqueNew = newNumbers.filter(n => !existingIds.has(n.number));
-          return [...prev, ...uniqueNew];
+        setNumbers((prev) => {
+          const seen = new Set(prev.map((n) => n.number));
+          const fresh = incoming.filter((n) => !seen.has(n.number));
+          offsetRef.current = prev.length + fresh.length;
+          return [...prev, ...fresh];
         });
       }
-
-      offsetRef.current = offset + newNumbers.length;
-    } catch (error) {
-      console.error("Failed to fetch numbers:", error);
+    } catch (err) {
+      if (currentId !== fetchIdRef.current) return;
+      console.error('Failed to fetch numbers:', err);
+    } finally {
+      // Only clear flags if this is still the latest fetch
+      if (currentId === fetchIdRef.current) {
+        fetchingRef.current = false;
+        initializedRef.current = true;
+        setLoading(false);
+        setNumbersLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [search]);
+  }, []); // Stable — never recreated (reads search from ref)
 
-  // Load more numbers (for infinite scroll)
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    await fetchNumbers(false);
-    setLoadingMore(false);
-  }, [fetchNumbers, loadingMore, hasMore]);
+  // Callback ref for the scroll sentinel — re-observes whenever the node mounts/unmounts
+  const sentinelRef = useCallback(
+    (node) => {
+      if (observerRef.current) observerRef.current.disconnect();
+      if (!node) return;
+      observerRef.current = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting && hasMoreRef.current && !fetchingRef.current) {
+            fetchNumbers(false);
+          }
+        },
+        { rootMargin: '200px' }
+      );
+      observerRef.current.observe(node);
+    },
+    [fetchNumbers],
+  );
 
-  // Infinite scroll observer
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
-          loadMore();
-        }
-      },
-      { threshold: 0.1, rootMargin: '100px' }
-    );
-
-    if (loadMoreRef.current) {
-      observer.observe(loadMoreRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [loadMore, hasMore, loadingMore, loading]);
+  // Cleanup observer on unmount
+  useEffect(() => () => observerRef.current?.disconnect(), []);
 
   // Fetch initial data on mount (draw, prize pool, winners, user tickets)
   useEffect(() => {
@@ -286,8 +335,9 @@ function Home() {
         // Sync reveal state with server data
         syncRevealStateWithDraw(drawData);
 
-        // If no active draw, fetch upcoming session info
-        if (!drawData || !drawData.id || drawData.status === 'none' || drawData.status === 'completed') {
+        // If no active draw or all digits revealed, fetch upcoming session info
+        const allRevealed = (parseInt(drawData?.revealedDigits) || 0) >= TOTAL_DIGITS || drawData?.isAllRevealed;
+        if (!drawData || !drawData.id || drawData.status === 'none' || drawData.status === 'completed' || allRevealed) {
           try {
             const upcomingRes = await getUpcomingSession();
             if (upcomingRes.data.success && upcomingRes.data.data.upcomingSession) {
@@ -349,29 +399,10 @@ function Home() {
     fetchInitialData();
   }, [user, syncRevealStateWithDraw]);
 
-  // Fetch numbers when search changes (separate from initial data)
+  // Fetch numbers on search change (and on mount with search='')
+  // fetchNumbers is stable so this only re-runs when search changes
   useEffect(() => {
-    const fetchNumbersData = async () => {
-      // Use numbersLoading for search, loading only for initial
-      const isInitial = numbers.length === 0 && !search;
-      if (isInitial) {
-        setLoading(true);
-      } else {
-        setNumbersLoading(true);
-      }
-
-      try {
-        await fetchNumbers(true);
-      } catch (error) {
-        console.error("Failed to fetch numbers:", error);
-        setNumbers([]);
-      } finally {
-        setLoading(false);
-        setNumbersLoading(false);
-      }
-    };
-
-    fetchNumbersData();
+    fetchNumbers(true);
   }, [search, fetchNumbers]);
 
   // Cash out handler
@@ -490,8 +521,8 @@ function Home() {
 
   // Update countdown timer every second (decrement from server values)
   useEffect(() => {
-    // Only run countdown if draw is active (not completed)
-    if (draw?.isComplete || draw?.status === 'completed') return;
+    // Don't run countdown if draw is complete or all digits revealed
+    if (isEffectivelyComplete) return;
 
     const interval = setInterval(() => {
       setRevealState(prev => ({
@@ -502,7 +533,24 @@ function Home() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [draw?.isComplete, draw?.status]);
+  }, [isEffectivelyComplete]);
+
+  // When draw becomes effectively complete, fetch upcoming session
+  useEffect(() => {
+    if (isEffectivelyComplete && hasActiveDraw) {
+      const fetchUpcoming = async () => {
+        try {
+          const upcomingRes = await getUpcomingSession();
+          if (upcomingRes.data.success && upcomingRes.data.data.upcomingSession) {
+            setUpcomingSession(upcomingRes.data.data.upcomingSession);
+          }
+        } catch (e) {
+          console.log("Could not fetch upcoming session");
+        }
+      };
+      fetchUpcoming();
+    }
+  }, [isEffectivelyComplete, hasActiveDraw]);
 
   // Socket connection for real-time updates
   useEffect(() => {
@@ -698,16 +746,16 @@ function Home() {
                     <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
                       <FiZap className="w-5 h-5 text-accent" />
                     </div>
-                    {hasActiveDraw && !(draw?.isComplete || draw?.status === 'completed') && (
+                    {hasActiveDraw && !isEffectivelyComplete && (
                       <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" />
                     )}
                   </div>
                   <div className="hidden sm:block">
                     <p className="text-white font-semibold text-sm">
-                      {hasActiveDraw ? "Today's Draw" : (upcomingSession ? `Next: ${upcomingSession.sessionName}` : "No Active Draw")}
+                      {hasActiveDraw && !isEffectivelyComplete ? "Today's Draw" : (upcomingSession ? `Next: ${upcomingSession.sessionName}` : isEffectivelyComplete ? "Draw Complete" : "No Active Draw")}
                     </p>
                     <p className="text-gray-500 text-xs">
-                      {hasActiveDraw ? `${parseInt(draw.revealedDigits) || 0} of ${TOTAL_DIGITS} digits` : (upcomingSession ? "Buy for upcoming session" : "Waiting...")}
+                      {hasActiveDraw && !isEffectivelyComplete ? `${parseInt(draw.revealedDigits) || 0} of ${TOTAL_DIGITS} digits` : (upcomingSession ? "Buy for upcoming session" : isEffectivelyComplete ? "All digits revealed" : "Waiting...")}
                     </p>
                   </div>
                 </div>
@@ -715,7 +763,7 @@ function Home() {
                 {/* Center: Number Display */}
                 <div className="flex items-center gap-1.5">
                   {Array.from({ length: TOTAL_DIGITS }).map((_, index) => {
-                    const actualRevealed = parseInt(draw?.revealedDigits) || 0;
+                    const actualRevealed = !hasActiveDraw ? 0 : (parseInt(draw?.revealedDigits) || 0);
                     const isRevealed = index < actualRevealed;
                     const serverDigit = draw?.revealedNumber?.[index];
                     // Only show digit if revealed AND valid digit exists
@@ -741,22 +789,28 @@ function Home() {
               {/* Countdown or Status */}
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs text-gray-500">
-                  {!hasActiveDraw && upcomingSession
+                  {isEffectivelyComplete && upcomingSession
                     ? `${upcomingSession.sessionName} starts in`
-                    : !hasActiveDraw
-                      ? "Waiting for draw..."
-                      : (draw.isComplete || draw.status === 'completed')
-                        ? "Draw Complete"
-                        : `${getOrdinal((parseInt(draw.revealedDigits) || 0) + 1)} digit in`
+                    : isEffectivelyComplete
+                      ? "Draw Complete"
+                      : !hasActiveDraw && upcomingSession
+                        ? `${upcomingSession.sessionName} starts in`
+                        : !hasActiveDraw
+                          ? "Waiting for draw..."
+                          : `${getOrdinal((parseInt(draw.revealedDigits) || 0) + 1)} digit in`
                   }
                 </span>
-                {(draw?.isComplete || draw?.status === 'completed') ? (
+                {isEffectivelyComplete && upcomingSession ? (
+                  <StickyUpcomingCountdown session={upcomingSession} />
+                ) : isEffectivelyComplete ? (
                   <span className="px-3 py-1 rounded-full bg-accent/20 text-accent text-xs font-semibold flex items-center gap-1">
                     <FiAward className="w-3.5 h-3.5" />
                     Result Announced!
                   </span>
                 ) : !hasActiveDraw && upcomingSession ? (
                   <StickyUpcomingCountdown session={upcomingSession} />
+                ) : !hasActiveDraw ? (
+                  <span className="text-xs text-gray-500">Waiting...</span>
                 ) : (
                   <div className="flex items-center gap-1">
                     {(() => {
@@ -805,7 +859,7 @@ function Home() {
                     initial={{ width: 0 }}
                     animate={{
                       width: `${Math.round(
-                        ((parseInt(draw?.revealedDigits) || 0) / TOTAL_DIGITS) * 100
+                        ((!hasActiveDraw ? 0 : (parseInt(draw?.revealedDigits) || 0)) / TOTAL_DIGITS) * 100
                       )}%`,
                     }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
@@ -839,18 +893,18 @@ function Home() {
                   <div className="w-12 h-12 rounded-lg bg-accent/20 flex items-center justify-center">
                     <FiZap className="w-6 h-6 text-accent" />
                   </div>
-                  {hasActiveDraw && !(draw?.isComplete || draw?.status === 'completed') && (
+                  {hasActiveDraw && !isEffectivelyComplete && (
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
                   )}
                 </div>
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                    {hasActiveDraw ? (revealState.sessionName || 'Current') + ' Session' : (
-                      upcomingSession ? `Next: ${upcomingSession.sessionName} Session` : 'No Active Draw'
+                    {hasActiveDraw && !isEffectivelyComplete ? (revealState.sessionName || 'Current') + ' Session' : (
+                      upcomingSession ? `Next: ${upcomingSession.sessionName} Session` : isEffectivelyComplete ? 'Draw Complete' : 'No Active Draw'
                     )}
                   </h1>
                   <p className="text-gray-400 text-sm">
-                    {hasActiveDraw ? (
+                    {hasActiveDraw && !isEffectivelyComplete ? (
                       <>
                         {draw.periodId && (
                           <span className="text-accent mr-2">#{draw.periodId}</span>
@@ -860,8 +914,10 @@ function Home() {
                         )} <br />
                         <span>{parseInt(draw.revealedDigits) || 0} of {TOTAL_DIGITS} digits revealed</span>
                       </>
-                    ) : upcomingSession ? (
-                      <span className="text-accent">Buy now for upcoming session</span>
+                    ) : !hasActiveDraw && upcomingSession ? (
+                      <span className="text-accent">Buy now for {upcomingSession.sessionName} session</span>
+                    ) : isEffectivelyComplete ? (
+                      <span className="text-accent">All {TOTAL_DIGITS} digits revealed</span>
                     ) : (
                       <span className="text-gray-500">Waiting for next draw to start...</span>
                     )}
@@ -872,7 +928,9 @@ function Home() {
               {/* Countdown */}
               <div className="flex items-center gap-3">
                 <FiClock className="w-4 h-4 text-gray-500" />
-                {(draw?.isComplete || draw?.status === 'completed') ? (
+                {isEffectivelyComplete && upcomingSession ? (
+                  <UpcomingSessionCountdown session={upcomingSession} />
+                ) : isEffectivelyComplete ? (
                   <span className="badge badge-success">
                     <FiAward className="w-3 h-3 mr-1" />
                     Result Announced!
@@ -892,12 +950,6 @@ function Home() {
                         showSeconds
                       />
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <span>{getOrdinal((parseInt(draw?.revealedDigits) || 0) + 1)} digit reveals in</span>
-                      <span className="text-accent font-medium">
-                        {formatSeconds(revealState.nextRevealIn)}
-                      </span>
-                    </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -911,7 +963,7 @@ function Home() {
               </div>
 
               {/* Time until complete */}
-              {!(draw?.isComplete || draw?.status === 'completed') &&
+              {!isEffectivelyComplete &&
                 revealState.status === "revealing" && (
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <span>Hourly reveals • Session ends in</span>
@@ -925,14 +977,14 @@ function Home() {
             {/* Right: Number Display */}
             <div className="flex flex-col items-start lg:items-end gap-4">
               <NumberDisplay
-                number={getRevealedNumber()}
-                revealedDigits={draw?.revealedDigits || 0}
+                number={!hasActiveDraw ? "XXXXXXX" : getRevealedNumber()}
+                revealedDigits={!hasActiveDraw ? 0 : (draw?.revealedDigits || 0)}
               />
 
               {/* Progress Bar */}
               <div className="w-full max-w-xs">
                 {(() => {
-                  const actualRevealed = parseInt(draw?.revealedDigits) || 0;
+                  const actualRevealed = !hasActiveDraw ? 0 : (parseInt(draw?.revealedDigits) || 0);
                   const progress = Math.round(
                     (actualRevealed / TOTAL_DIGITS) * 100
                   );
@@ -1036,7 +1088,7 @@ function Home() {
         className="grid grid-cols-1 lg:grid-cols-3 gap-4"
       >
         {/* Prize Pool Card */}
-        <div className="lg:col-span-1 rounded-xl bg-gradient-to-br from-gold/10 via-dark-700 to-dark-700 border border-gold/20 p-5">
+        <div className="lg:col-span-1 rounded-xl bg-gradient-to-br from-gold/10 via-dark-700 to-dark-700 p-5">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center">
               <GiTrophy className="w-6 h-6 text-gold-light" />
@@ -1199,6 +1251,27 @@ function Home() {
         </div>
       </motion.div>
 
+      {/* Upcoming Session Banner */}
+      {!hasActiveDraw && upcomingSession && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 p-4 rounded-xl bg-purple/10 border border-purple/30"
+        >
+          <div className="w-10 h-10 rounded-lg bg-purple/20 flex items-center justify-center flex-shrink-0">
+            <FiClock className="w-5 h-5 text-purple-light" />
+          </div>
+          <div className="flex-1">
+            <p className="text-white font-medium text-sm">
+              Buying for {upcomingSession.sessionName} Session
+            </p>
+            <p className="text-gray-400 text-xs">
+              Numbers purchased now will be active when the next session starts
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Search Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1322,26 +1395,22 @@ function Home() {
         ) : null}
       </AnimatePresence>
 
-      {/* Infinite Scroll Sentinel & Loading */}
-      {hasMore && filteredNumbers.length > 0 && (
-        <div
-          ref={loadMoreRef}
-          className="flex items-center justify-center py-8"
-        >
-          {loadingMore && (
-            <div className="flex items-center gap-3 text-gray-400">
-              <FiLoader className="w-5 h-5 animate-spin" />
-              <span>Loading more numbers...</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* End of list message */}
-      {!hasMore && filteredNumbers.length > 0 && !search && (
-        <div className="text-center py-8 text-gray-500">
-          <p>You've reached the end! Try searching for a specific number.</p>
-        </div>
+      {/* Infinite Scroll Sentinel — callback ref handles observer lifecycle */}
+      {filteredNumbers.length > 0 && (
+        hasMore ? (
+          <div ref={sentinelRef} className="flex items-center justify-center py-8">
+            {loadingMore && (
+              <div className="flex items-center gap-3 text-gray-400">
+                <FiLoader className="w-5 h-5 animate-spin" />
+                <span>Loading more numbers...</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            <p>{search ? 'No more results' : 'Search for a specific number to find more'}</p>
+          </div>
+        )
       )}
       </div>
     </>
@@ -1413,13 +1482,14 @@ function StickyUpcomingCountdown({ session }) {
   const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
 
   useEffect(() => {
-    if (session.nextRunAt) {
-      const nextRun = new Date(session.nextRunAt);
+    const timestamp = session.startsAt || session.nextRunAt;
+    if (timestamp) {
+      const nextRun = new Date(timestamp);
       const now = new Date();
       const diff = Math.max(0, Math.floor((nextRun - now) / 1000));
       setTimeLeft(diff);
     }
-  }, [session.nextRunAt]);
+  }, [session.startsAt, session.nextRunAt]);
 
   useEffect(() => {
     if (timeLeft <= 0) return;
@@ -1468,14 +1538,15 @@ function UpcomingSessionCountdown({ session }) {
   const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
 
   useEffect(() => {
-    // Calculate time left from nextRunAt
-    if (session.nextRunAt) {
-      const nextRun = new Date(session.nextRunAt);
+    // Calculate time left from startsAt (API field) or nextRunAt (fallback)
+    const timestamp = session.startsAt || session.nextRunAt;
+    if (timestamp) {
+      const nextRun = new Date(timestamp);
       const now = new Date();
       const diff = Math.max(0, Math.floor((nextRun - now) / 1000));
       setTimeLeft(diff);
     }
-  }, [session.nextRunAt]);
+  }, [session.startsAt, session.nextRunAt]);
 
   useEffect(() => {
     if (timeLeft <= 0) return;

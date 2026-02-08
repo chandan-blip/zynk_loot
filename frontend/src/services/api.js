@@ -32,7 +32,8 @@ api.interceptors.response.use(
 
 // Auth
 export const login = (email, password) => api.post('/auth/login', { email, password });
-export const register = (username, email, password) => api.post('/auth/register', { username, email, password });
+export const register = (username, email, password, referralCode) =>
+  api.post('/auth/register', { username, email, password, referral_code: referralCode });
 export const getMe = () => api.get('/auth/me');
 
 // Lottery
@@ -96,6 +97,36 @@ export const getUserExchangeRates = () => api.get('/wallet/exchange-rates');
 export const getWithdrawals = (page = 1) => api.get(`/wallet/withdrawals?page=${page}`);
 export const requestWithdrawal = (amount, payment_method_id) =>
   api.post('/wallet/withdraw-request', { amount, payment_method_id });
+
+// Referral / Promote
+export const generateReferralCode = () => api.post('/referral/generate-code');
+export const getReferralStats = () => api.get('/referral/stats');
+export const getReferralList = () => api.get('/referral/list');
+
+// Investments
+export const getInvestmentTiers = () => api.get('/invest/tiers');
+export const getPlatformGrowth = (days = 30) => api.get(`/invest/platform-growth?days=${days}`);
+export const createInvestment = (amount, tierId) => api.post('/invest', { amount, tierId });
+export const withdrawInvestment = (id) => api.post(`/invest/${id}/withdraw`);
+export const getInvestmentPortfolio = () => api.get('/invest/portfolio');
+export const getInvestmentStats = () => api.get('/invest/stats');
+export const getInvestmentReturns = (page = 1, limit = 20) =>
+  api.get(`/invest/returns?page=${page}&limit=${limit}`);
+
+// Admin Investments
+export const getAdminInvestmentStats = () => api.get('/admin/investment-stats');
+export const getAdminInvestments = (page = 1, limit = 20, filters = {}) => {
+  const params = new URLSearchParams({ page, limit });
+  if (filters.status) params.append('status', filters.status);
+  if (filters.tier_id) params.append('tier_id', filters.tier_id);
+  if (filters.username) params.append('username', filters.username);
+  return api.get(`/admin/investments?${params}`);
+};
+export const getAdminPlatformMetrics = (days = 90) => api.get(`/admin/platform-metrics?days=${days}`);
+export const updateInvestmentSettings = (settings) => api.put('/admin/investment-settings', { settings });
+export const getAdminInvestmentTiers = () => api.get('/admin/investment-tiers');
+export const updateInvestmentTier = (id, data) => api.put(`/admin/investment-tiers/${id}`, data);
+export const createInvestmentTier = (data) => api.post('/admin/investment-tiers', data);
 
 // User Profile
 export const getUserProfile = () => api.get('/users/me/profile');

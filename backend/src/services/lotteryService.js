@@ -5,6 +5,11 @@ class LotteryService {
     this.io = io;
     this.ticketService = ticketService;
     this.cronService = cronService;
+    this.referralService = null;
+  }
+
+  setReferralService(referralService) {
+    this.referralService = referralService;
   }
 
   // Set ticket service (for late binding)
@@ -161,13 +166,18 @@ class LotteryService {
       }
 
       // Record transaction
-      await connection.execute(
+      const [txnResult] = await connection.execute(
         `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
          VALUES (?, 'purchase', ?, ?, ?, 'number', ?, ?)`,
         [userId, price, users[0].balance, parseFloat(users[0].balance) - price, numberId, `Purchased number ${numberStr}`]
       );
 
       await connection.commit();
+
+      // Process referral commission (non-blocking, after commit)
+      if (this.referralService) {
+        this.referralService.processReferralCommission(userId, txnResult.insertId, 'purchase', price);
+      }
 
       // Get updated prize pool for broadcast
       let newTotalPool = 0;

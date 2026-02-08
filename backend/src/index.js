@@ -22,6 +22,10 @@ const LotteryService = require('./services/lotteryService');
 const CronService = require('./services/cronService');
 const TicketService = require('./services/ticketService');
 const SupportService = require('./services/supportService');
+const ReferralService = require('./services/referralService');
+const InvestService = require('./services/investService');
+const referralRoutes = require('./routes/referral');
+const investRoutes = require('./routes/invest');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,15 +47,22 @@ const ticketService = new TicketService(io);
 const lotteryService = new LotteryService(io, ticketService);
 const cronService = new CronService(io, ticketService);
 const supportService = new SupportService(io);
+const referralService = new ReferralService();
+const investService = new InvestService(io);
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
 lotteryService.setCronService(cronService);
+lotteryService.setReferralService(referralService);
+ticketService.setReferralService(referralService);
+cronService.setInvestService(investService);
 
 app.set('ticketService', ticketService);
 app.set('lotteryService', lotteryService);
 app.set('cronService', cronService);
 app.set('supportService', supportService);
+app.set('referralService', referralService);
+app.set('investService', investService);
 app.set('io', io);
 
 // Socket authentication middleware
@@ -122,6 +133,8 @@ app.use('/api/lottery', lotteryRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/referral', referralRoutes);
+app.use('/api/invest', investRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

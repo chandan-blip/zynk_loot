@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiMail, FiLock, FiUser, FiUserPlus } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
@@ -13,8 +13,17 @@ function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
   const { login } = useStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref) {
+      setReferralCode(ref);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,7 +45,7 @@ function Register() {
 
     setLoading(true);
     try {
-      const response = await api.register(username, email, password);
+      const response = await api.register(username, email, password, referralCode || undefined);
       if (response.data.success) {
         login(response.data.data.token, response.data.data.user);
         toast.success('Account created successfully!');
@@ -66,6 +75,12 @@ function Register() {
           </Link>
           <h1 className="text-3xl font-bold text-white mb-2">Create Account</h1>
           <p className="text-gray-500">Join and start winning</p>
+          {referralCode && (
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/10 border border-accent/20 text-accent text-sm">
+              <FiUserPlus className="w-4 h-4" />
+              <span>Referred by: <span className="font-mono font-bold">{referralCode}</span></span>
+            </div>
+          )}
         </div>
 
         {/* Form */}

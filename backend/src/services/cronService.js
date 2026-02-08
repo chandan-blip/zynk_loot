@@ -5,6 +5,7 @@ class CronService {
   constructor(io, ticketService = null) {
     this.io = io;
     this.ticketService = ticketService;
+    this.investService = null;
     this.configLoaded = false;
     this.scheduledJobs = [];
     this.jobRegistry = {}; // Maps job name to job_schedule id
@@ -24,6 +25,10 @@ class CronService {
         3: { generateHour: 23, revealStartHour: 0, revealEndHour: 6 }
       }
     };
+  }
+
+  setInvestService(svc) {
+    this.investService = svc;
   }
 
   // Load configuration from database
@@ -843,18 +848,20 @@ class CronService {
       revealedNumber = draw.winning_number.substring(0, revealedDigits) + 'X'.repeat(this.config.TOTAL_DIGITS - revealedDigits);
     }
 
+    const isAllRevealed = revealedDigits >= this.config.TOTAL_DIGITS;
+
     const now = this.getNowIST();
     const currentMinutes = now.getMinutes();
     const currentSeconds = now.getSeconds();
     const currentHour = now.getHours();
 
-    const nextRevealIn = isComplete ? 0 : (3600 - (currentMinutes * 60 + currentSeconds));
+    const nextRevealIn = (isComplete || isAllRevealed) ? 0 : (3600 - (currentMinutes * 60 + currentSeconds));
 
     const config = this.getSessionConfig(sessionNumber);
     const resultHour = (config.generateHour + this.config.TOTAL_DIGITS - 1) % 24;
     let timeUntilComplete = 0;
 
-    if (!isComplete) {
+    if (!isComplete && !isAllRevealed) {
       let hoursRemaining;
       if (sessionNumber === 3 && currentHour >= config.generateHour) {
         hoursRemaining = (24 - currentHour) + resultHour;
@@ -881,7 +888,8 @@ class CronService {
       resultTime: draw.result_time || null,
       nextRevealIn,
       timeUntilComplete,
-      isComplete
+      isComplete,
+      isAllRevealed
     };
   }
 
@@ -1088,6 +1096,22 @@ class CronService {
         }
       }, { timezone })
     );
+
+    // Register and schedule Daily Investment Returns (00:30 daily)
+    if (this.investService) {
+      const investReturnsCron = '30 0 * * *';
+      await this.registerJob('daily_invest_returns', 'invest_returns', investReturnsCron, null, { description: 'Daily investment metrics snapshot and returns distribution' });
+      this.scheduledJobs.push(
+        cron.schedule(investReturnsCron, async () => {
+          await this.executeWithLogging('daily_invest_returns', async () => {
+            const metrics = await this.investService.snapshotDailyMetrics();
+            const returns = await this.investService.calculateDailyReturns();
+            return { metrics, returns };
+          });
+        }, { timezone })
+      );
+      console.log('[CRON] Investment returns job scheduled at 00:30 daily');
+    }
 
     console.log('[CRON] Cron jobs scheduled and registered in database:');
     console.log(`  Timezone: ${timezone}`);

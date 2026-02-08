@@ -294,7 +294,7 @@ router.get('/numbers', async (req, res) => {
 router.get('/numbers/:number', async (req, res) => {
   try {
     const lotteryService = req.app.get('lotteryService');
-    const numberStr = req.params.number.padStart(7, '0');
+    const numberStr = req.params.number.replace(/\D/g, '').slice(0, 7).padStart(7, '0');
     const number = await lotteryService.getNumberDetails(numberStr);
 
     // Get current draw info for pricing
@@ -400,7 +400,11 @@ router.get('/numbers/:number', async (req, res) => {
 router.post('/numbers/:number/buy', authenticateToken, async (req, res) => {
   try {
     const lotteryService = req.app.get('lotteryService');
-    const numberStr = req.params.number.padStart(7, '0');
+    const raw = req.params.number.replace(/\D/g, '').slice(0, 7);
+    if (raw.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid number' });
+    }
+    const numberStr = raw.padStart(7, '0');
 
     // Get base price from settings
     const [settings] = await db.pool.query(
@@ -450,7 +454,7 @@ router.post('/numbers/:number/buy', authenticateToken, async (req, res) => {
 router.post('/numbers/:number/vote', authenticateToken, async (req, res) => {
   try {
     const lotteryService = req.app.get('lotteryService');
-    const numberStr = req.params.number.padStart(7, '0');
+    const numberStr = req.params.number.replace(/\D/g, '').slice(0, 7).padStart(7, '0');
     const action = req.body.action || 'vote'; // 'vote' or 'unvote'
 
     const result = await lotteryService.voteForNumber(req.user.id, numberStr, action);
@@ -469,7 +473,7 @@ router.post('/numbers/:number/vote', authenticateToken, async (req, res) => {
 // Get offers for a specific number
 router.get('/numbers/:number/offers', async (req, res) => {
   try {
-    const numberStr = req.params.number.padStart(7, '0');
+    const numberStr = req.params.number.replace(/\D/g, '').slice(0, 7).padStart(7, '0');
 
     const [offers] = await db.pool.query(
       `SELECT o.id, o.offer_amount as amount, o.status, o.created_at, o.expires_at,
@@ -500,7 +504,7 @@ router.post('/numbers/:number/offer', authenticateToken, [
     }
 
     const lotteryService = req.app.get('lotteryService');
-    const numberStr = req.params.number.padStart(7, '0');
+    const numberStr = req.params.number.replace(/\D/g, '').slice(0, 7).padStart(7, '0');
     const { amount } = req.body;
 
     const result = await lotteryService.createOffer(req.user.id, numberStr, amount);

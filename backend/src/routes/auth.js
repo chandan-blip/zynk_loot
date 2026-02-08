@@ -18,7 +18,7 @@ router.post('/register', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { username, email, password } = req.body;
+    const { username, email, password, referral_code } = req.body;
 
     // Check if user exists
     const [existing] = await db.pool.query(
@@ -30,14 +30,31 @@ router.post('/register', [
       return res.status(400).json({ success: false, message: 'Username or email already exists' });
     }
 
+    // Look up referrer if referral code provided
+    let referrerId = null;
+    if (referral_code) {
+      const [referrers] = await db.pool.query(
+        'SELECT id FROM users WHERE referral_code = ?',
+        [referral_code]
+      );
+      if (referrers.length > 0) {
+        referrerId = referrers[0].id;
+      }
+    }
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Create user
     const [result] = await db.pool.query(
-      'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-      [username, email, passwordHash]
+      'INSERT INTO users (username, email, password_hash, referred_by) VALUES (?, ?, ?, ?)',
+      [username, email, passwordHash, referrerId]
     );
+
+    // Prevent self-referral (shouldn't happen, but guard against it)
+    if (referrerId === result.insertId) {
+      await db.pool.query('UPDATE users SET referred_by = NULL WHERE id = ?', [result.insertId]);
+    }
 
     const token = generateToken(result.insertId);
 

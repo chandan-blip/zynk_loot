@@ -3,6 +3,7 @@ const db = require('../config/database');
 class TicketService {
   constructor(io) {
     this.io = io;
+    this.referralService = null;
     this.TOTAL_DIGITS = 7;
 
     // Multiplier mapping per arc.md spec
@@ -20,6 +21,10 @@ class TicketService {
 
     // Lock timeout in seconds (for stale lock cleanup)
     this.LOCK_TIMEOUT_SECONDS = 30;
+  }
+
+  setReferralService(referralService) {
+    this.referralService = referralService;
   }
 
   // Get multiplier for given matched digits (adjusted for when ticket was purchased)
@@ -264,7 +269,7 @@ class TicketService {
         );
 
         // Record transaction
-        await connection.execute(
+        const [txnResult] = await connection.execute(
           `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
            VALUES (?, 'cashout', ?, ?, ?, 'number', ?, ?)`,
           [
@@ -278,6 +283,11 @@ class TicketService {
         );
 
         await connection.commit();
+
+        // Process referral commission (non-blocking, after commit)
+        if (this.referralService) {
+          this.referralService.processReferralCommission(userId, txnResult.insertId, 'cashout', payout);
+        }
 
         console.log(`[TICKET] Cash out: ${ticket.number}, ${matchedDigits} matches, payout=${payout}`);
 

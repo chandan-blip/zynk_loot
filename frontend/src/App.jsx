@@ -30,6 +30,9 @@ import AdminSupport from './pages/admin/AdminSupport';
 import NumberDetail from './pages/NumberDetail';
 import Wallet from './pages/Wallet';
 import Checkout from './pages/Checkout';
+import Promote from './pages/Promote';
+import Invest from './pages/Invest';
+import AdminInvestments from './pages/admin/AdminInvestments';
 
 function PublicRoute({ children }) {
   const { isAuthenticated, isLoading } = useStore();
@@ -131,6 +134,7 @@ function App() {
           <Route path="deposits" element={<AdminDeposits />} />
           <Route path="withdrawals" element={<AdminWithdrawals />} />
           <Route path="support" element={<AdminSupport />} />
+          <Route path="investments" element={<AdminInvestments />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
 
@@ -141,6 +145,8 @@ function App() {
           <Route path="wallet" element={<PrivateRoute><Wallet /></PrivateRoute>} />
           <Route path="checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
           <Route path="profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+          <Route path="promote" element={<PrivateRoute><Promote /></PrivateRoute>} />
+          <Route path="invest" element={<PrivateRoute><Invest /></PrivateRoute>} />
           <Route path="leaderboard" element={<Leaderboard />} />
           <Route path="history" element={<History />} />
           <Route path="faq" element={<FAQ />} />

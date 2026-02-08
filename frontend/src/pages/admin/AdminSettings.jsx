@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FiSettings, FiSave, FiClock, FiDollarSign, FiPercent, FiGlobe, FiToggleRight } from 'react-icons/fi';
+import { FiSettings, FiSave, FiClock, FiDollarSign, FiPercent, FiGlobe, FiToggleRight, FiShare2, FiTrendingUp } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import { getAdminSettings, updateSetting } from '../../services/api';
@@ -22,6 +22,18 @@ const settingIcons = {
   exact_match_multiplier: FiPercent,
   near_match_multiplier: FiPercent,
   vote_reward: GiTwoCoins,
+
+  // Referral
+  referral_commission_rate: FiShare2,
+
+  // Investment
+  invest_enabled: FiToggleRight,
+  invest_min_amount: FiTrendingUp,
+  invest_max_amount: FiTrendingUp,
+  invest_max_per_user: FiTrendingUp,
+  invest_base_rate_min: FiPercent,
+  invest_base_rate_max: FiPercent,
+  invest_early_withdraw_penalty: FiPercent,
 
   // Session hours
   session_1_generate_hour: FiClock,
@@ -53,6 +65,18 @@ const settingLabels = {
   near_match_multiplier: 'Near Match Prize %',
   vote_reward: 'Vote Reward (Z)',
 
+  // Referral
+  referral_commission_rate: 'Referral Commission Rate (%)',
+
+  // Investment
+  invest_enabled: 'Investments Enabled',
+  invest_min_amount: 'Min Investment Amount',
+  invest_max_amount: 'Max Investment Amount',
+  invest_max_per_user: 'Max Total Per User',
+  invest_base_rate_min: 'Base Rate Min (daily)',
+  invest_base_rate_max: 'Base Rate Max (daily)',
+  invest_early_withdraw_penalty: 'Early Withdraw Penalty',
+
   // Session 1
   session_1_generate_hour: 'Session 1 Generate Hour',
   session_1_reveal_start_hour: 'Session 1 Reveal Start',
@@ -74,6 +98,8 @@ const settingCategories = {
   'Core Settings': ['number_base_price', 'vote_cost', 'zynk_to_usd', 'current_period_id'],
   'Cron Configuration': ['cron_enabled', 'auto_reveal_enabled', 'total_digits', 'timezone'],
   'Prize Settings': ['exact_match_multiplier', 'near_match_multiplier', 'vote_reward'],
+  'Referral Settings': ['referral_commission_rate'],
+  'Investment Settings': ['invest_enabled', 'invest_min_amount', 'invest_max_amount', 'invest_max_per_user', 'invest_base_rate_min', 'invest_base_rate_max', 'invest_early_withdraw_penalty'],
   'Session 1 (Morning)': ['session_1_generate_hour', 'session_1_reveal_start_hour', 'session_1_reveal_end_hour'],
   'Session 2 (Evening)': ['session_2_generate_hour', 'session_2_reveal_start_hour', 'session_2_reveal_end_hour'],
   'Session 3 (Night)': ['session_3_generate_hour', 'session_3_reveal_start_hour', 'session_3_reveal_end_hour']

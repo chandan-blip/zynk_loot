@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,9 +13,72 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, LineChart, Line
 } from 'recharts';
-import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer, cashOutTicket } from '../services/api';
+import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer, cashOutTicket, getCurrentDraw, getUpcomingSession } from '../services/api';
 import socketService from '../services/socket';
 import useStore from '../store/useStore';
+
+const TOTAL_DIGITS = 7;
+const SESSION_NAMES = { 1: 'Morning', 2: 'Evening', 3: 'Night' };
+
+function getOrdinal(n) {
+  if (n >= TOTAL_DIGITS) return "Last";
+  const ordinals = ["", "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"];
+  return ordinals[n] || `${n}th`;
+}
+
+function StickyUpcomingCountdown({ session }) {
+  const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
+
+  useEffect(() => {
+    if (session.nextRunAt) {
+      const nextRun = new Date(session.nextRunAt);
+      const now = new Date();
+      const diff = Math.max(0, Math.floor((nextRun - now) / 1000));
+      setTimeLeft(diff);
+    }
+  }, [session.nextRunAt]);
+
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+    const interval = setInterval(() => {
+      setTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timeLeft]);
+
+  const hrs = Math.floor(timeLeft / 3600);
+  const mins = Math.floor((timeLeft % 3600) / 60);
+  const secs = timeLeft % 60;
+
+  return (
+    <div className="flex items-center gap-1">
+      {hrs > 0 && (
+        <>
+          <div className="flex flex-col items-center">
+            <span className="bg-purple/20 text-purple-light px-2 py-1 rounded font-mono text-sm font-bold min-w-[28px] text-center">
+              {String(hrs).padStart(2, '0')}
+            </span>
+            <span className="text-[10px] text-gray-600 mt-0.5">HR</span>
+          </div>
+          <span className="text-gray-500 font-bold pb-3">:</span>
+        </>
+      )}
+      <div className="flex flex-col items-center">
+        <span className="bg-purple/20 text-purple-light px-2 py-1 rounded font-mono text-sm font-bold min-w-[28px] text-center">
+          {String(mins).padStart(2, '0')}
+        </span>
+        <span className="text-[10px] text-gray-600 mt-0.5">MIN</span>
+      </div>
+      <span className="text-gray-500 font-bold pb-3">:</span>
+      <div className="flex flex-col items-center">
+        <span className="bg-accent/20 text-accent px-2 py-1 rounded font-mono text-sm font-bold min-w-[28px] text-center">
+          {String(secs).padStart(2, '0')}
+        </span>
+        <span className="text-[10px] text-gray-600 mt-0.5">SEC</span>
+      </div>
+    </div>
+  );
+}
 
 // Radial Progress Chart Component
 function RadialChart({ percentage, size = 120, strokeWidth = 10, label = "Win Chance" }) {
@@ -133,6 +196,86 @@ function NumberDetail() {
   const [voteCount, setVoteCount] = useState(1);
   const [pendingOffers, setPendingOffers] = useState([]);
   const [cashingOut, setCashingOut] = useState(false);
+  const [showStickyBar, setShowStickyBar] = useState(false);
+  const [draw, setDraw] = useState(null);
+  const [revealState, setRevealState] = useState({ revealedDigits: 0, nextRevealIn: 0, isComplete: false });
+  const [upcomingSession, setUpcomingSession] = useState(null);
+
+  const hasActiveDraw = draw && draw.id && draw.status !== 'none' && draw.status !== 'completed';
+
+  const syncRevealStateWithDraw = useCallback((drawData) => {
+    if (!drawData) return;
+    const serverRevealedDigits = drawData.revealedDigits || 0;
+    const isComplete = drawData.isComplete || drawData.status === 'completed';
+    const sessionNumber = drawData.sessionNumber || 1;
+    setRevealState({
+      revealedDigits: serverRevealedDigits,
+      isComplete,
+      status: isComplete ? 'completed' : (serverRevealedDigits > 0 ? 'revealing' : 'waiting'),
+      nextRevealIn: drawData.nextRevealIn || 0,
+      timeUntilComplete: drawData.timeUntilComplete || 0,
+      session: sessionNumber,
+      sessionName: SESSION_NAMES[sessionNumber] || 'Current'
+    });
+  }, []);
+
+  // Scroll handler for sticky bar
+  useEffect(() => {
+    const handleScroll = () => setShowStickyBar(window.scrollY > 100);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Fetch draw data
+  useEffect(() => {
+    const fetchDrawData = async () => {
+      try {
+        const drawRes = await getCurrentDraw();
+        const drawData = drawRes.data.data;
+        setDraw(drawData);
+        syncRevealStateWithDraw(drawData);
+        if (!drawData || !drawData.id || drawData.status === 'none' || drawData.status === 'completed') {
+          try {
+            const upRes = await getUpcomingSession();
+            if (upRes.data.success && upRes.data.data.upcomingSession) {
+              setUpcomingSession(upRes.data.data.upcomingSession);
+            }
+          } catch (e) { /* ignore */ }
+        } else {
+          setUpcomingSession(null);
+        }
+      } catch (e) {
+        console.error('Failed to fetch draw:', e);
+      }
+    };
+    fetchDrawData();
+  }, [syncRevealStateWithDraw]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (revealState.isComplete || !hasActiveDraw) return;
+    const interval = setInterval(() => {
+      setRevealState(prev => ({
+        ...prev,
+        nextRevealIn: Math.max(0, prev.nextRevealIn - 1),
+        timeUntilComplete: Math.max(0, prev.timeUntilComplete - 1)
+      }));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [revealState.isComplete, hasActiveDraw]);
+
+  // Listen for draw socket events
+  useEffect(() => {
+    const unsubStatus = socketService.onDrawStatus?.((data) => {
+      setDraw(data);
+      syncRevealStateWithDraw(data);
+    });
+    const unsubReveal = socketService.onDigitRevealed?.((data) => {
+      setDraw(prev => prev ? { ...prev, ...data } : data);
+      syncRevealStateWithDraw(data);
+    });
+    return () => { unsubStatus?.(); unsubReveal?.(); };
+  }, [syncRevealStateWithDraw]);
 
   // Helper to merge backend data with demo fallbacks
   const mergeWithDemoData = (data, demoData) => {
@@ -454,6 +597,141 @@ function NumberDetail() {
 
   return (
     <div className="space-y-4 pb-8">
+      {/* Sticky Number Display Bar */}
+      <AnimatePresence>
+        {showStickyBar && (
+          <motion.div
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed top-0 left-0 right-0 z-50 bg-dark-400/40 backdrop-blur-lg border-b border-dark-600 shadow-lg"
+          >
+            <div className="max-w-7xl mx-auto px-4 py-3">
+              <div className="flex justify-between items-center gap-4">
+                {/* Left: Draw Info */}
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
+                      <FiZap className="w-5 h-5 text-accent" />
+                    </div>
+                    {hasActiveDraw && !(draw?.isComplete || draw?.status === 'completed') && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" />
+                    )}
+                  </div>
+                  <div className="hidden sm:block">
+                    <p className="text-white font-semibold text-sm">
+                      {hasActiveDraw ? "Today's Draw" : (upcomingSession ? `Next: ${upcomingSession.sessionName}` : "No Active Draw")}
+                    </p>
+                    <p className="text-gray-500 text-xs">
+                      {hasActiveDraw ? `${parseInt(draw.revealedDigits) || 0} of ${TOTAL_DIGITS} digits` : (upcomingSession ? "Buy for upcoming session" : "Waiting...")}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Center: Number Display */}
+                <div className="flex items-center gap-1.5">
+                  {Array.from({ length: TOTAL_DIGITS }).map((_, index) => {
+                    const actualRevealed = parseInt(draw?.revealedDigits) || 0;
+                    const isRevealed = index < actualRevealed;
+                    const serverDigit = draw?.revealedNumber?.[index];
+                    const showDigit = isRevealed && serverDigit && serverDigit !== 'X';
+
+                    return (
+                      <div
+                        key={index}
+                        className={`w-8 h-9 sm:w-10 sm:h-12 rounded-lg flex items-center justify-center font-mono font-bold text-lg sm:text-xl ${
+                          showDigit
+                            ? "bg-accent/20 text-accent border border-accent/30"
+                            : "bg-dark-700 text-gray-600 border border-dark-600"
+                        }`}
+                      >
+                        {showDigit ? serverDigit : "X"}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Countdown or Status */}
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-gray-500">
+                  {!hasActiveDraw && upcomingSession
+                    ? `${upcomingSession.sessionName} starts in`
+                    : !hasActiveDraw
+                      ? "Waiting for draw..."
+                      : (draw.isComplete || draw.status === 'completed')
+                        ? "Draw Complete"
+                        : `${getOrdinal((parseInt(draw.revealedDigits) || 0) + 1)} digit in`
+                  }
+                </span>
+                {(draw?.isComplete || draw?.status === 'completed') ? (
+                  <span className="px-3 py-1 rounded-full bg-accent/20 text-accent text-xs font-semibold flex items-center gap-1">
+                    <FiAward className="w-3.5 h-3.5" />
+                    Result Announced!
+                  </span>
+                ) : !hasActiveDraw && upcomingSession ? (
+                  <StickyUpcomingCountdown session={upcomingSession} />
+                ) : (
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const totalSecs = revealState.nextRevealIn;
+                      const hrs = Math.floor(totalSecs / 3600);
+                      const mins = Math.floor((totalSecs % 3600) / 60);
+                      const secs = totalSecs % 60;
+                      return (
+                        <>
+                          {hrs > 0 && (
+                            <>
+                              <div className="flex flex-col items-center">
+                                <span className="bg-dark-600 px-2 py-1 rounded text-white font-mono text-sm font-bold min-w-[28px] text-center">
+                                  {String(hrs).padStart(2, '0')}
+                                </span>
+                                <span className="text-[10px] text-gray-600 mt-0.5">HR</span>
+                              </div>
+                              <span className="text-gray-500 font-bold pb-3">:</span>
+                            </>
+                          )}
+                          <div className="flex flex-col items-center">
+                            <span className="bg-dark-600 px-2 py-1 rounded text-white font-mono text-sm font-bold min-w-[28px] text-center">
+                              {String(mins).padStart(2, '0')}
+                            </span>
+                            <span className="text-[10px] text-gray-600 mt-0.5">MIN</span>
+                          </div>
+                          <span className="text-gray-500 font-bold pb-3">:</span>
+                          <div className="flex flex-col items-center">
+                            <span className="bg-accent/20 text-accent px-2 py-1 rounded font-mono text-sm font-bold min-w-[28px] text-center">
+                              {String(secs).padStart(2, '0')}
+                            </span>
+                            <span className="text-[10px] text-gray-600 mt-0.5">SEC</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mt-2">
+                <div className="h-1 bg-dark-700 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-accent to-accent-400 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{
+                      width: `${Math.round(
+                        ((parseInt(draw?.revealedDigits) || 0) / TOTAL_DIGITS) * 100
+                      )}%`,
+                    }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Back Button */}
       <button
         onClick={() => navigate(-1)}
@@ -500,32 +778,44 @@ function NumberDetail() {
             <RadialChart percentage={winChance} size={100} strokeWidth={8} label="Win Chance" />
 
             {/* Multiplier Table */}
-            <div className="flex-1 w-full max-w-md">
-              <p className="text-gray-400 text-xs font-medium mb-2 text-center lg:text-left">Return Multipliers</p>
-              <div className="grid grid-cols-4 gap-1.5 text-xs">
-                {[
-                  { digits: 1, mult: '2x', color: 'text-gray-300' },
-                  { digits: 2, mult: '4x', color: 'text-gray-300' },
-                  { digits: 3, mult: '9x', color: 'text-blue-400' },
-                  { digits: 4, mult: '16x', color: 'text-purple-400' },
-                  { digits: 5, mult: '25x', color: 'text-accent' },
-                  { digits: 6, mult: '36x', color: 'text-gold-light' },
-                  { digits: 7, mult: '49x', color: 'text-gold-light font-bold' },
-                ].map((item) => (
-                  <div key={item.digits} className="flex flex-col items-center p-2 rounded-lg bg-dark-800/50 border border-dark-600/30">
-                    <span className="text-gray-500 text-[10px]">{item.digits} match</span>
-                    <span className={`font-semibold ${item.color}`}>{item.mult}</span>
+            {(() => {
+              const MULTIPLIER_MAP = {0:0, 1:2, 2:4, 3:9, 4:16, 5:25, 6:36, 7:49};
+              const COLOR_MAP = {0:'text-gray-500', 1:'text-gray-300', 2:'text-gray-300', 3:'text-blue-400', 4:'text-purple-400', 5:'text-accent', 6:'text-gold-light', 7:'text-gold-light font-bold'};
+              const revealedDigits = parseInt(draw?.revealedDigits) || 0;
+              const entries = [1,2,3,4,5,6,7].map(totalMatch => {
+                const hiddenMatches = totalMatch - revealedDigits;
+                if (hiddenMatches <= 0) {
+                  return { digits: totalMatch, mult: '0x', color: 'text-rose-400/50', dead: true };
+                }
+                return { digits: totalMatch, mult: `${MULTIPLIER_MAP[hiddenMatches]}x`, color: COLOR_MAP[hiddenMatches], dead: false };
+              });
+              const firstValid = entries.find(e => !e.dead);
+              const exampleMatch = firstValid ? firstValid.digits : 3;
+              const exampleMult = firstValid ? parseInt(firstValid.mult) : 9;
+              return (
+                <div className="flex-1 w-full max-w-md">
+                  <p className="text-gray-400 text-xs font-medium mb-2 text-center lg:text-left">
+                    Return Multipliers
+                    {revealedDigits > 0 && <span className="text-gray-500 ml-1">({revealedDigits} revealed — must match)</span>}
+                  </p>
+                  <div className="grid grid-cols-4 gap-1.5 text-xs">
+                    {entries.map((item) => (
+                      <div key={item.digits} className={`flex flex-col items-center p-2 rounded-lg ${item.dead ? 'bg-rose-500/5 border border-rose-500/10' : 'bg-dark-800/50 border border-dark-600/30'}`}>
+                        <span className="text-gray-500 text-[10px]">{item.digits} match</span>
+                        <span className={`font-semibold ${item.color}`}>{item.mult}</span>
+                      </div>
+                    ))}
+                    <div className="flex flex-col items-center p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
+                      <span className="text-gray-500 text-[10px]">0 match</span>
+                      <span className="text-rose-400 font-semibold">Lost</span>
+                    </div>
                   </div>
-                ))}
-                <div className="flex flex-col items-center p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
-                  <span className="text-gray-500 text-[10px]">0 match</span>
-                  <span className="text-rose-400 font-semibold">Lost</span>
+                  <p className="text-gray-500 text-[10px] mt-2 text-center">
+                    Buy for {numberData?.price || 10} Z → Match {exampleMatch} digits = {(numberData?.price || 10) * exampleMult} Z return
+                  </p>
                 </div>
-              </div>
-              <p className="text-gray-500 text-[10px] mt-2 text-center">
-                Buy for {numberData?.price || 10} Z → Match 3 digits = {(numberData?.price || 10) * 9} Z return
-              </p>
-            </div>
+              );
+            })()}
           </div>
         </div>
 

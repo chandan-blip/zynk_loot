@@ -631,13 +631,19 @@ router.post('/complete-purchase/:orderId', async (req, res) => {
       ['completed', order.id]
     );
 
-    await connection.execute(
+    const [txnResult] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
        VALUES (?, 'deposit', ?, ?, ?, 'admin', ?, ?)`,
       [req.user.id, order.zynk_amount, currentBalance, newBalance, order.id, `Purchased ${order.zynk_amount} Zynk`]
     );
 
     await connection.commit();
+
+    // Process referral commission
+    const referralService = req.app.get('referralService');
+    if (referralService) {
+      referralService.processReferralCommission(req.user.id, txnResult.insertId, 'deposit', order.zynk_amount);
+    }
 
     res.json({
       success: true,
@@ -754,13 +760,19 @@ router.post('/withdraw-request', [
     );
 
     // Create transaction record
-    await connection.execute(
+    const [txnResult] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
        VALUES (?, 'withdrawal', ?, ?, ?, 'admin', ?, ?)`,
       [req.user.id, amount, currentBalance, newBalance, result.insertId, `Withdrawal request - ${methods[0].label}`]
     );
 
     await connection.commit();
+
+    // Process referral commission
+    const referralService = req.app.get('referralService');
+    if (referralService) {
+      referralService.processReferralCommission(req.user.id, txnResult.insertId, 'withdrawal', amount);
+    }
 
     res.json({
       success: true,
@@ -902,20 +914,27 @@ router.post('/transfer', [
     const transferId = transferResult.insertId;
 
     // Create transaction record for sender
-    await connection.execute(
+    const [senderTxn] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
        VALUES (?, 'transfer_out', ?, ?, ?, 'transfer', ?, ?)`,
       [req.user.id, amount, senderBalance, newSenderBalance, transferId, `Transfer to ${recipient.username}${note ? ': ' + note : ''}`]
     );
 
     // Create transaction record for recipient
-    await connection.execute(
+    const [recipientTxn] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
        VALUES (?, 'transfer_in', ?, ?, ?, 'transfer', ?, ?)`,
       [recipient_id, amount, recipientBalance, newRecipientBalance, transferId, `Transfer from ${sender.username}${note ? ': ' + note : ''}`]
     );
 
     await connection.commit();
+
+    // Process referral commissions for both parties
+    const referralService = req.app.get('referralService');
+    if (referralService) {
+      referralService.processReferralCommission(req.user.id, senderTxn.insertId, 'transfer_out', amount);
+      referralService.processReferralCommission(recipient_id, recipientTxn.insertId, 'transfer_in', amount);
+    }
 
     res.json({
       success: true,
@@ -1036,13 +1055,19 @@ router.post('/deposit', [
     );
 
     // Record transaction
-    await connection.execute(
+    const [txnResult] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, description)
        VALUES (?, 'deposit', ?, ?, ?, 'admin', ?)`,
       [req.user.id, amount, currentBalance, newBalance, `Deposit of ${amount} coins`]
     );
 
     await connection.commit();
+
+    // Process referral commission
+    const referralService = req.app.get('referralService');
+    if (referralService) {
+      referralService.processReferralCommission(req.user.id, txnResult.insertId, 'deposit', amount);
+    }
 
     res.json({
       success: true,
@@ -1099,13 +1124,19 @@ router.post('/withdraw', [
     );
 
     // Record transaction
-    await connection.execute(
+    const [txnResult] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, description)
        VALUES (?, 'withdrawal', ?, ?, ?, 'admin', ?)`,
       [req.user.id, amount, currentBalance, newBalance, `Withdrawal of ${amount} coins`]
     );
 
     await connection.commit();
+
+    // Process referral commission
+    const referralService = req.app.get('referralService');
+    if (referralService) {
+      referralService.processReferralCommission(req.user.id, txnResult.insertId, 'withdrawal', amount);
+    }
 
     res.json({
       success: true,

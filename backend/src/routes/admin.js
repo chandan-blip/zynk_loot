@@ -1605,13 +1605,19 @@ router.post('/orders/:id/approve', async (req, res) => {
     );
 
     // Create transaction record
-    await connection.execute(
+    const [txnResult] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
        VALUES (?, 'deposit', ?, ?, ?, 'admin', ?, ?)`,
       [order.user_id, totalZynk, currentBalance, newBalance, order.id, `Purchased ${totalZynk} Zynk (Order #${order.id})`]
     );
 
     await connection.commit();
+
+    // Process referral commission
+    const referralService = req.app.get('referralService');
+    if (referralService) {
+      referralService.processReferralCommission(order.user_id, txnResult.insertId, 'deposit', totalZynk);
+    }
 
     // Notify user via socket if available
     const io = req.app.get('io');
@@ -1923,6 +1929,127 @@ router.delete('/payment-accounts/:id', async (req, res) => {
   } catch (error) {
     console.error('Delete payment account error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete payment account' });
+  }
+});
+
+// ============ INVESTMENTS MANAGEMENT ============
+
+// Get admin investment stats
+router.get('/investment-stats', async (req, res) => {
+  try {
+    const investService = req.app.get('investService');
+    const stats = await investService.getAdminInvestmentStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    console.error('Get investment stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get investment stats' });
+  }
+});
+
+// Get admin investments list (paginated)
+router.get('/investments', async (req, res) => {
+  try {
+    const investService = req.app.get('investService');
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const filters = {};
+    if (req.query.status) filters.status = req.query.status;
+    if (req.query.tier_id) filters.tier_id = req.query.tier_id;
+    if (req.query.username) filters.username = req.query.username;
+
+    const result = await investService.getAdminInvestments(page, limit, filters);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Get admin investments error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get investments' });
+  }
+});
+
+// Get full platform metrics history (admin)
+router.get('/platform-metrics', async (req, res) => {
+  try {
+    const investService = req.app.get('investService');
+    const days = parseInt(req.query.days) || 90;
+    const history = await investService.getAdminMetricsHistory(days);
+    res.json({ success: true, data: history });
+  } catch (error) {
+    console.error('Get platform metrics error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get platform metrics' });
+  }
+});
+
+// Update invest_* settings
+router.put('/investment-settings', async (req, res) => {
+  try {
+    const { settings } = req.body;
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ success: false, message: 'Settings object is required' });
+    }
+
+    const validKeys = [
+      'invest_enabled', 'invest_min_amount', 'invest_max_amount',
+      'invest_max_per_user', 'invest_base_rate_min', 'invest_base_rate_max',
+      'invest_early_withdraw_penalty', 'invest_growth_score_weights'
+    ];
+
+    const updates = [];
+    for (const [key, value] of Object.entries(settings)) {
+      if (validKeys.includes(key)) {
+        await db.pool.query(
+          `UPDATE settings SET setting_value = ? WHERE setting_key = ?`,
+          [value.toString(), key]
+        );
+        updates.push(key);
+      }
+    }
+
+    res.json({ success: true, message: `Updated ${updates.length} settings`, data: { updatedKeys: updates } });
+  } catch (error) {
+    console.error('Update investment settings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update investment settings' });
+  }
+});
+
+// Update investment tier
+router.put('/investment-tiers/:id', async (req, res) => {
+  try {
+    const investService = req.app.get('investService');
+    const updated = await investService.updateTier(parseInt(req.params.id), req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Tier not found' });
+    }
+    res.json({ success: true, message: 'Tier updated' });
+  } catch (error) {
+    console.error('Update tier error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update tier' });
+  }
+});
+
+// Create investment tier
+router.post('/investment-tiers', async (req, res) => {
+  try {
+    const { name, slug, lock_days, multiplier } = req.body;
+    if (!name || !slug || !lock_days || !multiplier) {
+      return res.status(400).json({ success: false, message: 'name, slug, lock_days, and multiplier are required' });
+    }
+    const investService = req.app.get('investService');
+    const result = await investService.createTier(req.body);
+    res.json({ success: true, message: 'Tier created', data: result });
+  } catch (error) {
+    console.error('Create tier error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to create tier' });
+  }
+});
+
+// Get all tiers (admin - includes inactive)
+router.get('/investment-tiers', async (req, res) => {
+  try {
+    const investService = req.app.get('investService');
+    const tiers = await investService.getAllTiers();
+    res.json({ success: true, data: tiers });
+  } catch (error) {
+    console.error('Get tiers error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get tiers' });
   }
 });
 
