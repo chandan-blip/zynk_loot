@@ -23,11 +23,11 @@ import useStore from '../store/useStore';
 
 const navItems = [
   { path: '/', label: 'Home', icon: FiHome },
-  { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true },
-  { path: '/profile', label: 'Profile', icon: FiUser, authRequired: true },
+  // { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true },
+  // { path: '/profile', label: 'Profile', icon: FiUser, authRequired: true },
   { path: '/invest', label: 'Invest', icon: FiTrendingUp, authRequired: true },
   { path: '/promote', label: 'Promote', icon: FiShare2, authRequired: true },
-  { path: '/leaderboard', label: 'Leaderboard', icon: GiTrophy },
+  // { path: '/leaderboard', label: 'Leaderboard', icon: GiTrophy },
   { path: '/history', label: 'History', icon: FiClock },
 ];
 

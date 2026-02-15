@@ -24,6 +24,7 @@ const TicketService = require('./services/ticketService');
 const SupportService = require('./services/supportService');
 const ReferralService = require('./services/referralService');
 const InvestService = require('./services/investService');
+const ActivityService = require('./services/activityService');
 const referralRoutes = require('./routes/referral');
 const investRoutes = require('./routes/invest');
 
@@ -49,6 +50,7 @@ const cronService = new CronService(io, ticketService);
 const supportService = new SupportService(io);
 const referralService = new ReferralService();
 const investService = new InvestService(io);
+const activityService = new ActivityService(io);
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -63,6 +65,7 @@ app.set('cronService', cronService);
 app.set('supportService', supportService);
 app.set('referralService', referralService);
 app.set('investService', investService);
+app.set('activityService', activityService);
 app.set('io', io);
 
 // Socket authentication middleware
@@ -171,6 +174,9 @@ const startServer = async () => {
 
     // Start cron jobs for scheduled draws (loads config from DB first)
     await cronService.start();
+
+    // Start live activity feed
+    await activityService.start();
 
     // Check if there's an active draw, if not create one (for dev/testing)
     const currentDraw = await cronService.getCurrentDraw();

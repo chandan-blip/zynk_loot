@@ -213,4 +213,7 @@ export const updateConversationStatus = (conversationId, status) =>
   api.put(`/support/admin/conversations/${conversationId}/status`, { status });
 export const getAdminSupportUnread = () => api.get('/support/admin/unread');
 
+// Activity Config
+export const refreshActivityConfig = () => api.post('/admin/activity-config/refresh');
+
 export default api;

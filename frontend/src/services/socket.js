@@ -182,6 +182,13 @@ class SocketService {
     return () => this.socket.off('support:statusChanged', callback);
   }
 
+  // Subscribe to live activity feed
+  onActivityNew(callback) {
+    if (!this.socket) return;
+    this.socket.on('activity:new', callback);
+    return () => this.socket.off('activity:new', callback);
+  }
+
   getSocket() {
     return this.socket;
   }

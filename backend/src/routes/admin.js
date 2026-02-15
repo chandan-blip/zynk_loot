@@ -815,6 +815,12 @@ router.put('/settings/:key', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Setting not found' });
     }
 
+    // Auto-reload activity config when any activity setting changes
+    if (key.startsWith('activity_')) {
+      const activityService = req.app.get('activityService');
+      if (activityService) await activityService.reloadConfig();
+    }
+
     res.json({ success: true, message: 'Setting updated' });
   } catch (error) {
     console.error('Update setting error:', error);

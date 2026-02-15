@@ -35,6 +35,20 @@ const settingIcons = {
   invest_base_rate_max: FiPercent,
   invest_early_withdraw_penalty: FiPercent,
 
+  // Activity Feed
+  activity_enabled: FiToggleRight,
+  activity_frequency_min: FiClock,
+  activity_frequency_max: FiClock,
+  activity_amount_digits_min: FiSettings,
+  activity_amount_digits_max: FiSettings,
+  activity_weight_vote: FiPercent,
+  activity_weight_buy: FiPercent,
+  activity_weight_sell: FiPercent,
+  activity_weight_win: FiPercent,
+  activity_weight_zynk_buy: FiPercent,
+  activity_weight_transfer: FiPercent,
+  activity_weight_withdrawal: FiPercent,
+
   // Session hours
   session_1_generate_hour: FiClock,
   session_1_reveal_start_hour: FiClock,
@@ -77,6 +91,20 @@ const settingLabels = {
   invest_base_rate_max: 'Base Rate Max (daily)',
   invest_early_withdraw_penalty: 'Early Withdraw Penalty',
 
+  // Activity Feed
+  activity_enabled: 'Activity Feed Enabled',
+  activity_frequency_min: 'Min Interval (seconds)',
+  activity_frequency_max: 'Max Interval (seconds)',
+  activity_amount_digits_min: 'Min Amount Digits',
+  activity_amount_digits_max: 'Max Amount Digits',
+  activity_weight_vote: 'Vote Weight (%)',
+  activity_weight_buy: 'Buy Weight (%)',
+  activity_weight_sell: 'Sell Weight (%)',
+  activity_weight_win: 'Win Weight (%)',
+  activity_weight_zynk_buy: 'Zynk Buy Weight (%)',
+  activity_weight_transfer: 'Transfer Weight (%)',
+  activity_weight_withdrawal: 'Withdrawal Weight (%)',
+
   // Session 1
   session_1_generate_hour: 'Session 1 Generate Hour',
   session_1_reveal_start_hour: 'Session 1 Reveal Start',
@@ -100,6 +128,7 @@ const settingCategories = {
   'Prize Settings': ['exact_match_multiplier', 'near_match_multiplier', 'vote_reward'],
   'Referral Settings': ['referral_commission_rate'],
   'Investment Settings': ['invest_enabled', 'invest_min_amount', 'invest_max_amount', 'invest_max_per_user', 'invest_base_rate_min', 'invest_base_rate_max', 'invest_early_withdraw_penalty'],
+  'Live Activity Feed': ['activity_enabled', 'activity_frequency_min', 'activity_frequency_max', 'activity_amount_digits_min', 'activity_amount_digits_max', 'activity_weight_vote', 'activity_weight_buy', 'activity_weight_sell', 'activity_weight_win', 'activity_weight_zynk_buy', 'activity_weight_transfer', 'activity_weight_withdrawal'],
   'Session 1 (Morning)': ['session_1_generate_hour', 'session_1_reveal_start_hour', 'session_1_reveal_end_hour'],
   'Session 2 (Evening)': ['session_2_generate_hour', 'session_2_reveal_start_hour', 'session_2_reveal_end_hour'],
   'Session 3 (Night)': ['session_3_generate_hour', 'session_3_reveal_start_hour', 'session_3_reveal_end_hour']
@@ -180,7 +209,7 @@ function AdminSettings() {
         return (
           <div key={category} className="space-y-3">
             <h2 className="text-lg font-semibold text-white border-b border-dark-600 pb-2">{category}</h2>
-            <div className="grid gap-3">
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-4 gap-3">
               {categorySettings.map((setting, i) => {
                 const Icon = settingIcons[setting.setting_key] || FiSettings;
                 const label = settingLabels[setting.setting_key] || setting.setting_key;
@@ -195,7 +224,7 @@ function AdminSettings() {
                     transition={{ delay: i * 0.03 }}
                     className="bg-dark-800 border border-dark-600 rounded-xl p-4"
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex flex-col sm:items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
                           <Icon className="w-5 h-5 text-accent" />

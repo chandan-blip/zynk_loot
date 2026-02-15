@@ -1113,6 +1113,21 @@ class CronService {
       console.log('[CRON] Investment returns job scheduled at 00:30 daily');
     }
 
+    // Register and schedule Daily Winners Cleanup (01:00 daily)
+    const winnersCleanupCron = '0 1 * * *';
+    await this.registerJob('daily_winners_cleanup', 'maintenance', winnersCleanupCron, null, { description: 'Delete winner rows older than 1 day' });
+    this.scheduledJobs.push(
+      cron.schedule(winnersCleanupCron, async () => {
+        await this.executeWithLogging('daily_winners_cleanup', async () => {
+          const [result] = await db.pool.query(
+            'DELETE FROM winners WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)'
+          );
+          return { deletedRows: result.affectedRows };
+        });
+      }, { timezone })
+    );
+    console.log('[CRON] Winners cleanup job scheduled at 01:00 daily');
+
     console.log('[CRON] Cron jobs scheduled and registered in database:');
     console.log(`  Timezone: ${timezone}`);
     console.log(`  Session 1: Generate ${session1.generateHour}:00, Complete ${session2.generateHour}:00`);

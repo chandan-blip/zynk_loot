@@ -145,67 +145,33 @@ function Home() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // Demo activity data generator
+  // Activity type → visual metadata mapping
+  const activityMeta = {
+    vote: { icon: FiHeart, color: 'text-pink-400', bgColor: 'bg-pink-500/20' },
+    buy: { icon: FiShoppingCart, color: 'text-accent', bgColor: 'bg-accent/20' },
+    sell: { icon: FiArrowUpRight, color: 'text-purple-light', bgColor: 'bg-purple/20' },
+    win: { icon: FiAward, color: 'text-gold-light', bgColor: 'bg-gold/20' },
+    zynk_buy: { icon: FiDollarSign, color: 'text-emerald-light', bgColor: 'bg-emerald/20' },
+    transfer: { icon: FiSend, color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
+    withdrawal: { icon: FiArrowDownRight, color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
+  };
+
+  // Live activity feed from server via socket
   useEffect(() => {
-    const activityTypes = [
-      { type: 'vote', icon: FiHeart, color: 'text-pink-400', bgColor: 'bg-pink-500/20' },
-      { type: 'buy', icon: FiShoppingCart, color: 'text-accent', bgColor: 'bg-accent/20' },
-      { type: 'sell', icon: FiArrowUpRight, color: 'text-purple-light', bgColor: 'bg-purple/20' },
-      { type: 'win', icon: FiAward, color: 'text-gold-light', bgColor: 'bg-gold/20' },
-      { type: 'zynk_buy', icon: FiDollarSign, color: 'text-emerald-light', bgColor: 'bg-emerald/20' },
-      { type: 'transfer', icon: FiSend, color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
-      { type: 'withdrawal', icon: FiArrowDownRight, color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
-    ];
+    const unsub = socketService.onActivityNew?.((activity) => {
+      const meta = activityMeta[activity.type] || activityMeta.buy;
+      const enriched = { ...activity, ...meta };
 
-    const usernames = ['CryptoKing', 'LuckyAce', 'NumberPro', 'ZynkMaster', 'LootHunter', 'BigWinner', 'FastTrader', 'GoldRush', 'DiamondHands', 'MoonShot'];
-
-    const generateActivity = () => {
-      const actType = activityTypes[Math.floor(Math.random() * activityTypes.length)];
-      const username = usernames[Math.floor(Math.random() * usernames.length)];
-      const number = String(Math.floor(Math.random() * 10000000)).padStart(7, '0');
-      const amount = Math.floor(Math.random() * 5000) + 10;
-
-      let description = '';
-      switch (actType.type) {
-        case 'vote': description = `voted for ${number}`; break;
-        case 'buy': description = `bought ${number} for ${amount}Z`; break;
-        case 'sell': description = `sold ${number} for ${amount}Z`; break;
-        case 'win': description = `won ${amount}Z with ${number}`; break;
-        case 'zynk_buy': description = `purchased ${amount}Z`; break;
-        case 'transfer': description = `sent ${amount}Z`; break;
-        case 'withdrawal': description = `withdrew ${amount}Z`; break;
-        default: description = `${actType.type}`;
-      }
-
-      return {
-        id: Date.now() + Math.random(),
-        ...actType,
-        username,
-        description,
-        amount,
-        time: 'Just now',
-        timestamp: Date.now(),
-      };
-    };
-
-    // Initialize with some activities
-    const initialActivities = Array.from({ length: 8 }, generateActivity);
-    setRecentActivities(initialActivities);
-
-    // Add new activity every 3-6 seconds
-    const interval = setInterval(() => {
       setRecentActivities(prev => {
-        const newActivity = generateActivity();
-        const updated = [newActivity, ...prev].slice(0, 15); // Keep max 15
-        // Update times
+        const updated = [enriched, ...prev].slice(0, 15);
         return updated.map((act, idx) => ({
           ...act,
           time: idx === 0 ? 'Just now' : `${Math.floor((Date.now() - act.timestamp) / 1000)}s ago`
         }));
       });
-    }, Math.random() * 3000 + 3000);
+    });
 
-    return () => clearInterval(interval);
+    return () => unsub?.();
   }, []);
 
   // Sync reveal state with draw data from server (SERVER IS SOURCE OF TRUTH)
@@ -568,6 +534,9 @@ function Home() {
         setDraw(res.data.data);
         syncRevealStateWithDraw(res.data.data);
       });
+      // Refetch numbers — new draw resets prices and virtual numbers
+      fetchNumbers(true);
+      setUpcomingSession(null);
     });
 
     const unsubComplete = socketService.onDrawReveal?.((data) => {
@@ -592,6 +561,8 @@ function Home() {
         status: "revealing",
         isComplete: false,
       }));
+      // Refetch numbers — prices change with each reveal and mismatched numbers need filtering
+      fetchNumbers(true);
     });
 
     // Listen for draw complete
@@ -610,6 +581,8 @@ function Home() {
         status: "completed",
         nextRevealIn: 0,
       }));
+      // Refetch numbers — ticket statuses change on draw complete
+      fetchNumbers(true);
     });
 
     const unsubVote = socketService.onNumberVote((data) => {
@@ -1481,15 +1454,10 @@ function TimeUnit({ value, label }) {
 function StickyUpcomingCountdown({ session }) {
   const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
 
+  // Re-sync when server provides new timeUntilStart
   useEffect(() => {
-    const timestamp = session.startsAt || session.nextRunAt;
-    if (timestamp) {
-      const nextRun = new Date(timestamp);
-      const now = new Date();
-      const diff = Math.max(0, Math.floor((nextRun - now) / 1000));
-      setTimeLeft(diff);
-    }
-  }, [session.startsAt, session.nextRunAt]);
+    setTimeLeft(session.timeUntilStart || 0);
+  }, [session.timeUntilStart]);
 
   useEffect(() => {
     if (timeLeft <= 0) return;
@@ -1497,7 +1465,7 @@ function StickyUpcomingCountdown({ session }) {
       setTimeLeft(prev => Math.max(0, prev - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [timeLeft]);
+  }, [timeLeft > 0]);
 
   const hrs = Math.floor(timeLeft / 3600);
   const mins = Math.floor((timeLeft % 3600) / 60);
@@ -1537,16 +1505,10 @@ function StickyUpcomingCountdown({ session }) {
 function UpcomingSessionCountdown({ session }) {
   const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
 
+  // Re-sync when server provides new timeUntilStart
   useEffect(() => {
-    // Calculate time left from startsAt (API field) or nextRunAt (fallback)
-    const timestamp = session.startsAt || session.nextRunAt;
-    if (timestamp) {
-      const nextRun = new Date(timestamp);
-      const now = new Date();
-      const diff = Math.max(0, Math.floor((nextRun - now) / 1000));
-      setTimeLeft(diff);
-    }
-  }, [session.startsAt, session.nextRunAt]);
+    setTimeLeft(session.timeUntilStart || 0);
+  }, [session.timeUntilStart]);
 
   useEffect(() => {
     if (timeLeft <= 0) return;
@@ -1556,7 +1518,7 @@ function UpcomingSessionCountdown({ session }) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeLeft]);
+  }, [timeLeft > 0]);
 
   const hours = Math.floor(timeLeft / 3600);
   const minutes = Math.floor((timeLeft % 3600) / 60);
