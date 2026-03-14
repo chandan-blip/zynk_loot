@@ -16,16 +16,19 @@ import {
   FiCreditCard,
   FiUser,
   FiShare2,
-  FiTrendingUp
+  FiTrendingUp,
+  FiPlay
 } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
+import { sounds } from '../utils/sounds';
 
 const navItems = [
   { path: '/', label: 'Home', icon: FiHome },
   // { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true },
   // { path: '/profile', label: 'Profile', icon: FiUser, authRequired: true },
   { path: '/invest', label: 'Invest', icon: FiTrendingUp, authRequired: true },
+  { path: '/games', label: 'Games', icon: FiPlay, special: true },
   { path: '/promote', label: 'Promote', icon: FiShare2, authRequired: true },
   // { path: '/leaderboard', label: 'Leaderboard', icon: GiTrophy },
   { path: '/history', label: 'History', icon: FiClock },
@@ -144,21 +147,29 @@ function Layout() {
                   {navItems
                     .filter(item => !item.authRequired || isAuthenticated)
                     .map((item) => {
-                    const isActive = location.pathname === item.path;
+                    const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));
                     return (
-                      <Link key={item.path} to={item.path} onClick={closeSidebar}>
+                      <Link key={item.path} to={item.path} onClick={() => { sounds.tap(); closeSidebar(); }}>
                         <motion.div
                           whileHover={{ x: 4 }}
                           whileTap={{ scale: 0.98 }}
-                          className={`flex items-center justify-between px-4 py-3.5 rounded-lg transition-all ${
+                          className={`flex items-center justify-between px-4 py-3.5 rounded-lg transition-all relative overflow-hidden ${
                             isActive
                               ? 'bg-accent text-dark-900 shadow-glow-sm'
-                              : 'text-gray-400 hover:text-white hover:bg-white/5'
+                              : item.special
+                                ? 'bg-gradient-to-r from-purple-500/15 to-pink-500/15 text-purple-300 border border-purple-500/20 hover:from-purple-500/25 hover:to-pink-500/25'
+                                : 'text-gray-400 hover:text-white hover:bg-white/5'
                           }`}
                         >
+                          {item.special && !isActive && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-[shimmer_3s_infinite] pointer-events-none" />
+                          )}
                           <div className="flex items-center gap-3">
                             <item.icon className="w-5 h-5" />
                             <span className="font-medium">{item.label}</span>
+                            {item.special && !isActive && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/30 text-purple-200 uppercase tracking-wider">Hot</span>
+                            )}
                           </div>
                           <FiChevronRight className={`w-4 h-4 ${isActive ? 'opacity-70' : 'opacity-0 group-hover:opacity-50'}`} />
                         </motion.div>
@@ -290,17 +301,20 @@ function Layout() {
                 {navItems
                   .filter(item => !item.authRequired || isAuthenticated)
                   .map((item) => {
-                  const isActive = location.pathname === item.path;
+                  const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));
                   return (
                     <Link
                       key={item.path}
                       to={item.path}
                       className="relative flex-1 h-full"
+                      onClick={() => sounds.tap()}
                     >
                       <motion.div
                         whileTap={{ scale: 0.95 }}
                         className={`flex flex-col items-center justify-center h-full transition-colors ${
-                          isActive ? 'text-accent' : 'text-gray-500 hover:text-gray-300'
+                          isActive ? 'text-accent'
+                            : item.special ? 'text-purple-400'
+                            : 'text-gray-500 hover:text-gray-300'
                         }`}
                       >
                         {isActive && (
@@ -309,8 +323,11 @@ function Layout() {
                             className="absolute top-0 transform translate-y-0 w-12 h-1 bg-accent rounded-b-full"
                           />
                         )}
-                        <item.icon className={`w-5 h-5 ${isActive ? 'text-accent' : ''}`} />
-                        <span className="text-[10px] mt-1 font-medium">{item.label}</span>
+                        {item.special && !isActive && (
+                          <div className="absolute top-1 right-1/2 translate-x-4 w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                        )}
+                        <item.icon className={`w-5 h-5 ${isActive ? 'text-accent' : item.special ? 'text-purple-400' : ''}`} />
+                        <span className={`text-[10px] mt-1 font-medium ${item.special && !isActive ? 'text-purple-400' : ''}`}>{item.label}</span>
                       </motion.div>
                     </Link>
                   );

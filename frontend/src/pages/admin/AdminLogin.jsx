@@ -24,7 +24,7 @@ function AdminLogin() {
 
     setLoading(true);
     try {
-      const response = await api.login(email, password);
+      const response = await api.login({ email, password });
       if (response.data.success) {
         const userData = response.data.data.user;
 

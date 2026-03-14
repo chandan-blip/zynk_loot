@@ -28,8 +28,10 @@ const SupportService = require('./services/supportService');
 const ReferralService = require('./services/referralService');
 const InvestService = require('./services/investService');
 const ActivityService = require('./services/activityService');
+const GameService = require('./services/gameService');
 const referralRoutes = require('./routes/referral');
 const investRoutes = require('./routes/invest');
+const gameRoutes = require('./routes/games');
 
 const app = express();
 const server = http.createServer(app);
@@ -56,6 +58,7 @@ const supportService = new SupportService(io);
 const referralService = new ReferralService();
 const investService = new InvestService(io);
 const activityService = new ActivityService(io);
+const gameService = new GameService(io);
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -71,6 +74,7 @@ app.set('supportService', supportService);
 app.set('referralService', referralService);
 app.set('investService', investService);
 app.set('activityService', activityService);
+app.set('gameService', gameService);
 app.set('io', io);
 
 // Socket authentication middleware
@@ -141,6 +145,13 @@ app.use('/api/users', usersRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/referral', referralRoutes);
 app.use('/api/invest', investRoutes);
+app.use('/api/games', gameRoutes);
+
+// Recent activities (public, no auth needed)
+app.get('/api/activities/recent', (req, res) => {
+  const activityService = req.app.get('activityService');
+  res.json({ success: true, data: activityService?.getRecent() || [] });
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -25,6 +25,7 @@ class ActivityService {
   constructor(io) {
     this.io = io;
     this.timer = null;
+    this.recentActivities = [];
     this.config = {
       enabled: true,
       frequencyMin: 3,
@@ -99,7 +100,13 @@ class ActivityService {
 
   generateAndBroadcast() {
     const activity = this.generateActivity();
+    this.recentActivities.unshift(activity);
+    if (this.recentActivities.length > 5) this.recentActivities.length = 5;
     this.io.emit('activity:new', activity);
+  }
+
+  getRecent() {
+    return this.recentActivities;
   }
 
   generateActivity() {

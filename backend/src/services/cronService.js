@@ -964,6 +964,8 @@ class CronService {
         if (this.ticketService) {
           try {
             await this.ticketService.processReveal(draw, timeBasedDigits);
+            // Process auto-cashouts after reveal
+            await this.ticketService.processAutoCashouts(draw.id);
           } catch (ticketError) {
             console.error('[CRON] Error processing ticket reveals:', ticketError);
           }

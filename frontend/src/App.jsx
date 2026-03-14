@@ -32,6 +32,16 @@ import Wallet from './pages/Wallet';
 import Checkout from './pages/Checkout';
 import Promote from './pages/Promote';
 import Invest from './pages/Invest';
+import Games from './pages/games/Games';
+import CoinFlip from './pages/games/CoinFlip';
+import DiceRoll from './pages/games/DiceRoll';
+import LuckySpin from './pages/games/LuckySpin';
+import BalloonPop from './pages/games/BalloonPop';
+import DragonTower from './pages/games/DragonTower';
+import IceField from './pages/games/IceField';
+import ArrowRoulette from './pages/games/ArrowRoulette';
+import EggHatch from './pages/games/EggHatch';
+import FuseGame from './pages/games/Fuse';
 import AdminInvestments from './pages/admin/AdminInvestments';
 
 function PublicRoute({ children }) {
@@ -147,6 +157,16 @@ function App() {
           <Route path="profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="promote" element={<PrivateRoute><Promote /></PrivateRoute>} />
           <Route path="invest" element={<PrivateRoute><Invest /></PrivateRoute>} />
+          <Route path="games" element={<Games />} />
+          <Route path="games/coin-flip" element={<PrivateRoute><CoinFlip /></PrivateRoute>} />
+          <Route path="games/dice-roll" element={<PrivateRoute><DiceRoll /></PrivateRoute>} />
+          <Route path="games/lucky-spin" element={<PrivateRoute><LuckySpin /></PrivateRoute>} />
+          <Route path="games/balloon-pop" element={<PrivateRoute><BalloonPop /></PrivateRoute>} />
+          <Route path="games/dragon-tower" element={<PrivateRoute><DragonTower /></PrivateRoute>} />
+          <Route path="games/ice-field" element={<PrivateRoute><IceField /></PrivateRoute>} />
+          <Route path="games/arrow-roulette" element={<PrivateRoute><ArrowRoulette /></PrivateRoute>} />
+          <Route path="games/egg-hatch" element={<PrivateRoute><EggHatch /></PrivateRoute>} />
+          <Route path="games/fuse" element={<PrivateRoute><FuseGame /></PrivateRoute>} />
           <Route path="leaderboard" element={<Leaderboard />} />
           <Route path="history" element={<History />} />
           <Route path="faq" element={<FAQ />} />

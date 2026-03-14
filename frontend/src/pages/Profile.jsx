@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   FiUser,
   FiMail,
+  FiPhone,
   FiCalendar,
   FiTrendingUp,
   FiTrendingDown,
@@ -376,8 +377,17 @@ function Profile() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-2 text-gray-400">
-                  <FiMail className="w-4 h-4" />
-                  <span>{userData.email}</span>
+                  {userData.phone ? (
+                    <>
+                      <FiPhone className="w-4 h-4" />
+                      <span>{userData.phone}</span>
+                    </>
+                  ) : userData.email ? (
+                    <>
+                      <FiMail className="w-4 h-4" />
+                      <span>{userData.email}</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -386,17 +396,6 @@ function Profile() {
                   <FiCalendar className="w-4 h-4" />
                   <span>Joined {formatDate(userData.joinedAt)}</span>
                 </div>
-                <button
-                  onClick={copyUserId}
-                  className="flex items-center gap-2 text-gray-400 hover:text-accent transition-colors"
-                >
-                  {copiedId ? (
-                    <FiCheck className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <FiCopy className="w-4 h-4" />
-                  )}
-                  <span>ID: {userData.id}</span>
-                </button>
               </div>
 
               {/* Balance Display */}

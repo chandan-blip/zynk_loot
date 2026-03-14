@@ -1,37 +1,54 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiMail, FiLock, FiLogIn } from 'react-icons/fi';
+import { FiMail, FiLock, FiLogIn, FiPhone, FiAlertCircle } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import * as api from '../services/api';
 import useStore from '../store/useStore';
+import { validatePhone } from '../utils/validators';
 
 function Login() {
+  const [authMethod, setAuthMethod] = useState('phone');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const { login } = useStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!email || !password) {
-      toast.error('Please fill in all fields');
+    setError('');
+    const contact = authMethod === 'email' ? email : phone;
+    if (!contact || !password) {
+      setError('Please fill in all fields');
       return;
+    }
+
+    // Normalize phone with auto-detected country code
+    let normalizedPhone = undefined;
+    if (authMethod === 'phone') {
+      const result = validatePhone(phone);
+      normalizedPhone = result.valid ? result.phone : phone;
     }
 
     setLoading(true);
     try {
-      const response = await api.login(email, password);
+      const response = await api.login({
+        email: authMethod === 'email' ? email : undefined,
+        phone: authMethod === 'phone' ? normalizedPhone : undefined,
+        password,
+      });
       if (response.data.success) {
         login(response.data.data.token, response.data.data.user);
         toast.success('Welcome back!');
         navigate('/');
       }
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -58,29 +75,70 @@ function Login() {
 
         {/* Form */}
         <div className="card p-8">
+          {/* Auth Method Tabs */}
+          <div className="flex gap-1 p-1 rounded-lg bg-dark-700 mb-6">
+            <button
+              type="button"
+              onClick={() => setAuthMethod('phone')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-all ${
+                authMethod === 'phone'
+                  ? 'bg-dark-500 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <FiPhone className="w-4 h-4" />
+              Phone
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMethod('email')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-all ${
+                authMethod === 'email'
+                  ? 'bg-dark-500 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <FiMail className="w-4 h-4" />
+              Email
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Email
-              </label>
-              <div className="relative">
-                <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
-                  placeholder="your@email.com"
-                />
+            {/* Phone or Email */}
+            {authMethod === 'phone' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Phone Number</label>
+                <div className="relative">
+                  <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    maxLength={11}
+                    onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 11); setPhone(v); }}
+                    className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
+                    placeholder="98765 43210"
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Email</label>
+                <div className="relative">
+                  <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
+                    placeholder="your@email.com"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Password
-              </label>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Password</label>
               <div className="relative">
                 <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
                 <input
@@ -92,6 +150,18 @@ function Login() {
                 />
               </div>
             </div>
+
+            {/* Error Message */}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              >
+                <FiAlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </motion.div>
+            )}
 
             {/* Submit */}
             <motion.button
@@ -115,7 +185,6 @@ function Login() {
             </motion.button>
           </form>
 
-          {/* Register Link */}
           <div className="mt-6 text-center text-gray-500">
             Don't have an account?{' '}
             <Link to="/register" className="text-accent hover:underline font-medium">

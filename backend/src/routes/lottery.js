@@ -387,7 +387,8 @@ router.get('/numbers/:number', async (req, res) => {
         currentReturn: parseFloat(number.current_return) || 0,
         ticketStatus: ticketStatus,
         buyAmount: parseFloat(number.buy_amount || number.price),
-        canCashOut: canCashOut
+        canCashOut: canCashOut,
+        autoCashoutAt: number.auto_cashout_at || null
       }
     });
   } catch (error) {
@@ -585,6 +586,7 @@ router.get('/my-numbers', authenticateToken, async (req, res) => {
         currentReturn: parseFloat(n.current_return || 0),
         status: n.ticket_status || 'active',
         canCashOut: n.canCashOut || false,
+        autoCashoutAt: n.auto_cashout_at || null,
         // Session info
         sessionNumber: n.session_number || null,
         periodId: n.period_id || null,
@@ -664,6 +666,34 @@ router.post('/tickets/:id/cashout', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Cash out error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Schedule auto-cashout for a ticket
+router.post('/tickets/:id/schedule-cashout', authenticateToken, async (req, res) => {
+  try {
+    const ticketService = req.app.get('ticketService');
+    if (!ticketService) {
+      return res.status(500).json({ success: false, message: 'Ticket service not available' });
+    }
+
+    const { matchedDigits } = req.body;
+    const target = matchedDigits === null || matchedDigits === undefined ? null : parseInt(matchedDigits);
+
+    if (target !== null && (isNaN(target) || target < 1 || target > 6)) {
+      return res.status(400).json({ success: false, message: 'Auto-cashout must be between 1 and 6' });
+    }
+
+    const result = await ticketService.setAutoCashout(req.user.id, req.params.id, target);
+
+    res.json({
+      success: true,
+      message: target ? `Auto-cashout set at ${target} matched digits` : 'Auto-cashout removed',
+      data: result
+    });
+  } catch (error) {
+    console.error('Schedule cashout error:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });

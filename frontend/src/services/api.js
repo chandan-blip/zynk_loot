@@ -31,9 +31,9 @@ api.interceptors.response.use(
 );
 
 // Auth
-export const login = (email, password) => api.post('/auth/login', { email, password });
-export const register = (username, email, password, referralCode) =>
-  api.post('/auth/register', { username, email, password, referral_code: referralCode });
+export const login = ({ email, phone, password }) => api.post('/auth/login', { email, phone, password });
+export const register = ({ username, email, phone, password, referralCode }) =>
+  api.post('/auth/register', { username, email, phone, password, referral_code: referralCode });
 export const getMe = () => api.get('/auth/me');
 
 // Lottery
@@ -58,6 +58,7 @@ export const getRecentWinners = (limit = 10) => api.get(`/lottery/winners?limit=
 // Tickets (matching system)
 export const getTicketDetails = (ticketId) => api.get(`/lottery/tickets/${ticketId}`);
 export const cashOutTicket = (ticketId) => api.post(`/lottery/tickets/${ticketId}/cashout`);
+export const scheduleTicketCashout = (ticketId, matchedDigits) => api.post(`/lottery/tickets/${ticketId}/schedule-cashout`, { matchedDigits });
 
 // Wallet
 export const getWalletBalance = () => api.get('/wallet/balance');
@@ -213,7 +214,22 @@ export const updateConversationStatus = (conversationId, status) =>
   api.put(`/support/admin/conversations/${conversationId}/status`, { status });
 export const getAdminSupportUnread = () => api.get('/support/admin/unread');
 
+// Games
+export const playCoinFlip = (amount, prediction) => api.post('/games/coin-flip', { amount, prediction });
+export const playDiceRoll = (amount, prediction) => api.post('/games/dice-roll', { amount, prediction });
+export const playLuckySpin = (amount) => api.post('/games/lucky-spin', { amount });
+export const playBalloonPop = (amount, cashoutMultiplier) => api.post('/games/balloon-pop', { amount, cashoutMultiplier });
+export const playDragonTower = (amount, targetFloors) => api.post('/games/dragon-tower', { amount, targetFloors });
+export const playIceField = (amount, difficulty, targetRows) => api.post('/games/ice-field', { amount, difficulty, targetRows });
+export const playArrowRoulette = (amount) => api.post('/games/arrow-roulette', { amount });
+export const playEggHatch = (amount) => api.post('/games/egg-hatch', { amount });
+export const playFuse = (amount, cashoutMultiplier) => api.post('/games/fuse', { amount, cashoutMultiplier });
+export const getGameHistory = (page = 1, limit = 20, game_type = '') =>
+  api.get(`/games/history?page=${page}&limit=${limit}${game_type ? `&game_type=${game_type}` : ''}`);
+export const getGameStats = () => api.get('/games/stats');
+
 // Activity Config
 export const refreshActivityConfig = () => api.post('/admin/activity-config/refresh');
+export const getRecentActivities = () => api.get('/activities/recent');
 
 export default api;

@@ -322,6 +322,76 @@ class TicketService {
     }
   }
 
+  // Set or clear auto-cashout threshold for a ticket
+  async setAutoCashout(userId, numberId, matchedDigitsTarget) {
+    const connection = await db.getConnection();
+    try {
+      const [tickets] = await connection.execute(
+        `SELECT id, owner_id, ticket_status, matched_digits, draw_id FROM numbers WHERE id = ? AND owner_id = ?`,
+        [numberId, userId]
+      );
+
+      if (tickets.length === 0) throw new Error('Ticket not found or not owned by you');
+
+      const ticket = tickets[0];
+      if (['cashed_out', 'sold', 'lost'].includes(ticket.ticket_status)) {
+        throw new Error('Cannot schedule cashout for this ticket');
+      }
+
+      // null = remove schedule, otherwise validate range 1-6
+      if (matchedDigitsTarget !== null) {
+        if (matchedDigitsTarget < 1 || matchedDigitsTarget > 6) {
+          throw new Error('Auto-cashout must be between 1 and 6 matched digits');
+        }
+        // If ticket already has more matches than target, can't set retroactively
+        if ((ticket.matched_digits || 0) >= matchedDigitsTarget) {
+          throw new Error(`Ticket already has ${ticket.matched_digits} matches. Cash out now or set a higher target.`);
+        }
+      }
+
+      await connection.execute(
+        `UPDATE numbers SET auto_cashout_at = ? WHERE id = ?`,
+        [matchedDigitsTarget, numberId]
+      );
+
+      return { success: true, autoCashoutAt: matchedDigitsTarget };
+    } finally {
+      connection.release();
+    }
+  }
+
+  // Execute auto-cashouts for tickets that reached their threshold after a reveal
+  async processAutoCashouts(drawId) {
+    const [tickets] = await db.pool.query(
+      `SELECT n.id, n.owner_id, n.number, n.matched_digits, n.auto_cashout_at,
+              n.buy_amount, n.price, n.purchased_at_reveal
+       FROM numbers n
+       WHERE n.draw_id = ?
+       AND n.auto_cashout_at IS NOT NULL
+       AND n.ticket_status IN ('active', 'matching')
+       AND n.matched_digits >= n.auto_cashout_at
+       AND n.matched_digits > 0`,
+      [drawId]
+    );
+
+    let processed = 0;
+    for (const ticket of tickets) {
+      try {
+        await this.cashOut(ticket.owner_id, ticket.id);
+        console.log(`[AUTO-CASHOUT] ${ticket.number} auto-cashed at ${ticket.matched_digits} matches (target: ${ticket.auto_cashout_at})`);
+        processed++;
+      } catch (err) {
+        console.error(`[AUTO-CASHOUT] Failed for ${ticket.number}:`, err.message);
+      }
+    }
+
+    if (processed > 0) {
+      console.log(`[AUTO-CASHOUT] Processed ${processed} auto-cashouts for draw ${drawId}`);
+    }
+
+    return processed;
+  }
+
   // Get ticket details with matching info
   async getTicketDetails(numberId, userId = null) {
     const [tickets] = await db.pool.query(
@@ -355,6 +425,7 @@ class TicketService {
       buyAmount: parseFloat(buyAmount),
       price: parseFloat(ticket.price),
       drawId: ticket.draw_id,
+      autoCashoutAt: ticket.auto_cashout_at || null,
       // Only include sensitive info if owner
       ...(userId === ticket.owner_id && {
         cashedOutAt: ticket.cashed_out_at,

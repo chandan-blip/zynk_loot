@@ -13,7 +13,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, LineChart, Line
 } from 'recharts';
-import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer, cashOutTicket, getCurrentDraw, getUpcomingSession } from '../services/api';
+import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer, cashOutTicket, scheduleTicketCashout, getCurrentDraw, getUpcomingSession } from '../services/api';
 import socketService from '../services/socket';
 import useStore from '../store/useStore';
 
@@ -997,6 +997,53 @@ function NumberDetail() {
                 )}
               </div>
             </div>
+
+            {/* Schedule Auto-Cashout */}
+            {numberData?.canCashOut !== false && !['cashed_out', 'sold', 'lost', 'won'].includes(numberData?.ticketStatus) && numberData?.drawId && (
+              <div className="mt-3 pt-3 border-t border-dark-600/50">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium">Auto Cash Out</p>
+                    <p className="text-[10px] text-gray-600">
+                      {numberData?.autoCashoutAt
+                        ? `Will cash out at ${numberData.autoCashoutAt} matches`
+                        : 'Auto cash out when digits match'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3, 4, 5, 6].map(n => {
+                      const isActive = numberData?.autoCashoutAt === n;
+                      const isDisabled = n <= (numberData?.matchedDigits || 0);
+                      return (
+                        <button
+                          key={n}
+                          onClick={async () => {
+                            try {
+                              const target = isActive ? null : n;
+                              await scheduleTicketCashout(numberData.id, target);
+                              setNumberData(prev => ({ ...prev, autoCashoutAt: target }));
+                              toast.success(target ? `Auto-cashout set at ${target} matches` : 'Auto-cashout removed');
+                            } catch (err) {
+                              toast.error(err.response?.data?.message || 'Failed to set auto-cashout');
+                            }
+                          }}
+                          disabled={isDisabled}
+                          className={`w-7 h-7 rounded-md text-[10px] font-bold transition-all ${
+                            isActive
+                              ? 'bg-accent/20 border border-accent/40 text-accent'
+                              : isDisabled
+                                ? 'bg-dark-700/30 border border-white/5 text-gray-700 cursor-not-allowed'
+                                : 'bg-dark-700/40 border border-white/10 text-gray-400 hover:border-white/20 hover:text-white'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

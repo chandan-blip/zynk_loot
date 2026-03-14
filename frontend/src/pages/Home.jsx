@@ -14,11 +14,20 @@ import {
   FiSend,
   FiShoppingCart,
   FiHeart,
+  FiPlay,
+  FiStar,
+  FiTarget,
+  FiLayers,
+  FiGrid,
+  FiCrosshair,
+  FiGift,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { GiTwoCoins, GiTrophy, GiPodium } from "react-icons/gi";
+import { Link } from "react-router-dom";
 import LootCard from "../components/LootCard";
 import OnboardingGuide from "../components/OnboardingGuide";
-import { getNumbers, getCurrentDraw, getUpcomingSession, getPrizePool, getRecentWinners, getMyNumbers, getMyVotes, cashOutTicket, buyNumber, voteForNumber, unvoteForNumber } from "../services/api";
+import { getNumbers, getCurrentDraw, getUpcomingSession, getPrizePool, getRecentWinners, getMyNumbers, getMyVotes, cashOutTicket, scheduleTicketCashout, buyNumber, voteForNumber, unvoteForNumber, getRecentActivities } from "../services/api";
 import toast from "react-hot-toast";
 import socketService from "../services/socket";
 import useStore from "../store/useStore";
@@ -156,6 +165,21 @@ function Home() {
     withdrawal: { icon: FiArrowDownRight, color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
   };
 
+  // Load recent activities on mount so first-time visitors see activity immediately
+  useEffect(() => {
+    getRecentActivities().then(res => {
+      const items = (res.data.data || []).map(a => {
+        const meta = activityMeta[a.type] || activityMeta.buy;
+        return {
+          ...a,
+          ...meta,
+          time: `${Math.max(1, Math.floor((Date.now() - a.timestamp) / 1000))}s ago`
+        };
+      });
+      if (items.length > 0) setRecentActivities(items);
+    }).catch(() => {});
+  }, []);
+
   // Live activity feed - connect socket even without login
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -166,7 +190,9 @@ function Home() {
       const enriched = { ...activity, ...meta };
 
       setRecentActivities(prev => {
-        const updated = [enriched, ...prev].slice(0, 15);
+        // Deduplicate by id
+        const filtered = prev.filter(a => a.id !== enriched.id);
+        const updated = [enriched, ...filtered].slice(0, 15);
         return updated.map((act, idx) => ({
           ...act,
           time: idx === 0 ? 'Just now' : `${Math.floor((Date.now() - act.timestamp) / 1000)}s ago`
@@ -393,6 +419,20 @@ function Home() {
       toast.error(error.response?.data?.message || "Failed to cash out");
     } finally {
       setCashingOut(null);
+    }
+  };
+
+  // Schedule auto-cashout handler
+  const handleScheduleCashout = async (ticketId, number, matchedDigitsTarget) => {
+    try {
+      await scheduleTicketCashout(ticketId, matchedDigitsTarget);
+      setMyTickets(prev => ({
+        ...prev,
+        [number]: { ...prev[number], autoCashoutAt: matchedDigitsTarget }
+      }));
+      toast.success(matchedDigitsTarget ? `Auto-cashout set at ${matchedDigitsTarget} matches` : 'Auto-cashout removed');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to set auto-cashout');
     }
   };
 
@@ -1016,18 +1056,13 @@ function Home() {
                   <motion.div
                     key={activity.id}
                     layout
-                    initial={{
-                      opacity: 0,
-                    }}
-                    animate={{
-                      opacity: 1,
-                    }}
-                    exit={{
-                      opacity: 0,
-                    }}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
                     transition={{
                       layout: { type: 'spring', stiffness: 300, damping: 30 },
-                      opacity: { duration: 0.4, delay: index === 0 ? 0.1 : 0 },
+                      opacity: { duration: 0.3 },
+                      scale: { duration: 0.3 },
                     }}
                     className="flex-shrink-0 w-full sm:w-max justify-between flex items-center gap-2 px-3 py-3 rounded-lg bg-dark-800/80 border border-dark-600/50 hover:border-dark-500 overflow-hidden"
                     style={{ willChange: 'opacity, transform' }}
@@ -1053,6 +1088,58 @@ function Home() {
               })}
             </AnimatePresence>
           </div>
+        </div>
+      </motion.div>
+
+      {/* Instant Games Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="rounded-xl bg-dark-700/50 border border-dark-600 p-4"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <FiPlay className="w-4 h-4 text-accent" />
+            <h3 className="text-white font-semibold text-sm">Instant Games</h3>
+          </div>
+          <Link to="/games" className="text-accent text-xs font-medium flex items-center gap-1 hover:underline">
+            View All <FiChevronRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-1">
+          {[
+            { name: 'Coin Flip', icon: GiTwoCoins, maxWin: '1.95x', color: 'from-yellow-500/20 to-amber-500/20', border: 'border-yellow-500/30', iconColor: 'text-yellow-400', path: '/games/coin-flip' },
+            { name: 'Dice Roll', icon: FiZap, maxWin: '5.7x', color: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-500/30', iconColor: 'text-blue-400', path: '/games/dice-roll' },
+            { name: 'Lucky Spin', icon: FiStar, maxWin: '10x', color: 'from-purple-500/20 to-pink-500/20', border: 'border-purple-500/30', iconColor: 'text-purple-400', path: '/games/lucky-spin' },
+            { name: 'Balloon Pop', icon: FiTarget, maxWin: '50x', color: 'from-red-500/20 to-pink-500/20', border: 'border-red-500/30', iconColor: 'text-red-400', path: '/games/balloon-pop' },
+            { name: 'Dragon Tower', icon: FiLayers, maxWin: '200x', color: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-500/30', iconColor: 'text-amber-400', path: '/games/dragon-tower' },
+            { name: 'Ice Field', icon: FiGrid, maxWin: '84x', color: 'from-cyan-500/20 to-blue-500/20', border: 'border-cyan-500/30', iconColor: 'text-cyan-400', path: '/games/ice-field' },
+            { name: 'Arrow Roulette', icon: FiCrosshair, maxWin: '10x', color: 'from-red-500/20 to-orange-500/20', border: 'border-red-500/30', iconColor: 'text-red-400', path: '/games/arrow-roulette' },
+            { name: 'Egg Hatch', icon: FiGift, maxWin: '15x', color: 'from-amber-500/20 to-yellow-500/20', border: 'border-amber-500/30', iconColor: 'text-amber-400', path: '/games/egg-hatch' },
+            { name: 'Fuse', icon: FiAlertTriangle, maxWin: '50x', color: 'from-orange-500/20 to-red-500/20', border: 'border-orange-500/30', iconColor: 'text-orange-400', path: '/games/fuse' },
+          ].map((game) => (
+            <Link
+              key={game.name}
+              to={game.path}
+              className="flex-shrink-0 snap-start w-[calc(50%-6px)] sm:w-[calc(33.33%-8px)] md:w-[calc(25%-9px)]"
+            >
+              <div className={`relative rounded-xl bg-gradient-to-br ${game.color} border ${game.border} p-3 hover:brightness-110 transition-all overflow-hidden`}>
+                {/* Background icon */}
+                <game.icon className={`absolute -right-2 -bottom-2 w-16 h-16 ${game.iconColor} opacity-[0.08]`} />
+                <div className="relative flex items-start gap-2.5">
+                  <div className="w-9 h-9 shrink-0 rounded-lg bg-dark-700/60 border border-white/10 flex items-center justify-center">
+                    <game.icon className={`w-4 h-4 ${game.iconColor}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white text-xs font-semibold truncate">{game.name}</p>
+                    <p className="text-accent text-[10px] font-bold mt-0.5">up to {game.maxWin}</p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
       </motion.div>
 
@@ -1341,10 +1428,12 @@ function Home() {
                     status={ticketStatus}
                     canCashOut={ticketInfo.canCashOut || false}
                     buyAmount={ticketInfo.buyAmount}
+                    autoCashoutAt={ticketInfo.autoCashoutAt || null}
                     onBuy={handleBuy}
                     onVote={handleVote}
                     onUnvote={handleUnvote}
                     onCashOut={handleCashOut}
+                    onScheduleCashout={handleScheduleCashout}
                   />
                 </motion.div>
               );
