@@ -5,9 +5,12 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
+const path = require('path');
 const jwt = require('jsonwebtoken');
 
-dotenv.config();
+const fs = require('fs');
+const rootEnv = path.resolve(__dirname, '../../.env');
+dotenv.config({ path: fs.existsSync(rootEnv) ? rootEnv : undefined });
 
 const db = require('./config/database');
 const seedAdmin = require('./utils/seedAdmin');
@@ -32,12 +35,14 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost', 'http://localhost:3000', 'http://localhost:3001'];
+
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? ['http://localhost', 'http://localhost:3000', 'http://localhost:3001']
-      : '*',
+    origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -120,9 +125,7 @@ io.on('connection', (socket) => {
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? ['http://localhost', 'http://localhost:3000', 'http://localhost:3001']
-    : '*',
+  origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
   credentials: true
 }));
 app.use(morgan('dev'));

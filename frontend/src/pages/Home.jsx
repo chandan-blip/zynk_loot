@@ -156,8 +156,11 @@ function Home() {
     withdrawal: { icon: FiArrowDownRight, color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
   };
 
-  // Live activity feed from server via socket
+  // Live activity feed - connect socket even without login
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    socketService.connect(token);
+
     const unsub = socketService.onActivityNew?.((activity) => {
       const meta = activityMeta[activity.type] || activityMeta.buy;
       const enriched = { ...activity, ...meta };
