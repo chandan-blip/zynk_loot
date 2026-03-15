@@ -939,8 +939,8 @@ router.post('/deposits/:id/approve', async (req, res) => {
     await connection.beginTransaction();
 
     const [orders] = await connection.execute(
-      'SELECT * FROM zynk_orders WHERE id = ? AND status = ? FOR UPDATE',
-      [req.params.id, 'pending']
+      "SELECT * FROM zynk_orders WHERE id = ? AND status IN ('pending', 'awaiting_approval') FOR UPDATE",
+      [req.params.id]
     );
 
     if (orders.length === 0) {
@@ -1007,7 +1007,7 @@ router.post('/deposits/:id/approve', async (req, res) => {
 // Reject deposit
 router.post('/deposits/:id/reject', async (req, res) => {
   try {
-    const [orders] = await db.pool.query(`SELECT id, user_id, zynk_amount FROM zynk_orders WHERE id = ? AND status = 'pending'`, [req.params.id]);
+    const [orders] = await db.pool.query(`SELECT id, user_id, zynk_amount FROM zynk_orders WHERE id = ? AND status IN ('pending', 'awaiting_approval')`, [req.params.id]);
     if (orders.length === 0) return res.status(404).json({ success: false, message: 'Deposit not found or already processed' });
 
     const order = orders[0];
@@ -1659,14 +1659,20 @@ router.post('/orders/:id/approve', async (req, res) => {
       referralService.processReferralCommission(order.user_id, txnResult.insertId, 'deposit', totalZynk);
     }
 
-    // Notify user via socket if available
+    // Notify user
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId: order.user_id, type: 'personal',
+        title: 'Order Approved',
+        message: `Your purchase of ${totalZynk} Z has been approved and added to your balance.${adminNote !== 'Approved' ? ' Note: ' + adminNote : ''}`,
+      }).catch(() => {});
+    }
+
+    // Emit balance update via socket
     const io = req.app.get('io');
     if (io) {
-      io.to(`user_${order.user_id}`).emit('order_approved', {
-        orderId: order.id,
-        zynkAmount: totalZynk,
-        newBalance
-      });
+      io.to(`user:${order.user_id}`).emit('balance:update', { balance: newBalance });
     }
 
     res.json({
@@ -1708,13 +1714,14 @@ router.post('/orders/:id/reject', async (req, res) => {
       [req.user.id, note, req.params.id]
     );
 
-    // Notify user via socket if available
-    const io = req.app.get('io');
-    if (io) {
-      io.to(`user_${orders[0].user_id}`).emit('order_rejected', {
-        orderId: orders[0].id,
-        reason: note
-      });
+    // Notify user
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId: orders[0].user_id, type: 'personal',
+        title: 'Order Rejected',
+        message: `Your purchase order was rejected. Reason: ${note}`,
+      }).catch(() => {});
     }
 
     res.json({ success: true, message: 'Order rejected' });

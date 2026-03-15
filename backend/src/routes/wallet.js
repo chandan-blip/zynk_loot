@@ -406,7 +406,7 @@ router.post('/checkout', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { package_id, payment_method, payment_account_id, payment_reference, payment_note } = req.body;
+    const { package_id, payment_method, payment_account_id, payment_reference, payment_note, payment_currency, payment_amount } = req.body;
 
     await connection.beginTransaction();
 
@@ -454,9 +454,9 @@ router.post('/checkout', [
     // Create order awaiting approval
     const [orderResult] = await connection.execute(
       `INSERT INTO zynk_orders
-       (user_id, package_id, zynk_amount, bonus_amount, price, payment_method, payment_account_id, payment_reference, payment_note, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_approval')`,
-      [req.user.id, package_id, pkg.zynk_amount, bonusAmount, pkg.price, payment_method, payment_account_id || null, payment_reference || null, payment_note || null]
+       (user_id, package_id, zynk_amount, bonus_amount, price, payment_currency, payment_amount, payment_method, payment_account_id, payment_reference, payment_note, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_approval')`,
+      [req.user.id, package_id, pkg.zynk_amount, bonusAmount, pkg.price, payment_currency || null, payment_amount || null, payment_method, payment_account_id || null, payment_reference || null, payment_note || null]
     );
 
     await connection.commit();
