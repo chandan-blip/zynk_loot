@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { copyToClipboard } from '../../utils/clipboard';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiPlus, FiEdit2, FiTrash2, FiCheck, FiX, FiCopy,
@@ -207,8 +208,8 @@ function AdminPayments() {
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = (text) => {
+    copyToClipboard(text);
     toast.success('Copied to clipboard');
   };
 

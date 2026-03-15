@@ -23,8 +23,12 @@ import {
   getInvestmentStats,
   getInvestmentReturns
 } from '../services/api';
+import usePageTitle from '../hooks/usePageTitle';
+import PageHeader from '../components/PageHeader';
 
 function Invest() {
+  usePageTitle('Invest');
+
   const { user, checkAuth } = useStore();
   const [tiers, setTiers] = useState([]);
   const [stats, setStats] = useState(null);
@@ -164,16 +168,7 @@ function Invest() {
 
   return (
     <div className="mx-auto space-y-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-          <FiTrendingUp className="text-accent" />
-          Invest
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Invest your Zynk and earn returns based on platform growth
-        </p>
-      </div>
+      <PageHeader icon={FiTrendingUp} title="Invest" description="Grow your Zynk with daily returns" />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

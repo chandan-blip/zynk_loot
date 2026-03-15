@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FiHelpCircle, FiChevronDown, FiMessageCircle } from 'react-icons/fi';
 import useStore from '../store/useStore';
 import SupportChat from '../components/SupportChat';
+import usePageTitle from '../hooks/usePageTitle';
+import PageHeader from '../components/PageHeader';
 
 const faqs = [
   {
@@ -48,6 +50,8 @@ const faqs = [
 ];
 
 function FAQ() {
+  usePageTitle('FAQ');
+
   const [openIndex, setOpenIndex] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
   const { isAuthenticated } = useStore();
@@ -58,18 +62,7 @@ function FAQ() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Header */}
-      <div className="text-center mb-8 sm:mb-12">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-accent/10 mb-4">
-          <FiHelpCircle className="w-8 h-8 text-accent" />
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-          Frequently Asked Questions
-        </h1>
-        <p className="text-gray-500 text-sm sm:text-base">
-          Find answers to common questions about LOOT
-        </p>
-      </div>
+      <PageHeader icon={FiHelpCircle} title="FAQ" description="Common questions answered" />
 
       {/* FAQ List */}
       <div className="space-y-3">

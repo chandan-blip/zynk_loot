@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import { FiShield, FiLock, FiEye, FiDatabase, FiMail, FiGlobe } from 'react-icons/fi';
+import usePageTitle from '../hooks/usePageTitle';
+import PageHeader from '../components/PageHeader';
 
 const sections = [
   {
@@ -66,20 +68,11 @@ You can opt out of promotional communications at any time through your account s
 ];
 
 function Privacy() {
+  usePageTitle('Privacy');
+
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Header */}
-      <div className="text-center mb-8 sm:mb-12">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-accent/10 mb-4">
-          <FiShield className="w-8 h-8 text-accent" />
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-          Privacy Policy
-        </h1>
-        <p className="text-gray-500 text-sm sm:text-base">
-          Last updated: January 2025
-        </p>
-      </div>
+      <PageHeader icon={FiShield} title="Privacy Policy" description="Last updated: January 2025" />
 
       {/* Introduction */}
       <motion.div

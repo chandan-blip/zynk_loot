@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { FiArrowLeft, FiClock, FiLayers } from 'react-icons/fi';
+import { FiArrowLeft, FiLayers } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
-import { playDragonTower, getGameHistory, getGameStats } from '../../services/api';
+import { playDragonTower, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
+import usePageTitle from '../../hooks/usePageTitle';
+import GameHistory from '../../components/GameHistory';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 const MAX_FLOORS = 8;
@@ -16,6 +18,8 @@ const FLOOR_MULTIPLIERS = Array.from({ length: MAX_FLOORS }, (_, i) =>
 );
 
 function DragonTower() {
+  usePageTitle('Dragon Tower');
+
   const { user, checkAuth } = useStore();
   const [phase, setPhase] = useState('betting');
   const [amount, setAmount] = useState('');
@@ -26,18 +30,14 @@ function DragonTower() {
   const [revealing, setRevealing] = useState(false);
   const [result, setResult] = useState(null);
   const [showResult, setShowResult] = useState(false);
-  const [history, setHistory] = useState([]);
   const [stats, setStats] = useState(null);
+  const [historyKey, setHistoryKey] = useState(0);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
-      const [historyRes, statsRes] = await Promise.all([
-        getGameHistory(1, 10, 'dragon_tower'),
-        getGameStats()
-      ]);
-      setHistory(historyRes.data.data?.bets || []);
+      const statsRes = await getGameStats();
       const dtStats = (statsRes.data.data || []).find(s => s.game_type === 'dragon_tower');
       setStats(dtStats || null);
     } catch (err) {}
@@ -80,6 +80,7 @@ function DragonTower() {
         setResult(gameData);
         setShowResult(true);
         loadData();
+        setHistoryKey(k => k + 1);
       } else {
         await new Promise(r => setTimeout(r, 300));
         setCurrentFloor(prev => prev + 1);
@@ -91,6 +92,7 @@ function DragonTower() {
       setResult(gameData);
       setShowResult(true);
       loadData();
+      setHistoryKey(k => k + 1);
     }
     setRevealing(false);
   };
@@ -206,47 +208,42 @@ function DragonTower() {
             </div>
           )}
 
-          {history.length > 0 && (
-            <div className="rounded-xl bg-dark-700/30 border border-white/5 overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                <FiClock className="w-4 h-4 text-gray-500" />
-                <h3 className="text-sm font-semibold text-white">Recent Climbs</h3>
-              </div>
-              <div className="divide-y divide-white/5">
-                {history.map((bet) => {
-                  const details = typeof bet.details === 'string' ? JSON.parse(bet.details) : bet.details;
-                  return (
-                    <div key={bet.id} className="flex items-center justify-between px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
-                          bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {bet.is_win ? '\u{1F48E}' : '\u{1F409}'}
-                        </div>
-                        <div>
-                          <p className="text-sm text-white">
-                            Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
-                            <span className="text-gray-500 ml-1">
-                              {'\u2192'} {details?.targetFloors}F
-                            </span>
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {bet.is_win
-                              ? `Cleared ${details?.targetFloors} floors`
-                              : `Failed at floor ${details?.failedFloor}`}
-                            {' \u00B7 '}{new Date(bet.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                        {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
-                      </span>
+          <GameHistory
+            gameType="dragon_tower"
+            title="Recent Climbs"
+            refreshKey={historyKey}
+            renderItem={(bet) => {
+              const details = typeof bet.details === 'string' ? JSON.parse(bet.details) : bet.details;
+              return (
+                <div key={bet.id} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
+                      bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {bet.is_win ? '\u{1F48E}' : '\u{1F409}'}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                    <div>
+                      <p className="text-sm text-white">
+                        Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                        <span className="text-gray-500 ml-1">
+                          {'\u2192'} {details?.targetFloors}F
+                        </span>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {bet.is_win
+                          ? `Cleared ${details?.targetFloors} floors`
+                          : `Failed at floor ${details?.failedFloor}`}
+                        {' \u00B7 '}{new Date(bet.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
+                    {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                  </span>
+                </div>
+              );
+            }}
+          />
         </div>
 
         {/* Game (right on md+, top on mobile) */}

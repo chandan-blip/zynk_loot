@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { GiTrophy, GiCrown, GiPodium } from 'react-icons/gi';
-import { FiChevronDown } from 'react-icons/fi';
+import { FiChevronDown, FiAward } from 'react-icons/fi';
+import usePageTitle from '../hooks/usePageTitle';
+import PageHeader from '../components/PageHeader';
 
 const mockLeaderboard = Array.from({ length: 50 }, (_, i) => ({
   rank: i + 1,
@@ -14,6 +16,8 @@ const mockLeaderboard = Array.from({ length: 50 }, (_, i) => ({
 const timeFilters = ['All Time', 'This Month', 'This Week', 'Today'];
 
 function Leaderboard() {
+  usePageTitle('Leaderboard');
+
   const [timeFilter, setTimeFilter] = useState('All Time');
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -36,16 +40,7 @@ function Leaderboard() {
 
   return (
     <div className="w-full mx-auto space-y-3">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-            <GiTrophy className="text-accent" />
-            Leaderboard
-          </h1>
-          <p className="text-gray-500 mt-1 text-sm sm:text-base">Top players ranked by earnings</p>
-        </div>
-
+      <PageHeader icon={FiAward} title="Leaderboard" description="Top players by earnings">
         {/* Time Filter Dropdown */}
         <div className="relative">
           <button
@@ -75,7 +70,7 @@ function Leaderboard() {
             </motion.div>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       {/* Top 3 Podium */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4 items-end">

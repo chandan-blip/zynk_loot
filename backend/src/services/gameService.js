@@ -871,8 +871,8 @@ class GameService {
     }
 
     const [rows] = await db.query(
-      `SELECT * FROM game_bets ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, String(limit), String(offset)]
+      `SELECT * FROM game_bets ${where} ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
+      params
     );
 
     const [countResult] = await db.query(

@@ -57,6 +57,7 @@ import {
   getTransferHistory,
   getUserOrders
 } from '../services/api';
+import usePageTitle from '../hooks/usePageTitle';
 
 const CRYPTO_TYPES = [
   { value: 'BTC', label: 'Bitcoin (BTC)', icon: SiBitcoin },
@@ -89,6 +90,8 @@ const ACHIEVEMENTS = [
 const CHART_COLORS = ['#00D4AA', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'];
 
 function Wallet() {
+  usePageTitle('Wallet');
+
   const navigate = useNavigate();
   const { updateBalance } = useStore();
   const { zynkToUsd, selectedCurrency } = useCurrency();

@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiPlay, FiLock, FiStar, FiZap, FiTarget, FiLayers, FiGrid, FiCrosshair, FiGift, FiAlertTriangle, FiUsers } from "react-icons/fi";
 import { GiTwoCoins } from "react-icons/gi";
+import usePageTitle from "../../hooks/usePageTitle";
+import PageHeader from "../../components/PageHeader";
 
 const games = [
   {
@@ -137,6 +139,8 @@ const games = [
 const randomCount = (base) => base + Math.floor(Math.random() * Math.ceil(base * 0.4));
 
 function Games() {
+  usePageTitle('Games');
+
   const [playerCounts, setPlayerCounts] = useState(() =>
     Object.fromEntries(games.map(g => [g.id, randomCount(g.basePlayers || 10)]))
   );
@@ -159,18 +163,7 @@ function Games() {
 
   return (
     <div className="mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent/20 to-purple/20 border border-accent/30 flex items-center justify-center">
-            <FiPlay className="w-5 h-5 text-accent" />
-          </div>
-          Instant Games
-        </h1>
-        <p className="text-gray-400 mt-2">
-          Play and win instantly. Pick a game and try your luck!
-        </p>
-      </div>
+      <PageHeader icon={FiPlay} title="Instant Games" description="Play and win instantly" iconColor="text-accent" />
 
       {/* Games Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

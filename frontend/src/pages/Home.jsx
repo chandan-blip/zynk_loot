@@ -33,6 +33,7 @@ import socketService from "../services/socket";
 import useStore from "../store/useStore";
 import { useCurrency } from "../contexts/CurrencyContext";
 import { formatAmount } from "../utils/formatAmount";
+import usePageTitle from "../hooks/usePageTitle";
 
 const TOTAL_DIGITS = 7;
 
@@ -81,6 +82,7 @@ const PRIZE_TIERS = [
 ];
 
 function Home() {
+  usePageTitle('Home');
   const { user } = useStore();
   const { selectedCurrency } = useCurrency();
 

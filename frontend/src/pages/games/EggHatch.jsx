@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiArrowLeft, FiClock, FiGift } from 'react-icons/fi';
+import { FiArrowLeft, FiGift } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
-import { playEggHatch, getGameHistory, getGameStats } from '../../services/api';
+import { playEggHatch, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
+import usePageTitle from '../../hooks/usePageTitle';
+import GameHistory from '../../components/GameHistory';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 
@@ -79,6 +81,8 @@ function Egg({ index, state, multiplier, onPick, disabled }) {
 }
 
 function EggHatch() {
+  usePageTitle('Egg Hatch');
+
   const { user, checkAuth } = useStore();
   const [amount, setAmount] = useState('');
   const [picking, setPicking] = useState(false);
@@ -87,18 +91,14 @@ function EggHatch() {
   const [eggMultipliers, setEggMultipliers] = useState(Array(6).fill(null));
   const [result, setResult] = useState(null);
   const [showResult, setShowResult] = useState(false);
-  const [history, setHistory] = useState([]);
   const [stats, setStats] = useState(null);
+  const [historyKey, setHistoryKey] = useState(0);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
-      const [historyRes, statsRes] = await Promise.all([
-        getGameHistory(1, 10, 'egg_hatch'),
-        getGameStats()
-      ]);
-      setHistory(historyRes.data.data?.bets || []);
+      const statsRes = await getGameStats();
       const ehStats = (statsRes.data.data || []).find(s => s.game_type === 'egg_hatch');
       setStats(ehStats || null);
     } catch (err) {}
@@ -147,6 +147,7 @@ function EggHatch() {
       setShowResult(true);
       checkAuth();
       loadData();
+      setHistoryKey(k => k + 1);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     } finally {
@@ -200,37 +201,32 @@ function EggHatch() {
             </div>
           )}
 
-          {history.length > 0 && (
-            <div className="rounded-xl bg-dark-700/30 border border-white/5 overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                <FiClock className="w-4 h-4 text-gray-500" />
-                <h3 className="text-sm font-semibold text-white">Recent Hatches</h3>
-              </div>
-              <div className="divide-y divide-white/5">
-                {history.map((bet) => (
-                  <div key={bet.id} className="flex items-center justify-between px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                        bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
-                      }`}>
-                        {bet.result}
-                      </div>
-                      <div>
-                        <p className="text-sm text-white">
-                          Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
-                          {bet.is_win && <span className="text-accent ml-1">({parseFloat(bet.multiplier)}x)</span>}
-                        </p>
-                        <p className="text-xs text-gray-500">{new Date(bet.created_at).toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                      {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
-                    </span>
+          <GameHistory
+            gameType="egg_hatch"
+            title="Recent Hatches"
+            refreshKey={historyKey}
+            renderItem={(bet) => (
+              <div key={bet.id} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                    bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
+                  }`}>
+                    {bet.result}
                   </div>
-                ))}
+                  <div>
+                    <p className="text-sm text-white">
+                      Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                      {bet.is_win && <span className="text-accent ml-1">({parseFloat(bet.multiplier)}x)</span>}
+                    </p>
+                    <p className="text-xs text-gray-500">{new Date(bet.created_at).toLocaleString()}</p>
+                  </div>
+                </div>
+                <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
+                  {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                </span>
               </div>
-            </div>
-          )}
+            )}
+          />
         </div>
 
         {/* Game (right on md+, top on mobile) */}

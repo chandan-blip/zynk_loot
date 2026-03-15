@@ -7,8 +7,11 @@ import toast from 'react-hot-toast';
 import * as api from '../services/api';
 import useStore from '../store/useStore';
 import { validatePhone } from '../utils/validators';
+import usePageTitle from '../hooks/usePageTitle';
 
 function Login() {
+  usePageTitle('Login');
+
   const [authMethod, setAuthMethod] = useState('phone');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -48,7 +51,9 @@ function Login() {
         navigate('/');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      const msg = err.response?.data?.message || 'Login failed';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -112,6 +117,8 @@ function Login() {
                   <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
                   <input
                     type="tel"
+                    name="phone"
+                    autoComplete="tel"
                     value={phone}
                     maxLength={11}
                     onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 11); setPhone(v); }}
@@ -127,6 +134,8 @@ function Login() {
                   <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
                   <input
                     type="email"
+                    name="email"
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
@@ -143,6 +152,8 @@ function Login() {
                 <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
                 <input
                   type="password"
+                  name="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"

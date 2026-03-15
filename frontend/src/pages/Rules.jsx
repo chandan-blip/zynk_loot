@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion';
 import { FiFileText, FiCheck, FiAlertTriangle, FiAward, FiUsers, FiDollarSign } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
+import usePageTitle from '../hooks/usePageTitle';
+import PageHeader from '../components/PageHeader';
 
 const rules = [
   {
@@ -56,20 +58,11 @@ const prohibitedActions = [
 ];
 
 function Rules() {
+  usePageTitle('Rules');
+
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="text-center mb-8 sm:mb-12">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-accent/10 mb-4">
-          <FiFileText className="w-8 h-8 text-accent" />
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-          Game Rules
-        </h1>
-        <p className="text-gray-500 text-sm sm:text-base">
-          Please read and understand the rules before participating
-        </p>
-      </div>
+      <PageHeader icon={FiFileText} title="Rules" description="How the platform works" />
 
       {/* Rules Grid */}
       <div className="grid sm:grid-cols-2 gap-4 sm:gap-6 mb-8">

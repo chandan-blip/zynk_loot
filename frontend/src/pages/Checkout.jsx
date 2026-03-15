@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { copyToClipboard } from '../utils/clipboard';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -31,7 +32,39 @@ const PAYMENT_METHODS = [
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { zynkToUsd } = useCurrency();
+  const { zynkToUsd, currencies } = useCurrency();
+
+  // Map payment method to currency
+  const getPaymentCurrency = (method) => {
+    if (!method) return { symbol: '$', rate: zynkToUsd, code: 'USD' };
+    if (method === 'upi' || method === 'bank') {
+      const inr = currencies.find(c => c.code === 'INR');
+      return inr ? { symbol: inr.symbol || '₹', rate: inr.rateFromZynk, code: 'INR' } : { symbol: '₹', rate: zynkToUsd * 83, code: 'INR' };
+    }
+    if (method === 'crypto_btc') {
+      const btc = currencies.find(c => c.code === 'BTC');
+      return btc ? { symbol: '', rate: btc.rateFromZynk, code: 'BTC', precision: 8 } : { symbol: '', rate: zynkToUsd / 60000, code: 'BTC', precision: 8 };
+    }
+    if (method === 'crypto_eth') {
+      const eth = currencies.find(c => c.code === 'ETH');
+      return eth ? { symbol: '', rate: eth.rateFromZynk, code: 'ETH', precision: 6 } : { symbol: '', rate: zynkToUsd / 3000, code: 'ETH', precision: 6 };
+    }
+    if (method === 'crypto_usdt') {
+      const usdt = currencies.find(c => c.code === 'USDT');
+      return usdt ? { symbol: '', rate: usdt.rateFromZynk, code: 'USDT', precision: 2 } : { symbol: '$', rate: zynkToUsd, code: 'USDT' };
+    }
+    return { symbol: '$', rate: zynkToUsd, code: 'USD' };
+  };
+
+  const formatPaymentAmount = (zynkAmount, method) => {
+    const curr = getPaymentCurrency(method);
+    const amount = zynkAmount * curr.rate;
+    const precision = curr.precision || 2;
+    if (curr.code === 'INR') return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+    if (['BTC', 'ETH'].includes(curr.code)) return `${amount.toFixed(precision)} ${curr.code}`;
+    if (curr.code === 'USDT') return `${amount.toFixed(2)} USDT`;
+    return `$${amount.toFixed(2)}`;
+  };
 
   const packageId = searchParams.get('package');
 
@@ -82,7 +115,7 @@ export default function Checkout() {
   };
 
   const copyToClipboard = (text, label) => {
-    navigator.clipboard.writeText(text);
+    copyToClipboard(text);
     setCopied(label);
     setTimeout(() => setCopied(''), 2000);
   };
@@ -454,12 +487,19 @@ export default function Checkout() {
                             <p className="text-gray-500 text-sm">{method.description}</p>
                           </div>
                         </div>
-                        {available && (
-                          <FiChevronRight className="w-5 h-5 text-gray-500 group-hover:text-accent transition-colors" />
-                        )}
-                        {!available && (
-                          <span className="text-xs text-gray-600 bg-dark-700 px-2 py-1 rounded">Unavailable</span>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {available && selectedPackage && (
+                            <span className="text-sm text-white font-semibold">
+                              {formatPaymentAmount(selectedPackage.zynk_amount, method.id)}
+                            </span>
+                          )}
+                          {available && (
+                            <FiChevronRight className="w-5 h-5 text-gray-500 group-hover:text-accent transition-colors" />
+                          )}
+                          {!available && (
+                            <span className="text-xs text-gray-600 bg-dark-700 px-2 py-1 rounded">Unavailable</span>
+                          )}
+                        </div>
                       </motion.button>
                     );
                   })}
@@ -491,7 +531,7 @@ export default function Checkout() {
                       <p className="text-xs text-gray-500">Send this exact amount</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-white">${priceUsd}</p>
+                      <p className="text-2xl font-bold text-white">{formatPaymentAmount(selectedPackage.zynk_amount, selectedMethod)}</p>
                     </div>
                   </div>
                 </div>
@@ -652,7 +692,7 @@ export default function Checkout() {
                     <div className="flex justify-between items-center">
                       <span className="text-gray-300">Total Price</span>
                       <div className="text-right">
-                        <p className="text-xl font-bold text-white">${priceUsd}</p>
+                        <p className="text-xl font-bold text-white">{formatPaymentAmount(selectedPackage.zynk_amount, selectedMethod)}</p>
                       </div>
                     </div>
                   </div>

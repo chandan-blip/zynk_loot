@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -17,11 +17,14 @@ import {
   FiUser,
   FiShare2,
   FiTrendingUp,
-  FiPlay
+  FiPlay,
+  FiBell
 } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { sounds } from '../utils/sounds';
+import { getUnreadCount } from '../services/api';
+import socketService from '../services/socket';
 
 const navItems = [
   { path: '/', label: 'Home', icon: FiHome },
@@ -42,9 +45,38 @@ const footerLinks = [
 
 function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, isAuthenticated, logout } = useStore();
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const { user, isAuthenticated, isLoading, logout } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Fetch unread count on auth change
+  useEffect(() => {
+    if (isAuthenticated) {
+      getUnreadCount().then(res => setUnreadNotifs(res.data.data?.unread || 0)).catch(() => {});
+    } else {
+      setUnreadNotifs(0);
+    }
+  }, [isAuthenticated]);
+
+  // Listen for real-time notifications — show toast + update count
+  const [notifToast, setNotifToast] = useState(null);
+  const notifTimerRef = useRef(null);
+
+  useEffect(() => {
+    const unsub = socketService.onNotification?.((notification) => {
+      setUnreadNotifs(prev => prev + 1);
+      // Show floating toast with sound
+      sounds.notification();
+      setNotifToast(notification);
+      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+      notifTimerRef.current = setTimeout(() => setNotifToast(null), 4000);
+    });
+    return () => {
+      unsub?.();
+      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -143,9 +175,9 @@ function Layout() {
 
               {/* Navigation */}
               <nav className="flex-1 p-5 overflow-y-auto scrollbar-hide">
-                <div className="space-y-1">
+                <div className="flex flex-col gap-1">
                   {navItems
-                    .filter(item => !item.authRequired || isAuthenticated)
+                    .filter(item => isLoading || !item.authRequired || isAuthenticated)
                     .map((item) => {
                     const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));
                     return (
@@ -197,7 +229,9 @@ function Layout() {
 
               {/* Sidebar Footer */}
               <div className="p-5 border-t border-white/5">
-                {isAuthenticated ? (
+                {isLoading ? (
+                  <div className="w-full h-12 rounded-lg bg-dark-700/60 animate-pulse" />
+                ) : isAuthenticated ? (
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/20 transition-all"
@@ -245,7 +279,14 @@ function Layout() {
             </div>
 
             <div className="flex items-center gap-3">
-              {isAuthenticated ? (
+              {isLoading ? (
+                <>
+                  {/* Skeleton while auth loads */}
+                  <div className="w-24 h-9 rounded-lg bg-dark-700/60 animate-pulse" />
+                  <div className="w-9 h-9 rounded-lg bg-dark-700/60 animate-pulse" />
+                  <div className="w-9 h-9 rounded-lg bg-dark-700/60 animate-pulse" />
+                </>
+              ) : isAuthenticated ? (
                 <>
                   {/* Balance Display */}
                   <Link
@@ -258,6 +299,21 @@ function Layout() {
                     <span className="font-bold text-white text-sm">
                       {user?.balance?.toLocaleString() || 0}
                     </span>
+                  </Link>
+
+                  {/* Notifications Bell */}
+                  <Link to="/notifications" className="relative" onClick={() => sounds.tap()}>
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      className="w-9 h-9 rounded-lg bg-dark-700/80 border border-dark-600/50 flex items-center justify-center hover:bg-dark-600/80 transition-all"
+                    >
+                      <FiBell className="w-[18px] h-[18px] text-gray-400" />
+                      {unreadNotifs > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                          {unreadNotifs > 9 ? '9+' : unreadNotifs}
+                        </span>
+                      )}
+                    </motion.div>
                   </Link>
 
                   {/* User Avatar - Links to Profile */}
@@ -287,8 +343,46 @@ function Layout() {
           </div>
         </header>
 
+        {/* Notification Toast */}
+        <AnimatePresence>
+          {notifToast && (
+            <motion.div
+              initial={{ y: -80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -80, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed top-16 left-0 right-0 mx-auto z-50 w-[calc(100%-2rem)] max-w-sm"
+            >
+              <div
+                onClick={() => { setNotifToast(null); navigate('/notifications'); }}
+                className="flex items-start gap-3 p-4 rounded-xl bg-dark-700 border border-dark-500 shadow-2xl shadow-black/40 cursor-pointer hover:border-accent/30 transition-colors"
+              >
+                <div className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center ${
+                  notifToast.type === 'personal' ? 'bg-blue-500/20' :
+                  notifToast.type === 'update' ? 'bg-amber-500/20' : 'bg-accent/20'
+                }`}>
+                  <FiBell className={`w-4 h-4 ${
+                    notifToast.type === 'personal' ? 'text-blue-400' :
+                    notifToast.type === 'update' ? 'text-amber-400' : 'text-accent'
+                  }`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{notifToast.title}</p>
+                  <p className="text-xs text-gray-400 line-clamp-2 mt-0.5">{notifToast.message}</p>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setNotifToast(null); }}
+                  className="shrink-0 p-1 text-gray-600 hover:text-white"
+                >
+                  <FiX className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Page Content */}
-        <main className="p-2 2xl:px-0 sm:px-4 sm:py-4 min-h-[calc(100vh-4rem)]">
+        <main className="py-2 px-3 2xl:px-0 sm:px-4 sm:py-4 min-h-[calc(100vh-4rem)]">
           <Outlet />
           <div className="h-36"></div>
         </main>
@@ -299,7 +393,7 @@ function Layout() {
             <div className="glass-strong border-t border-white/5 mx-2 mb-2 rounded-lg overflow-hidden">
               <div className="flex items-center justify-around h-16">
                 {navItems
-                  .filter(item => !item.authRequired || isAuthenticated)
+                  .filter(item => isLoading || !item.authRequired || isAuthenticated)
                   .map((item) => {
                   const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));
                   return (

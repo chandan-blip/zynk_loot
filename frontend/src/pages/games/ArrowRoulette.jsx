@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { FiArrowLeft, FiClock, FiCrosshair } from 'react-icons/fi';
+import { FiArrowLeft, FiCrosshair } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
-import { playArrowRoulette, getGameHistory, getGameStats } from '../../services/api';
+import { playArrowRoulette, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
+import usePageTitle from '../../hooks/usePageTitle';
+import GameHistory from '../../components/GameHistory';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 
@@ -122,24 +124,22 @@ function Target({ arrowPos, shooting }) {
 }
 
 function ArrowRoulette() {
+  usePageTitle('Arrow Roulette');
+
   const { user, checkAuth } = useStore();
   const [amount, setAmount] = useState('');
   const [shooting, setShooting] = useState(false);
   const [arrowPos, setArrowPos] = useState(null);
   const [result, setResult] = useState(null);
   const [showResult, setShowResult] = useState(false);
-  const [history, setHistory] = useState([]);
   const [stats, setStats] = useState(null);
+  const [historyKey, setHistoryKey] = useState(0);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
-      const [historyRes, statsRes] = await Promise.all([
-        getGameHistory(1, 10, 'arrow_roulette'),
-        getGameStats()
-      ]);
-      setHistory(historyRes.data.data?.bets || []);
+      const statsRes = await getGameStats();
       const arStats = (statsRes.data.data || []).find(s => s.game_type === 'arrow_roulette');
       setStats(arStats || null);
     } catch (err) {}
@@ -178,6 +178,7 @@ function ArrowRoulette() {
       setShowResult(true);
       checkAuth();
       loadData();
+      setHistoryKey(k => k + 1);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     } finally {
@@ -229,43 +230,38 @@ function ArrowRoulette() {
             </div>
           )}
 
-          {history.length > 0 && (
-            <div className="rounded-xl bg-dark-700/30 border border-white/5 overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                <FiClock className="w-4 h-4 text-gray-500" />
-                <h3 className="text-sm font-semibold text-white">Recent Shots</h3>
-              </div>
-              <div className="divide-y divide-white/5">
-                {history.map((bet) => {
-                  const details = typeof bet.details === 'string' ? JSON.parse(bet.details) : bet.details;
-                  return (
-                    <div key={bet.id} className="flex items-center justify-between px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                          bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {bet.result}
-                        </div>
-                        <div>
-                          <p className="text-sm text-white">
-                            Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
-                            {bet.is_win && <span className="text-accent ml-1">({parseFloat(bet.multiplier)}x)</span>}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Hit: {details?.ringLabel || 'Miss'}
-                            {' \u00B7 '}{new Date(bet.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                        {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
-                      </span>
+          <GameHistory
+            gameType="arrow_roulette"
+            title="Recent Shots"
+            refreshKey={historyKey}
+            renderItem={(bet) => {
+              const details = typeof bet.details === 'string' ? JSON.parse(bet.details) : bet.details;
+              return (
+                <div key={bet.id} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                      bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {bet.result}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                    <div>
+                      <p className="text-sm text-white">
+                        Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                        {bet.is_win && <span className="text-accent ml-1">({parseFloat(bet.multiplier)}x)</span>}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Hit: {details?.ringLabel || 'Miss'}
+                        {' \u00B7 '}{new Date(bet.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
+                    {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                  </span>
+                </div>
+              );
+            }}
+          />
         </div>
 
         {/* Game (right on md+, top on mobile) */}

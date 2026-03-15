@@ -44,6 +44,13 @@ export function CurrencyProvider({ children }) {
       ];
 
       setCurrencies(currencyList);
+
+      // Update selectedCurrency with fresh rate from server
+      setSelectedCurrency(prev => {
+        if (prev.code === 'ZYNK') return prev;
+        const fresh = currencyList.find(c => c.code === prev.code);
+        return fresh || DEFAULT_CURRENCY;
+      });
     } catch (error) {
       console.error('Failed to fetch exchange rates:', error);
     } finally {

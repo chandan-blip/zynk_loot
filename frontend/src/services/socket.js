@@ -189,6 +189,12 @@ class SocketService {
     return () => this.socket.off('activity:new', callback);
   }
 
+  onNotification(callback) {
+    if (!this.socket) return;
+    this.socket.on('notification:new', callback);
+    return () => this.socket.off('notification:new', callback);
+  }
+
   getSocket() {
     return this.socket;
   }

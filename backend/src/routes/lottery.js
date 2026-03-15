@@ -770,7 +770,7 @@ router.get('/winners', async (req, res) => {
        JOIN numbers n ON w.number_id = n.id
        JOIN daily_draws d ON w.draw_id = d.id
        ORDER BY w.created_at DESC
-       LIMIT ${limit}`
+       LIMIT ${parseInt(limit)}`
     );
 
     const formattedWinners = winners.map(w => ({
@@ -801,7 +801,7 @@ router.get('/history', async (req, res) => {
        FROM daily_draws
        WHERE status = 'completed'
        ORDER BY created_at DESC
-       LIMIT ${limit}`
+       LIMIT ${parseInt(limit)}`
     );
 
     res.json({ success: true, data: draws });

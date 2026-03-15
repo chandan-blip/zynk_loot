@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiArrowLeft, FiClock, FiTarget } from 'react-icons/fi';
+import { FiArrowLeft, FiTarget } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
-import { playBalloonPop, getGameHistory, getGameStats } from '../../services/api';
+import { playBalloonPop, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
+import usePageTitle from '../../hooks/usePageTitle';
+import GameHistory from '../../components/GameHistory';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 const MULTIPLIER_PRESETS = [1.5, 2, 3, 5, 10, 25];
@@ -65,6 +67,8 @@ function Balloon({ scale, color, popped }) {
 }
 
 function BalloonPop() {
+  usePageTitle('Balloon Pop');
+
   const { user, checkAuth } = useStore();
   const [amount, setAmount] = useState('');
   const [targetMultiplier, setTargetMultiplier] = useState('');
@@ -73,8 +77,8 @@ function BalloonPop() {
   const [popped, setPopped] = useState(false);
   const [result, setResult] = useState(null);
   const [showResult, setShowResult] = useState(false);
-  const [history, setHistory] = useState([]);
   const [stats, setStats] = useState(null);
+  const [historyKey, setHistoryKey] = useState(0);
   const animRef = useRef(null);
   const inflateRef = useRef(null);
 
@@ -92,11 +96,7 @@ function BalloonPop() {
 
   const loadData = async () => {
     try {
-      const [historyRes, statsRes] = await Promise.all([
-        getGameHistory(1, 10, 'balloon_pop'),
-        getGameStats()
-      ]);
-      setHistory(historyRes.data.data?.bets || []);
+      const statsRes = await getGameStats();
       const bpStats = (statsRes.data.data || []).find(s => s.game_type === 'balloon_pop');
       setStats(bpStats || null);
     } catch (err) {
@@ -187,6 +187,7 @@ function BalloonPop() {
           setInflating(false);
           checkAuth();
           loadData();
+          setHistoryKey(k => k + 1);
         }
       };
 
@@ -245,43 +246,38 @@ function BalloonPop() {
             </div>
           )}
 
-          {history.length > 0 && (
-            <div className="rounded-xl bg-dark-700/30 border border-white/5 overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                <FiClock className="w-4 h-4 text-gray-500" />
-                <h3 className="text-sm font-semibold text-white">Recent Games</h3>
-              </div>
-              <div className="divide-y divide-white/5">
-                {history.map((bet) => {
-                  const details = typeof bet.details === 'string' ? JSON.parse(bet.details) : bet.details;
-                  return (
-                    <div key={bet.id} className="flex items-center justify-between px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-                          bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {bet.is_win ? '\u{1F4B0}' : '\u{1F4A5}'}
-                        </div>
-                        <div>
-                          <p className="text-sm text-white">
-                            Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
-                            <span className="text-gray-500 ml-1">{'\u2192'} {details?.cashoutMultiplier}x</span>
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {bet.is_win ? 'Cashed out' : `Popped at ${details?.popPoint?.toFixed(2)}x`}
-                            {' \u00B7 '}{new Date(bet.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                        {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
-                      </span>
+          <GameHistory
+            gameType="balloon_pop"
+            title="Recent Games"
+            refreshKey={historyKey}
+            renderItem={(bet) => {
+              const details = typeof bet.details === 'string' ? JSON.parse(bet.details) : bet.details;
+              return (
+                <div key={bet.id} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                      bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {bet.is_win ? '\u{1F4B0}' : '\u{1F4A5}'}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                    <div>
+                      <p className="text-sm text-white">
+                        Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                        <span className="text-gray-500 ml-1">{'\u2192'} {details?.cashoutMultiplier}x</span>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {bet.is_win ? 'Cashed out' : `Popped at ${details?.popPoint?.toFixed(2)}x`}
+                        {' \u00B7 '}{new Date(bet.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
+                    {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                  </span>
+                </div>
+              );
+            }}
+          />
         </div>
 
         {/* Game (right on md+, top on mobile) */}

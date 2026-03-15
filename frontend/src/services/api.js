@@ -232,4 +232,12 @@ export const getGameStats = () => api.get('/games/stats');
 export const refreshActivityConfig = () => api.post('/admin/activity-config/refresh');
 export const getRecentActivities = () => api.get('/activities/recent');
 
+// Notifications
+export const getNotifications = (page = 1) => api.get(`/notifications?page=${page}`);
+export const getUnreadCount = () => api.get('/notifications/unread-count');
+export const markNotificationRead = (id) => api.post(`/notifications/${id}/read`);
+export const markAllNotificationsRead = () => api.post('/notifications/read-all');
+export const adminCreateNotification = (data) => api.post('/notifications/admin/create', data);
+export const adminGetNotifications = (page = 1) => api.get(`/notifications/admin/all?page=${page}`);
+
 export default api;

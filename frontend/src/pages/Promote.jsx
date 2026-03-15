@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { copyToClipboard } from '../utils/clipboard';
 import { motion } from 'framer-motion';
 import {
   FiShare2,
@@ -11,6 +12,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { generateReferralCode, getReferralStats, getReferralList } from '../services/api';
+import PageHeader from '../components/PageHeader';
 
 function Promote() {
   const [stats, setStats] = useState(null);
@@ -60,7 +62,7 @@ function Promote() {
 
   const copyLink = () => {
     if (!referralLink) return;
-    navigator.clipboard.writeText(referralLink);
+    copyToClipboard(referralLink);
     setCopied(true);
     toast.success('Referral link copied!');
     setTimeout(() => setCopied(false), 2000);
@@ -101,16 +103,7 @@ function Promote() {
 
   return (
     <div className="mx-auto space-y-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-          <FiShare2 className="text-accent" />
-          Promote
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Share your referral link and earn commission on all transactions
-        </p>
-      </div>
+      <PageHeader icon={FiShare2} title="Promote" description="Earn commission with referrals" />
 
       {/* Referral Link Section */}
       <motion.div

@@ -1,7 +1,29 @@
 // Web Audio API sound effects — import and use anywhere
 // Usage: import { sounds } from '../utils/sounds';  sounds.click();
 
-const getCtx = () => new (window.AudioContext || window.webkitAudioContext)();
+// Single shared AudioContext — avoids browser limits and iOS suspend issues
+let _ctx = null;
+const getCtx = () => {
+  if (!_ctx) {
+    _ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // Resume if suspended (iOS Safari requires user gesture)
+  if (_ctx.state === 'suspended') {
+    _ctx.resume();
+  }
+  return _ctx;
+};
+
+// Unlock audio on first user interaction (iOS/Safari requirement)
+const unlock = () => {
+  getCtx();
+  document.removeEventListener('touchstart', unlock, true);
+  document.removeEventListener('click', unlock, true);
+};
+if (typeof document !== 'undefined') {
+  document.addEventListener('touchstart', unlock, true);
+  document.addEventListener('click', unlock, true);
+}
 
 const play = (fn) => {
   try { fn(); } catch {}
@@ -415,6 +437,26 @@ export const sounds = {
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
       noise.start();
       noise.stop(ctx.currentTime + 0.1);
+    });
+  },
+
+  // Notification — soft two-tone chime
+  notification() {
+    play(() => {
+      const ctx = getCtx();
+      [880, 1320].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        const t = ctx.currentTime + i * 0.15;
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+        osc.start(t);
+        osc.stop(t + 0.3);
+      });
     });
   },
 

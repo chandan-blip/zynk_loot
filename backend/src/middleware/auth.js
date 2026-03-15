@@ -1,7 +1,10 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
+if (!process.env.JWT_SECRET) {
+  console.error('[SECURITY] JWT_SECRET not set in environment! Using insecure fallback.');
+}
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-change-me-in-production-' + Date.now();
 
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];

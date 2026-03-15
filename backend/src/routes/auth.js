@@ -116,6 +116,17 @@ router.post('/register', [
 
     const token = generateToken(result.insertId);
 
+    // Welcome notification
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId: result.insertId,
+        type: 'personal',
+        title: 'Welcome to LOOT Market!',
+        message: `Hi ${username}, your account is ready. Buy numbers, play games, and start winning!`,
+      }).catch(() => {});
+    }
+
     res.status(201).json({
       success: true,
       message: 'Registration successful',

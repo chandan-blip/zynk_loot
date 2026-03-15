@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const dotenv = require('dotenv');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 
 const fs = require('fs');
 const rootEnv = path.resolve(__dirname, '../../.env');
@@ -29,9 +30,11 @@ const ReferralService = require('./services/referralService');
 const InvestService = require('./services/investService');
 const ActivityService = require('./services/activityService');
 const GameService = require('./services/gameService');
+const NotificationService = require('./services/notificationService');
 const referralRoutes = require('./routes/referral');
 const investRoutes = require('./routes/invest');
 const gameRoutes = require('./routes/games');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 const server = http.createServer(app);
@@ -59,6 +62,7 @@ const referralService = new ReferralService();
 const investService = new InvestService(io);
 const activityService = new ActivityService(io);
 const gameService = new GameService(io);
+const notificationService = new NotificationService(io);
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -75,6 +79,7 @@ app.set('referralService', referralService);
 app.set('investService', investService);
 app.set('activityService', activityService);
 app.set('gameService', gameService);
+app.set('notificationService', notificationService);
 app.set('io', io);
 
 // Socket authentication middleware
@@ -82,7 +87,7 @@ io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (token) {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-jwt-key');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-key');
       socket.userId = decoded.userId;
       socket.join(`user:${decoded.userId}`);
     } catch (err) {
@@ -136,8 +141,25 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Rate limiters
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // 20 attempts per window
+  message: { success: false, message: 'Too many attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const gameLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 bets per minute
+  message: { success: false, message: 'Too many requests. Slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/lottery', lotteryRoutes);
 app.use('/api/wallet', walletRoutes);
@@ -145,7 +167,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/referral', referralRoutes);
 app.use('/api/invest', investRoutes);
-app.use('/api/games', gameRoutes);
+app.use('/api/games', gameLimiter, gameRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Recent activities (public, no auth needed)
 app.get('/api/activities/recent', (req, res) => {

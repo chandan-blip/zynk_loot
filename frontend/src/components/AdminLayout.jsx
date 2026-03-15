@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { getAdminSupportUnread } from '../services/api';
@@ -20,6 +20,7 @@ const navItems = [
   { path: '/admin/withdrawals', label: 'Withdrawals', icon: FiUpload },
   { path: '/admin/support', label: 'Support', icon: FiMessageCircle, badge: true },
   { path: '/admin/investments', label: 'Investments', icon: FiTrendingUp },
+  { path: '/admin/notifications', label: 'Notifications', icon: FiBell },
   { path: '/admin/settings', label: 'Settings', icon: FiSettings },
 ];
 

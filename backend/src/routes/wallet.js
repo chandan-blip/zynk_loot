@@ -678,7 +678,7 @@ router.get('/withdrawals', async (req, res) => {
        JOIN payment_methods pm ON w.payment_method_id = pm.id
        WHERE w.user_id = ?
        ORDER BY w.created_at DESC
-       LIMIT ${limit} OFFSET ${offset}`,
+       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
       [req.user.id]
     );
 
@@ -803,7 +803,7 @@ router.get('/transactions', async (req, res) => {
       `SELECT * FROM transactions
        WHERE user_id = ?
        ORDER BY created_at DESC
-       LIMIT ${limit} OFFSET ${offset}`,
+       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
       [req.user.id]
     );
 
@@ -984,7 +984,7 @@ router.get('/transfers', async (req, res) => {
        JOIN users recipient ON t.recipient_id = recipient.id
        WHERE ${whereClause}
        ORDER BY t.created_at DESC
-       LIMIT ${limit} OFFSET ${offset}`,
+       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
       [req.user.id, ...params]
     );
 

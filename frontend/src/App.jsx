@@ -42,7 +42,9 @@ import IceField from './pages/games/IceField';
 import ArrowRoulette from './pages/games/ArrowRoulette';
 import EggHatch from './pages/games/EggHatch';
 import FuseGame from './pages/games/Fuse';
+import Notifications from './pages/Notifications';
 import AdminInvestments from './pages/admin/AdminInvestments';
+import AdminNotifications from './pages/admin/AdminNotifications';
 
 function PublicRoute({ children }) {
   const { isAuthenticated, isLoading } = useStore();
@@ -145,6 +147,7 @@ function App() {
           <Route path="withdrawals" element={<AdminWithdrawals />} />
           <Route path="support" element={<AdminSupport />} />
           <Route path="investments" element={<AdminInvestments />} />
+          <Route path="notifications" element={<AdminNotifications />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
 
@@ -157,6 +160,7 @@ function App() {
           <Route path="profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="promote" element={<PrivateRoute><Promote /></PrivateRoute>} />
           <Route path="invest" element={<PrivateRoute><Invest /></PrivateRoute>} />
+          <Route path="notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="games" element={<Games />} />
           <Route path="games/coin-flip" element={<PrivateRoute><CoinFlip /></PrivateRoute>} />
           <Route path="games/dice-roll" element={<PrivateRoute><DiceRoll /></PrivateRoute>} />

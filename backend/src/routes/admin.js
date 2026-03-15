@@ -76,7 +76,7 @@ router.get('/users', async (req, res) => {
       `SELECT id, username, email, balance, total_spent, total_earned, is_active, created_at
        FROM users WHERE is_admin = 0
        ORDER BY created_at DESC
-       LIMIT ${limit} OFFSET ${offset}`
+       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
     );
 
     const [countResult] = await db.pool.query(
@@ -164,7 +164,7 @@ router.get('/draws', async (req, res) => {
     const offset = (page - 1) * limit;
 
     const [draws] = await db.pool.query(
-      `SELECT * FROM daily_draws ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`
+      `SELECT * FROM daily_draws ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
     );
 
     const [countResult] = await db.pool.query('SELECT COUNT(*) as total FROM daily_draws');
@@ -707,7 +707,7 @@ router.get('/winners', async (req, res) => {
        JOIN numbers n ON w.number_id = n.id
        JOIN daily_draws d ON w.draw_id = d.id
        ORDER BY w.created_at DESC
-       LIMIT ${limit} OFFSET ${offset}`
+       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
     );
 
     const [countResult] = await db.pool.query('SELECT COUNT(*) as total FROM winners');
@@ -760,7 +760,7 @@ router.get('/numbers', async (req, res) => {
        FROM numbers n
        LEFT JOIN users u ON n.owner_id = u.id
        ORDER BY n.total_votes DESC
-       LIMIT ${limit} OFFSET ${offset}`
+       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
     );
 
     const [countResult] = await db.pool.query('SELECT COUNT(*) as total FROM numbers');
@@ -848,7 +848,7 @@ router.get('/transactions', async (req, res) => {
       params.push(type);
     }
 
-    query += ` ORDER BY t.created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    query += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
 
     const [transactions] = await db.pool.query(query, params);
 
@@ -897,7 +897,7 @@ router.get('/deposits', async (req, res) => {
       params.push(status);
     }
 
-    query += ` ORDER BY zo.created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    query += ` ORDER BY zo.created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
 
     const [deposits] = await db.pool.query(query, params);
 
@@ -980,6 +980,16 @@ router.post('/deposits/:id/approve', async (req, res) => {
 
     await connection.commit();
 
+    // Notify user
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId: order.user_id, type: 'personal',
+        title: 'Deposit Approved',
+        message: `Your deposit of ${order.zynk_amount} Z has been approved and added to your balance.${req.body.admin_note ? ' Note: ' + req.body.admin_note : ''}`,
+      }).catch(() => {});
+    }
+
     res.json({
       success: true,
       message: 'Deposit approved and Zynk added to user balance',
@@ -997,13 +1007,19 @@ router.post('/deposits/:id/approve', async (req, res) => {
 // Reject deposit
 router.post('/deposits/:id/reject', async (req, res) => {
   try {
-    const [result] = await db.pool.query(
-      `UPDATE zynk_orders SET status = 'failed' WHERE id = ? AND status = 'pending'`,
-      [req.params.id]
-    );
+    const [orders] = await db.pool.query(`SELECT id, user_id, zynk_amount FROM zynk_orders WHERE id = ? AND status = 'pending'`, [req.params.id]);
+    if (orders.length === 0) return res.status(404).json({ success: false, message: 'Deposit not found or already processed' });
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Deposit not found or already processed' });
+    const order = orders[0];
+    await db.pool.query(`UPDATE zynk_orders SET status = 'failed' WHERE id = ?`, [order.id]);
+
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId: order.user_id, type: 'personal',
+        title: 'Deposit Rejected',
+        message: `Your deposit of ${order.zynk_amount} Z was rejected.${req.body.admin_note ? ' Reason: ' + req.body.admin_note : ''}`,
+      }).catch(() => {});
     }
 
     res.json({ success: true, message: 'Deposit rejected' });
@@ -1039,7 +1055,7 @@ router.get('/withdrawals', async (req, res) => {
       params.push(status);
     }
 
-    query += ` ORDER BY w.created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    query += ` ORDER BY w.created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
 
     const [withdrawals] = await db.pool.query(query, params);
 
@@ -1099,6 +1115,15 @@ router.post('/withdrawals/:id/approve', async (req, res) => {
     );
 
     await connection.commit();
+
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId: withdrawal.user_id, type: 'personal',
+        title: 'Withdrawal Approved',
+        message: `Your withdrawal of ${withdrawal.amount} Z has been approved.${req.body.admin_note ? ' Note: ' + req.body.admin_note : ''}`,
+      }).catch(() => {});
+    }
 
     res.json({
       success: true,
@@ -1162,6 +1187,15 @@ router.post('/withdrawals/:id/reject', async (req, res) => {
     );
 
     await connection.commit();
+
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId: withdrawal.user_id, type: 'personal',
+        title: 'Withdrawal Rejected',
+        message: `Your withdrawal of ${withdrawal.amount} Z was rejected and refunded to your balance.${req.body.admin_note ? ' Reason: ' + req.body.admin_note : ''}`,
+      }).catch(() => {});
+    }
 
     res.json({
       success: true,

@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { copyToClipboard } from "../utils/clipboard";
+import PageHeader from "../components/PageHeader";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiUser,
@@ -30,8 +32,11 @@ import CountUp from "react-countup";
 import { getUserProfile, getMyNumbers, getMyVotes, cashOutTicket } from "../services/api";
 import socketService from "../services/socket";
 import { useCurrency } from "../contexts/CurrencyContext";
+import usePageTitle from "../hooks/usePageTitle";
 
 function Profile() {
+  usePageTitle('Profile');
+
   const {
     selectedCurrency,
     setSelectedCurrency,
@@ -153,7 +158,7 @@ function Profile() {
   };
 
   const copyUserId = () => {
-    navigator.clipboard.writeText(profile?.user?.id?.toString() || "");
+    copyToClipboard(profile?.user?.id?.toString() || "");
     setCopiedId(true);
     toast.success("User ID copied!");
     setTimeout(() => setCopiedId(false), 2000);
@@ -252,17 +257,7 @@ function Profile() {
   return (
     <div className="mx-auto space-y-3">
       {/* Header with Currency Selector */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-            <FiUser className="text-accent" />
-            My Profile
-          </h1>
-          <p className="text-gray-500 mt-1">
-            Manage your account and view statistics
-          </p>
-        </div>
-
+      <PageHeader icon={FiUser} title="Profile" description="Your account & statistics">
         {/* Currency Selector */}
         <div className="flex justify-end items-center w-full relative">
           <button
@@ -286,7 +281,7 @@ function Profile() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="absolute w-full top-0 mt-2 rounded-xl bg-dark-800 border border-dark-500 shadow-xl z-50 overflow-hidden"
+                className="absolute right-0 w-72 top-0 mt-2 rounded-xl bg-dark-800 border border-dark-500 shadow-xl z-50 overflow-hidden"
               >
                 <div className="p-2 border-b border-dark-500">
                   <p className="text-xs text-gray-500 px-2">Display Currency</p>
@@ -312,29 +307,25 @@ function Profile() {
                           setShowCurrencyDropdown(false);
                           toast.success(`Currency changed to ${currency.code}`);
                         }}
-                        className={`w-full flex items-center justify-between px-4 py-3 hover:bg-dark-700 transition-colors ${
+                        className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-dark-700 transition-colors ${
                           selectedCurrency.code === currency.code
-                            ? "bg-accent/10 text-accent"
-                            : "text-white"
+                            ? "bg-accent/10"
+                            : ""
                         }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <span className="text-lg">{currency.symbol}</span>
-                          <div className="text-left">
-                            <p className="font-medium">{currency.code}</p>
-                            <p className="text-xs text-gray-500">
-                              {currency.name}
-                            </p>
+                        <div className="w-8 h-8 rounded-lg bg-dark-600 flex items-center justify-center shrink-0">
+                          <span className={`text-sm font-bold ${selectedCurrency.code === currency.code ? 'text-accent' : 'text-white'}`}>{currency.symbol}</span>
+                        </div>
+                        <div className="flex flex-col items-start flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-semibold ${selectedCurrency.code === currency.code ? 'text-accent' : 'text-white'}`}>{currency.code}</span>
+                            <span className="text-[10px] text-gray-600">{currency.name}</span>
                           </div>
+                          <span className="text-[11px] font-mono text-gray-500">{rateDisplay}</span>
                         </div>
-                        <div className="text-right">
-                          <p className="text-xs font-mono text-gray-400">
-                            {rateDisplay}
-                          </p>
-                          {selectedCurrency.code === currency.code && (
-                            <FiCheck className="w-4 h-4 text-accent ml-auto mt-1" />
-                          )}
-                        </div>
+                        {selectedCurrency.code === currency.code && (
+                          <FiCheck className="w-4 h-4 text-accent shrink-0" />
+                        )}
                       </button>
                     );
                   })}
@@ -343,7 +334,7 @@ function Profile() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+      </PageHeader>
 
       {/* User Card */}
       <motion.div

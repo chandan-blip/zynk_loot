@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FiClock, FiChevronDown, FiCheckCircle, FiFilter } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import { getDrawHistory } from '../services/api';
+import PageHeader from '../components/PageHeader';
 
 function History() {
   const [draws, setDraws] = useState([]);
@@ -51,16 +52,7 @@ function History() {
 
   return (
     <div className="w-full mx-auto space-y-3">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-            <FiClock className="text-accent" />
-            Draw History
-          </h1>
-          <p className="text-gray-500 mt-1 text-sm sm:text-base">Past lottery draws and results</p>
-        </div>
-
+      <PageHeader icon={FiClock} title="Draw History" description="Past draws and results">
         {/* Filter Dropdown */}
         <div className="relative">
           <button
@@ -91,7 +83,7 @@ function History() {
             </motion.div>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       {/* History List */}
       <div className="bg-dark-800/50 rounded-lg border border-dark-400/30 overflow-hidden">
