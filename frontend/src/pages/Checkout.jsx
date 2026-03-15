@@ -157,12 +157,17 @@ export default function Checkout() {
     setSubmitting(true);
 
     try {
+      const curr = getPaymentCurrency(selectedMethod);
+      const paymentAmt = selectedPackage.zynk_amount * curr.rate;
+
       await checkout(
         selectedPackage.id,
         selectedMethod,
         selectedAccountId,
         paymentReference.trim(),
-        paymentNote.trim() || null
+        paymentNote.trim() || null,
+        curr.code,
+        paymentAmt
       );
       setSuccess(true);
     } catch (err) {

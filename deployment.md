@@ -1,5 +1,13 @@
 Updating your VPS
 
+Deploy:
+rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.env' /home/dev/Documents/loot/ root@89.117.58.200:/var/www/loot/
+
+On VPS:
+mysql -u loot_user -p'Zynk@dmin123!' loot_db < /var/www/loot/migration/sql/039-add-payment-currency-to-orders.sql
+cd /var/www/loot/backend && npm install && pm2 restart loot-backend
+cd /var/www/loot/frontend && VITE_API_URL=/api npm run build
+
 Frontend changes:  
  cd /var/www/loot/frontend
 

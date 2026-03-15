@@ -78,11 +78,13 @@ export const deletePaymentMethod = (id) => api.delete(`/wallet/payment-methods/$
 // Zynk Packages & Checkout
 export const getZynkPackages = () => api.get('/wallet/packages');
 export const getPaymentSettings = () => api.get('/wallet/payment-settings');
-export const checkout = (package_id, payment_method, payment_account_id, payment_reference, payment_note) => {
+export const checkout = (package_id, payment_method, payment_account_id, payment_reference, payment_note, payment_currency, payment_amount) => {
   const payload = { package_id, payment_method };
   if (payment_account_id) payload.payment_account_id = payment_account_id;
   if (payment_reference) payload.payment_reference = payment_reference;
   if (payment_note) payload.payment_note = payment_note;
+  if (payment_currency) payload.payment_currency = payment_currency;
+  if (payment_amount) payload.payment_amount = payment_amount;
   return api.post('/wallet/checkout', payload);
 };
 export const getUserOrders = (page = 1) => api.get(`/wallet/orders?page=${page}`);

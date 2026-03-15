@@ -291,7 +291,12 @@ export default function AdminOrders() {
                       <td className="text-right">
                         <div>
                           <p className="text-accent font-semibold text-sm lg:text-base">{totalZynk.toLocaleString()} Z</p>
-                          <p className="text-gray-500 text-xs">Rs. {parseFloat(order.price).toLocaleString()}</p>
+                          <p className="text-gray-500 text-xs">
+                            {order.payment_currency && order.payment_amount
+                              ? `${order.payment_currency === 'INR' ? '₹' : ''}${parseFloat(order.payment_amount).toLocaleString()} ${order.payment_currency !== 'INR' ? order.payment_currency : ''}`
+                              : `${parseFloat(order.price).toLocaleString()} Z`
+                            }
+                          </p>
                         </div>
                       </td>
                       <td className="hidden md:table-cell">
@@ -499,7 +504,12 @@ export default function AdminOrders() {
                   </div>
                   <div className="flex justify-between mt-1">
                     <span className="text-gray-300">Price</span>
-                    <span className="text-white">Rs. {parseFloat(selectedOrder.price).toLocaleString()}</span>
+                    <span className="text-white">
+                      {selectedOrder.payment_currency && selectedOrder.payment_amount
+                        ? `${selectedOrder.payment_currency === 'INR' ? '₹' : ''}${parseFloat(selectedOrder.payment_amount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${selectedOrder.payment_currency !== 'INR' ? selectedOrder.payment_currency : ''}`
+                        : `${parseFloat(selectedOrder.price).toLocaleString()} Z`
+                      }
+                    </span>
                   </div>
                   {selectedOrder.payment_reference && (
                     <div className="flex justify-between mt-1">

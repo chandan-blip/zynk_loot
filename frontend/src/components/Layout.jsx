@@ -50,6 +50,12 @@ function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Connect socket globally so notifications work on every page
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    socketService.connect(token);
+  }, [isAuthenticated]);
+
   // Fetch unread count on auth change
   useEffect(() => {
     if (isAuthenticated) {
