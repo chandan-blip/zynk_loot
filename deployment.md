@@ -9,7 +9,7 @@ cd /var/www/loot/backend && npm install && pm2 restart loot-backend
 cd /var/www/loot/frontend && VITE_API_URL=/api npm run build
 
 Frontend changes:  
- cd /var/www/loot/frontend
+ cd /var/www/loot/frontend 
 
 # Copy updated files from local (run from your local machine)
 
