@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoDragonTower } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 const MAX_FLOORS = 8;
@@ -33,9 +34,10 @@ function DragonTower() {
   const [stats, setStats] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const dtStats = (statsRes.data.data || []).find(s => s.game_type === 'dragon_tower');
@@ -52,13 +54,15 @@ function DragonTower() {
     sounds.click();
 
     try {
-      const res = await playDragonTower(betAmount, targetFloors);
+      const res = isDemoMode(user)
+        ? demoDragonTower(betAmount, targetFloors)
+        : await playDragonTower(betAmount, targetFloors);
       const data = res.data.data;
       setGameData(data);
       setPickedDoors({});
       setCurrentFloor(1);
       setPhase('climbing');
-      checkAuth();
+      if (!data.isDemo) checkAuth();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     }
@@ -79,8 +83,7 @@ function DragonTower() {
         setPhase('result');
         setResult(gameData);
         setShowResult(true);
-        loadData();
-        setHistoryKey(k => k + 1);
+        if (!gameData.isDemo) { loadData(); setHistoryKey(k => k + 1); }
       } else {
         await new Promise(r => setTimeout(r, 300));
         setCurrentFloor(prev => prev + 1);
@@ -91,8 +94,7 @@ function DragonTower() {
       setPhase('result');
       setResult(gameData);
       setShowResult(true);
-      loadData();
-      setHistoryKey(k => k + 1);
+      if (!gameData.isDemo) { loadData(); setHistoryKey(k => k + 1); }
     }
     setRevealing(false);
   };

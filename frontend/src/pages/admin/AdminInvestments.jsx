@@ -94,6 +94,8 @@ function AdminInvestments() {
   const handleEditTier = (tier) => {
     setEditingTier(tier.id);
     setTierForm({
+      name: tier.name,
+      lock_days: tier.lock_days,
       multiplier: tier.multiplier,
       min_amount: tier.min_amount,
       max_amount: tier.max_amount,
@@ -404,7 +406,26 @@ function AdminInvestments() {
           {tiers.map(tier => (
             <div key={tier.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               {editingTier === tier.id ? (
-                <div className="flex-1 grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="flex-1 grid grid-cols-2 sm:grid-cols-7 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">Name</label>
+                    <input
+                      type="text"
+                      value={tierForm.name}
+                      onChange={e => setTierForm(p => ({ ...p, name: e.target.value }))}
+                      className="w-full px-2 py-1.5 rounded bg-dark-600 border border-dark-500 text-white text-sm focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Lock Days</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={tierForm.lock_days}
+                      onChange={e => setTierForm(p => ({ ...p, lock_days: parseInt(e.target.value) || '' }))}
+                      className="w-full px-2 py-1.5 rounded bg-dark-600 border border-dark-500 text-white text-sm focus:outline-none"
+                    />
+                  </div>
                   <div>
                     <label className="text-xs text-gray-500">Multiplier</label>
                     <input

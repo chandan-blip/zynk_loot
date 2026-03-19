@@ -85,13 +85,15 @@ router.get('/numbers', async (req, res) => {
 
     // Get current draw info to know revealed digits
     const [currentDraw] = await db.pool.query(
-      `SELECT winning_number, revealed_digits, status
+      `SELECT id, period_id, winning_number, revealed_digits, status
        FROM daily_draws
        WHERE status IN ('pending', 'revealing', 'active')
        ORDER BY created_at DESC LIMIT 1`
     );
 
     const draw = currentDraw[0] || null;
+    const activeDrawId = draw?.id || null;
+    const activePeriodId = draw?.period_id || null;
     const revealedDigits = draw?.revealed_digits || 0;
     const winningNumber = draw?.winning_number || '';
     const revealedPrefix = winningNumber.substring(0, revealedDigits);
@@ -116,15 +118,15 @@ router.get('/numbers', async (req, res) => {
 
     // If searching for a specific number
     if (search && search.length > 0) {
-      // Check if number exists in database
+      // Check if number exists in database - only active draw
       const [existingNumbers] = await db.pool.query(
         `SELECT n.*, u.username as owner_name
          FROM numbers n
          LEFT JOIN users u ON n.owner_id = u.id
-         WHERE n.number LIKE ?
+         WHERE n.number LIKE ? AND (n.draw_id = ? OR n.draw_id IS NULL)
          ORDER BY n.total_votes DESC
          LIMIT ?`,
-        [`%${search}%`, limit]
+        [`%${search}%`, activeDrawId, limit]
       );
 
       const results = existingNumbers.map(n => ({
@@ -138,7 +140,9 @@ router.get('/numbers', async (req, res) => {
         timesWon: n.times_won || 0,
         isVirtual: false,
         ticketStatus: n.ticket_status || 'active',
-        matchesRevealed: matchesRevealed(n.number)
+        matchesRevealed: matchesRevealed(n.number),
+        periodId: activePeriodId,
+        drawId: n.draw_id
       }));
 
       // Add virtual number for search if not in DB
@@ -160,7 +164,9 @@ router.get('/numbers', async (req, res) => {
             timesWon: 0,
             isVirtual: true,
             ticketStatus: virtualStatus,
-            matchesRevealed: matchesRevealedDigits
+            matchesRevealed: matchesRevealedDigits,
+            periodId: activePeriodId,
+            drawId: activeDrawId
           });
         }
       }
@@ -173,22 +179,28 @@ router.get('/numbers', async (req, res) => {
         revealedDigits,
         revealedPrefix,
         basePrice,
-        currentPrice
+        currentPrice,
+        periodId: activePeriodId,
+        drawId: activeDrawId
       });
     }
 
-    // Get existing numbers from DB with pagination
+    // Get existing numbers from DB with pagination - only active draw numbers
     const [numbers] = await db.pool.query(
       `SELECT n.*, u.username as owner_name
        FROM numbers n
        LEFT JOIN users u ON n.owner_id = u.id
+       WHERE n.draw_id = ? OR n.draw_id IS NULL
        ORDER BY n.total_votes DESC, n.created_at DESC
        LIMIT ? OFFSET ?`,
-      [limit, offset]
+      [activeDrawId, limit, offset]
     );
 
-    // Get total count for pagination
-    const [countResult] = await db.pool.query('SELECT COUNT(*) as total FROM numbers');
+    // Get total count for pagination - only active draw
+    const [countResult] = await db.pool.query(
+      'SELECT COUNT(*) as total FROM numbers WHERE draw_id = ? OR draw_id IS NULL',
+      [activeDrawId]
+    );
     const totalInDb = countResult[0].total;
 
     // Map existing numbers
@@ -204,7 +216,9 @@ router.get('/numbers', async (req, res) => {
       timesWon: n.times_won || 0,
       isVirtual: false,
       ticketStatus: n.ticket_status || 'active',
-      matchesRevealed: matchesRevealed(n.number)
+      matchesRevealed: matchesRevealed(n.number),
+      periodId: activePeriodId,
+      drawId: n.draw_id
     }));
 
     // Generate virtual numbers that match revealed prefix
@@ -266,7 +280,9 @@ router.get('/numbers', async (req, res) => {
             timesWon: 0,
             isVirtual: true,
             ticketStatus: 'available',
-            matchesRevealed: true
+            matchesRevealed: true,
+            periodId: activePeriodId,
+            drawId: activeDrawId
           });
         }
       }
@@ -282,7 +298,9 @@ router.get('/numbers', async (req, res) => {
       revealedDigits,
       revealedPrefix,
       basePrice,
-      currentPrice
+      currentPrice,
+      periodId: activePeriodId,
+      drawId: activeDrawId
     });
   } catch (error) {
     console.error('Get numbers error:', error);
@@ -770,7 +788,8 @@ router.get('/winners', async (req, res) => {
        JOIN numbers n ON w.number_id = n.id
        JOIN daily_draws d ON w.draw_id = d.id
        ORDER BY w.created_at DESC
-       LIMIT ${parseInt(limit)}`
+       LIMIT ?`,
+      [parseInt(limit)]
     );
 
     const formattedWinners = winners.map(w => ({
@@ -801,7 +820,8 @@ router.get('/history', async (req, res) => {
        FROM daily_draws
        WHERE status = 'completed'
        ORDER BY created_at DESC
-       LIMIT ${parseInt(limit)}`
+       LIMIT ?`,
+      [parseInt(limit)]
     );
 
     res.json({ success: true, data: draws });

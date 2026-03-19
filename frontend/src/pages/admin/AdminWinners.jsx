@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FiSearch, FiAward, FiTrendingUp, FiDollarSign, FiUsers } from 'react-icons/fi';
+import { FiSearch, FiAward, FiTrendingUp, FiDollarSign, FiUsers, FiCheck, FiX, FiClock } from 'react-icons/fi';
 import { GiTrophy } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import CountUp from 'react-countup';
-import { getAdminWinners } from '../../services/api';
+import { getAdminWinners, approveWinner, rejectWinner } from '../../services/api';
 
 function AdminWinners() {
   const [winners, setWinners] = useState([]);
@@ -13,15 +13,17 @@ function AdminWinners() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [acting, setActing] = useState(null);
 
   useEffect(() => {
     fetchWinners();
-  }, [page]);
+  }, [page, statusFilter]);
 
   const fetchWinners = async () => {
     setLoading(true);
     try {
-      const response = await getAdminWinners(page, 20);
+      const response = await getAdminWinners(page, 20, statusFilter);
       setWinners(response.data.data.winners);
       setStats(response.data.data.stats);
       setPagination(response.data.data.pagination);
@@ -29,6 +31,32 @@ function AdminWinners() {
       toast.error('Failed to load winners');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApprove = async (id) => {
+    setActing(id);
+    try {
+      const res = await approveWinner(id);
+      toast.success(res.data.message);
+      fetchWinners();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to approve');
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleReject = async (id) => {
+    setActing(id);
+    try {
+      const res = await rejectWinner(id);
+      toast.success(res.data.message);
+      fetchWinners();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to reject');
+    } finally {
+      setActing(null);
     }
   };
 
@@ -91,6 +119,28 @@ function AdminWinners() {
         </div>
       )}
 
+      {/* Status Filter Tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { label: 'All', value: '', },
+          { label: `Pending${stats?.pendingCount ? ` (${stats.pendingCount})` : ''}`, value: 'pending', color: 'text-yellow-400 border-yellow-400' },
+          { label: 'Approved', value: 'approved', color: 'text-accent border-accent' },
+          { label: 'Rejected', value: 'rejected', color: 'text-red-400 border-red-400' },
+        ].map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => { setStatusFilter(tab.value); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+              statusFilter === tab.value
+                ? (tab.color || 'text-white border-white') + ' bg-white/10'
+                : 'text-gray-400 border-dark-600 hover:border-gray-500'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* Search */}
       <div className="relative max-w-md">
         <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -119,8 +169,10 @@ function AdminWinners() {
                   <th className="text-center">Matched</th>
                   <th className="hidden lg:table-cell">Winning</th>
                   <th className="text-right">Prize</th>
+                  <th className="text-center">Status</th>
                   <th className="hidden md:table-cell">Period</th>
                   <th className="hidden sm:table-cell">Date</th>
+                  <th className="text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-400">
@@ -174,11 +226,45 @@ function AdminWinners() {
                         +{parseFloat(winner.prize_amount).toLocaleString()} Z
                       </span>
                     </td>
+                    <td className="text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        winner.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                        winner.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                        'bg-red-500/20 text-red-400'
+                      }`}>
+                        {winner.status === 'pending' && <FiClock className="inline w-3 h-3 mr-1 -mt-0.5" />}
+                        {winner.status}
+                      </span>
+                    </td>
                     <td className="hidden md:table-cell">
                       <span className="text-gray-400 text-xs lg:text-sm">#{winner.period_id}</span>
                     </td>
                     <td className="text-gray-400 text-xs lg:text-sm hidden sm:table-cell">
                       {formatDate(winner.created_at)}
+                    </td>
+                    <td className="text-center">
+                      {winner.status === 'pending' ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleApprove(winner.id)}
+                            disabled={acting === winner.id}
+                            className="p-1.5 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors disabled:opacity-50"
+                            title="Approve"
+                          >
+                            <FiCheck className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleReject(winner.id)}
+                            disabled={acting === winner.id}
+                            className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                            title="Reject"
+                          >
+                            <FiX className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-gray-600 text-xs">—</span>
+                      )}
                     </td>
                   </motion.tr>
                 ))}

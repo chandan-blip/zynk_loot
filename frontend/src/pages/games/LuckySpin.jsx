@@ -13,6 +13,7 @@ import { sounds } from "../../utils/sounds";
 import GameResultOverlay from "../../components/GameResultOverlay";
 import usePageTitle from "../../hooks/usePageTitle";
 import GameHistory from "../../components/GameHistory";
+import { isDemoMode, demoLuckySpin } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 
@@ -143,9 +144,10 @@ function LuckySpin() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const spinStats = (statsRes.data.data || []).find(
@@ -169,7 +171,9 @@ function LuckySpin() {
     sounds.click();
 
     try {
-      const res = await playLuckySpin(betAmount);
+      const res = isDemoMode(user)
+        ? demoLuckySpin(betAmount)
+        : await playLuckySpin(betAmount);
       const data = res.data.data;
 
       // Calculate target rotation:
@@ -197,9 +201,11 @@ function LuckySpin() {
       setResult(data);
       setShowResult(true);
 
-      checkAuth();
-      loadData();
-      setHistoryKey(k => k + 1);
+      if (!data.isDemo) {
+        checkAuth();
+        loadData();
+        setHistoryKey(k => k + 1);
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to play");
     } finally {

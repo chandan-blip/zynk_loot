@@ -861,6 +861,8 @@ class GameService {
   }
 
   async getHistory(userId, gameType, page = 1, limit = 20) {
+    page = Number(page) || 1;
+    limit = Number(limit) || 20;
     const offset = (page - 1) * limit;
     let where = 'WHERE user_id = ?';
     const params = [userId];
@@ -870,12 +872,12 @@ class GameService {
       params.push(gameType);
     }
 
-    const [rows] = await db.query(
-      `SELECT * FROM game_bets ${where} ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
-      params
+    const [rows] = await db.pool.query(
+      `SELECT * FROM game_bets ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
     );
 
-    const [countResult] = await db.query(
+    const [countResult] = await db.pool.query(
       `SELECT COUNT(*) as total FROM game_bets ${where}`,
       params
     );
@@ -889,7 +891,7 @@ class GameService {
   }
 
   async getStats(userId) {
-    const [rows] = await db.query(
+    const [rows] = await db.pool.query(
       `SELECT
         game_type,
         COUNT(*) as total_bets,

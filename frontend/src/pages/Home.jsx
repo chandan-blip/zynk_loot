@@ -1423,6 +1423,7 @@ function Home() {
                     matchesRevealed={item.matchesRevealed !== false}
                     hasVoted={myVotedNumbers.has(item.number)}
                     index={index}
+                    periodId={item.periodId || draw?.periodId}
                     // Ticket matching props (from user's tickets or API)
                     matchedDigits={ticketInfo.matchedDigits || 0}
                     currentReturn={ticketInfo.currentReturn || 0}

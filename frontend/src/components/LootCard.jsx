@@ -84,6 +84,7 @@ function LootCard({
   canCashOut = false,
   buyAmount = null,
   autoCashoutAt = null,
+  periodId = null,
 }) {
   const navigate = useNavigate();
   const [showSchedulePopup, setShowSchedulePopup] = useState(false);
@@ -159,6 +160,11 @@ function LootCard({
             )}
           </div>
           <div className="flex items-center gap-2">
+            {periodId && (
+              <span className="text-white/30 text-[10px] font-medium">
+                #{periodId}
+              </span>
+            )}
             {rank && rank <= 10 && (
               <span className="text-gold-light/80 text-[11px] font-semibold">
                 #{rank}

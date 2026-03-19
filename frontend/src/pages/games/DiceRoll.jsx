@@ -10,6 +10,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoDiceRoll } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 
@@ -58,7 +59,7 @@ function DiceRoll() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   // Dice animation: cycle through faces while rolling
   useEffect(() => {
@@ -70,6 +71,7 @@ function DiceRoll() {
   }, [rolling]);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const diceStats = (statsRes.data.data || []).find(s => s.game_type === 'dice_roll');
@@ -96,7 +98,9 @@ function DiceRoll() {
     sounds.dice();
 
     try {
-      const res = await playDiceRoll(betAmount, prediction);
+      const res = isDemoMode(user)
+        ? demoDiceRoll(betAmount, prediction)
+        : await playDiceRoll(betAmount, prediction);
       await new Promise(r => setTimeout(r, 1200));
 
       const data = res.data.data;
@@ -104,9 +108,11 @@ function DiceRoll() {
       setResult(data);
       setShowResult(true);
 
-      checkAuth();
-      loadData();
-      setHistoryKey(k => k + 1);
+      if (!data.isDemo) {
+        checkAuth();
+        loadData();
+        setHistoryKey(k => k + 1);
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     } finally {

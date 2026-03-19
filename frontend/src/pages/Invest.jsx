@@ -14,6 +14,7 @@ import {
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import useStore from '../store/useStore';
+import { useCurrency } from '../contexts/CurrencyContext';
 import {
   getInvestmentTiers,
   getPlatformGrowth,
@@ -30,6 +31,7 @@ function Invest() {
   usePageTitle('Invest');
 
   const { user, checkAuth } = useStore();
+  const { formatCurrency, selectedCurrency } = useCurrency();
   const [tiers, setTiers] = useState([]);
   const [stats, setStats] = useState(null);
   const [portfolio, setPortfolio] = useState([]);
@@ -48,18 +50,20 @@ function Invest() {
 
   const fetchAll = async () => {
     try {
-      const [tiersRes, growthRes, portfolioRes, statsRes, returnsRes] = await Promise.all([
-        getInvestmentTiers(),
-        getPlatformGrowth(30),
-        getInvestmentPortfolio(),
-        getInvestmentStats(),
-        getInvestmentReturns(1, 10)
-      ]);
+      const publicCalls = [getInvestmentTiers(), getPlatformGrowth(30)];
+      const authCalls = user
+        ? [getInvestmentPortfolio(), getInvestmentStats(), getInvestmentReturns(1, 10)]
+        : [];
+
+      const [tiersRes, growthRes, ...authRes] = await Promise.all([...publicCalls, ...authCalls]);
       setTiers(tiersRes.data.data || []);
       setGrowthData(growthRes.data.data || { history: [], latest: null });
-      setPortfolio(portfolioRes.data.data || []);
-      setStats(statsRes.data.data || null);
-      setReturns(returnsRes.data.data?.returns || []);
+
+      if (user && authRes.length === 3) {
+        setPortfolio(authRes[0].data.data || []);
+        setStats(authRes[1].data.data || null);
+        setReturns(authRes[2].data.data?.returns || []);
+      }
     } catch (error) {
       console.error('Failed to load invest data:', error);
       toast.error('Failed to load investment data');
@@ -69,6 +73,10 @@ function Invest() {
   };
 
   const handleInvest = async () => {
+    if (!user) {
+      toast.error('Please login to invest');
+      return;
+    }
     if (!selectedTier || !amount) return;
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
@@ -122,9 +130,14 @@ function Invest() {
     if (!selectedTier || !amount || !growthData.latest) return null;
     const rate = parseFloat(growthData.latest.base_daily_rate || 0);
     const mult = parseFloat(selectedTier.multiplier);
+    const investAmount = parseFloat(amount);
+    if (isNaN(investAmount) || investAmount <= 0) return null;
     const effectiveRate = rate * mult;
-    const daily = parseFloat(amount) * effectiveRate;
-    return { rate: effectiveRate, daily, monthly: daily * 30 };
+    const daily = investAmount * effectiveRate;
+    const lockDays = parseInt(selectedTier.lock_days) || 1;
+    const totalLockReturn = daily * lockDays;
+    const maturityValue = investAmount + totalLockReturn;
+    return { rate: effectiveRate, daily, monthly: daily * 30, lockDays, totalLockReturn, maturityValue, investAmount };
   }, [selectedTier, amount, growthData.latest]);
 
   // SVG mini line chart
@@ -205,7 +218,7 @@ function Invest() {
             Platform Growth
           </h2>
           {growthData.latest && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center flex-col-reverse md:flex-row gap-2">
               <span className="px-3 py-1 rounded-full bg-accent/10 text-accent font-bold text-sm">
                 Score: {parseFloat(growthData.latest.growth_score).toFixed(1)}
               </span>
@@ -348,22 +361,43 @@ function Invest() {
                   ))}
                 </div>
 
-                {/* Projected returns */}
+                {/* Growth breakdown */}
                 {projectedDaily && (
-                  <div className="p-4 rounded-lg bg-dark-700/50 border border-dark-600">
-                    <p className="text-gray-400 text-sm mb-2">Projected Returns</p>
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div>
-                        <p className="text-xs text-gray-500">Daily Rate</p>
-                        <p className="text-accent font-bold">{(projectedDaily.rate * 100).toFixed(3)}%</p>
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-dark-700/80 to-dark-700/40 border border-dark-600 space-y-4">
+                    {/* Summary message */}
+                    <div className="p-3 rounded-lg bg-accent/5 border border-accent/15">
+                      <p className="text-sm text-gray-300 leading-relaxed">
+                        Invest <span className="text-white font-bold">{formatCurrency(projectedDaily.investAmount)}</span> in
+                        the <span className="text-accent font-semibold">{selectedTier.name}</span> tier.
+                        Your money is locked for <span className="text-white font-semibold">{projectedDaily.lockDays} day{projectedDaily.lockDays !== 1 ? 's' : ''}</span> and
+                        earns ~<span className="text-green-400 font-bold">{formatCurrency(projectedDaily.daily)}</span>/day at
+                        the current {(projectedDaily.rate * 100).toFixed(3)}% daily rate.
+                        After {projectedDaily.lockDays} day{projectedDaily.lockDays !== 1 ? 's' : ''} you'll
+                        have ~<span className="text-green-400 font-bold">{formatCurrency(projectedDaily.maturityValue)}</span> ({formatCurrency(projectedDaily.totalLockReturn)} earned).
+                      </p>
+                    </div>
+
+                    {/* Numbers grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-lg bg-dark-800/60">
+                        <p className="text-[11px] text-gray-500 mb-1">Daily Earnings</p>
+                        <p className="text-green-400 font-bold text-lg">{formatCurrency(projectedDaily.daily)}</p>
+                        <p className="text-[10px] text-gray-600">{(projectedDaily.rate * 100).toFixed(3)}% rate</p>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Est. Daily</p>
-                        <p className="text-green-400 font-bold">{projectedDaily.daily.toFixed(2)} Z</p>
+                      <div className="p-3 rounded-lg bg-dark-800/60">
+                        <p className="text-[11px] text-gray-500 mb-1">At Maturity ({projectedDaily.lockDays}d)</p>
+                        <p className="text-accent font-bold text-lg">{formatCurrency(projectedDaily.maturityValue)}</p>
+                        <p className="text-[10px] text-gray-600">+{formatCurrency(projectedDaily.totalLockReturn)} profit</p>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Est. 30 Days</p>
-                        <p className="text-green-400 font-bold">{projectedDaily.monthly.toFixed(2)} Z</p>
+                      <div className="p-3 rounded-lg bg-dark-800/60">
+                        <p className="text-[11px] text-gray-500 mb-1">Est. 30 Days</p>
+                        <p className="text-green-400 font-bold text-lg">{formatCurrency(projectedDaily.monthly)}</p>
+                        <p className="text-[10px] text-gray-600">if rate holds</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-dark-800/60">
+                        <p className="text-[11px] text-gray-500 mb-1">Multiplier</p>
+                        <p className="text-white font-bold text-lg">{selectedTier.multiplier}x</p>
+                        <p className="text-[10px] text-gray-600">base rate boost</p>
                       </div>
                     </div>
                   </div>
@@ -373,15 +407,19 @@ function Invest() {
                 <div className="p-3 rounded-lg bg-dark-700/30 border border-dark-600/50 space-y-1.5 text-sm">
                   <div className="flex justify-between text-gray-400">
                     <span>Lock Period</span>
-                    <span className="text-white font-medium">{selectedTier.lock_days} days</span>
+                    <span className="text-white font-medium">{selectedTier.lock_days} day{parseInt(selectedTier.lock_days) !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="flex justify-between text-gray-400">
                     <span>Range</span>
-                    <span className="text-white font-medium">{parseFloat(selectedTier.min_amount).toLocaleString()} - {parseFloat(selectedTier.max_amount).toLocaleString()} Z</span>
+                    <span className="text-white font-medium">{formatCurrency(parseFloat(selectedTier.min_amount))} - {formatCurrency(parseFloat(selectedTier.max_amount))}</span>
                   </div>
                   <div className="flex justify-between text-gray-400">
                     <span>Early Withdraw</span>
                     <span className="text-orange-400 font-medium">10% penalty</span>
+                  </div>
+                  <div className="flex justify-between text-gray-400">
+                    <span>Currency</span>
+                    <span className="text-accent font-medium">{selectedCurrency.code}</span>
                   </div>
                 </div>
 
@@ -401,13 +439,13 @@ function Invest() {
                   ) : (
                     <span className="flex items-center justify-center gap-2">
                       <FiTrendingUp className="w-5 h-5" />
-                      Invest {amount ? `${parseFloat(amount).toLocaleString()} Z` : 'Now'}
+                      Invest {amount ? formatCurrency(parseFloat(amount)) : 'Now'}
                     </span>
                   )}
                 </motion.button>
 
                 <p className="text-gray-500 text-xs text-center">
-                  Your balance: {user?.balance?.toLocaleString() || 0} Z
+                  Your balance: {formatCurrency(user?.balance || 0)}
                 </p>
               </div>
             </motion.div>

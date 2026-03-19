@@ -87,7 +87,7 @@ io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (token) {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-key');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || require('./middleware/auth').JWT_SECRET);
       socket.userId = decoded.userId;
       socket.join(`user:${decoded.userId}`);
     } catch (err) {
@@ -158,17 +158,25 @@ const gameLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120, // 120 requests per minute
+  message: { success: false, message: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Routes
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/lottery', lotteryRoutes);
-app.use('/api/wallet', walletRoutes);
-app.use('/api/users', usersRoutes);
-app.use('/api/support', supportRoutes);
-app.use('/api/referral', referralRoutes);
-app.use('/api/invest', investRoutes);
+app.use('/api/lottery', apiLimiter, lotteryRoutes);
+app.use('/api/wallet', apiLimiter, walletRoutes);
+app.use('/api/users', apiLimiter, usersRoutes);
+app.use('/api/support', apiLimiter, supportRoutes);
+app.use('/api/referral', apiLimiter, referralRoutes);
+app.use('/api/invest', apiLimiter, investRoutes);
 app.use('/api/games', gameLimiter, gameRoutes);
-app.use('/api/notifications', notificationRoutes);
+app.use('/api/notifications', apiLimiter, notificationRoutes);
 
 // Recent activities (public, no auth needed)
 app.get('/api/activities/recent', (req, res) => {

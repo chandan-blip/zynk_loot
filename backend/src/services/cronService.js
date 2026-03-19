@@ -562,10 +562,12 @@ class CronService {
         [this.config.TOTAL_DIGITS]
       );
 
+      const initialPool = Math.floor(10000 + Math.random() * 90000);
+
       const [result] = await db.pool.query(
-        `INSERT INTO daily_draws (period_id, draw_date, session_number, winning_number, status, revealed_digits, generate_time, result_time)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [periodId, today, session, winningNumber, initialStatus, initialRevealedDigits, generateTime, resultTime]
+        `INSERT INTO daily_draws (period_id, draw_date, session_number, winning_number, status, revealed_digits, generate_time, result_time, total_pool)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [periodId, today, session, winningNumber, initialStatus, initialRevealedDigits, generateTime, resultTime, initialPool]
       );
 
       await db.pool.query(
@@ -686,84 +688,47 @@ class CronService {
       const exactMatchPrize = totalPool * this.config.EXACT_MATCH_MULTIPLIER;
       const nearMatchPool = totalPool * this.config.NEAR_MATCH_MULTIPLIER;
 
+      // Only numbers bought before 2 digits were revealed are eligible
       const [exactMatches] = await db.pool.query(
-        `SELECT n.*, u.id as user_id FROM numbers n JOIN users u ON n.owner_id = u.id WHERE n.number = ?`,
-        [winningNumber]
+        `SELECT n.*, u.id as user_id FROM numbers n JOIN users u ON n.owner_id = u.id
+         WHERE n.number = ? AND n.draw_id = ? AND n.purchased_at_reveal < 2`,
+        [winningNumber, draw.id]
       );
 
       const [nearMatches] = await db.pool.query(
-        `SELECT n.*, u.id as user_id FROM numbers n JOIN users u ON n.owner_id = u.id WHERE n.number LIKE ? AND n.number != ?`,
-        [`${prefix}_`, winningNumber]
+        `SELECT n.*, u.id as user_id FROM numbers n JOIN users u ON n.owner_id = u.id
+         WHERE n.number LIKE ? AND n.number != ? AND n.draw_id = ? AND n.purchased_at_reveal < 2`,
+        [`${prefix}_`, winningNumber, draw.id]
       );
 
       if (exactMatches.length === 0 && nearMatches.length === 0) {
-        console.log(`[CRON] No winners for period ${draw.period_id}`);
+        console.log(`[CRON] No eligible winners for period ${draw.period_id}`);
         return;
       }
 
+      // Insert as pending — admin must approve before prize is credited
       for (const winner of exactMatches) {
         await db.pool.query(
-          `INSERT INTO winners (draw_id, user_id, number_id, period_id, matching_digits, prize_amount) VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO winners (draw_id, user_id, number_id, period_id, matching_digits, prize_amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
           [draw.id, winner.user_id, winner.id, draw.period_id, this.config.TOTAL_DIGITS, exactMatchPrize]
         );
-
-        await db.pool.query(
-          `UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?`,
-          [exactMatchPrize, exactMatchPrize, winner.user_id]
-        );
-
-        await db.pool.query(
-          `UPDATE numbers SET times_won = times_won + 1, last_won_date = ? WHERE id = ?`,
-          [draw.draw_date, winner.id]
-        );
-
-        console.log(`[CRON] Exact match winner: User ${winner.user_id}, Prize: ${exactMatchPrize}`);
-
-        if (this.io) {
-          this.io.to(`user:${winner.user_id}`).emit('prize:won', {
-            periodId: draw.period_id,
-            number: winningNumber,
-            prize: exactMatchPrize,
-            matchType: 'exact'
-          });
-        }
+        console.log(`[CRON] Pending exact match: User ${winner.user_id}, Prize: ${exactMatchPrize} (awaiting admin approval)`);
       }
 
       if (nearMatches.length > 0) {
         const perNearMatchPrize = nearMatchPool / nearMatches.length;
-
         for (const winner of nearMatches) {
           await db.pool.query(
-            `INSERT INTO winners (draw_id, user_id, number_id, period_id, matching_digits, prize_amount) VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO winners (draw_id, user_id, number_id, period_id, matching_digits, prize_amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
             [draw.id, winner.user_id, winner.id, draw.period_id, this.config.TOTAL_DIGITS - 1, perNearMatchPrize]
           );
-
-          await db.pool.query(
-            `UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?`,
-            [perNearMatchPrize, perNearMatchPrize, winner.user_id]
-          );
-
-          await db.pool.query(
-            `UPDATE numbers SET times_won = times_won + 1, last_won_date = ? WHERE id = ?`,
-            [draw.draw_date, winner.id]
-          );
-
-          console.log(`[CRON] Near match winner: User ${winner.user_id}, Number: ${winner.number}, Prize: ${perNearMatchPrize}`);
-
-          if (this.io) {
-            this.io.to(`user:${winner.user_id}`).emit('prize:won', {
-              periodId: draw.period_id,
-              number: winner.number,
-              prize: perNearMatchPrize,
-              matchType: 'near'
-            });
-          }
+          console.log(`[CRON] Pending near match: User ${winner.user_id}, Number: ${winner.number}, Prize: ${perNearMatchPrize} (awaiting admin approval)`);
         }
       }
 
-      console.log(`[CRON] Winners processed - Exact: ${exactMatches.length}, Near: ${nearMatches.length}`);
+      console.log(`[CRON] Winners queued for approval - Exact: ${exactMatches.length}, Near: ${nearMatches.length}`);
 
-      // Vote rewards
+      // Vote rewards (still auto-credited as they are small)
       const [winningNumberRecord] = await db.pool.query(
         `SELECT id FROM numbers WHERE number = ?`,
         [winningNumber]
@@ -1122,7 +1087,8 @@ class CronService {
       cron.schedule(winnersCleanupCron, async () => {
         await this.executeWithLogging('daily_winners_cleanup', async () => {
           const [result] = await db.pool.query(
-            'DELETE FROM winners WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)'
+            'DELETE FROM winners WHERE status != ? AND created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)',
+            ['pending']
           );
           return { deletedRows: result.affectedRows };
         });

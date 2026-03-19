@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoFuse } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 const MULTIPLIER_PRESETS = [1.5, 2, 3, 5, 10, 25];
@@ -29,13 +30,14 @@ function FuseGame() {
   const [historyKey, setHistoryKey] = useState(0);
   const animRef = useRef(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [user]);
 
   useEffect(() => {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, []);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const fStats = (statsRes.data.data || []).find(s => s.game_type === 'fuse');
@@ -63,7 +65,9 @@ function FuseGame() {
     sounds.click();
 
     try {
-      const res = await playFuse(betAmount, target);
+      const res = isDemoMode(user)
+        ? demoFuse(betAmount, target)
+        : await playFuse(betAmount, target);
       const data = res.data.data;
 
       // End point: target if win, boom point if loss
@@ -102,9 +106,11 @@ function FuseGame() {
             }, 400);
           }
           setBurning(false);
-          checkAuth();
-          loadData();
-          setHistoryKey(k => k + 1);
+          if (!data.isDemo) {
+            checkAuth();
+            loadData();
+            setHistoryKey(k => k + 1);
+          }
         }
       };
 

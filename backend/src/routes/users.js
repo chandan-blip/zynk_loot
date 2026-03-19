@@ -42,12 +42,38 @@ router.get('/search', async (req, res) => {
   }
 });
 
+// Update current user's settings (preferred currency, etc.)
+router.put('/me/settings', async (req, res) => {
+  try {
+    const { preferredCurrency } = req.body;
+
+    if (!preferredCurrency || typeof preferredCurrency !== 'string') {
+      return res.status(400).json({ success: false, message: 'preferredCurrency is required' });
+    }
+
+    const code = preferredCurrency.toUpperCase().trim();
+    if (code.length > 20) {
+      return res.status(400).json({ success: false, message: 'Invalid currency code' });
+    }
+
+    await db.pool.query(
+      'UPDATE users SET preferred_currency = ? WHERE id = ?',
+      [code, req.user.id]
+    );
+
+    res.json({ success: true, message: 'Settings updated', data: { preferredCurrency: code } });
+  } catch (error) {
+    console.error('Update user settings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update settings' });
+  }
+});
+
 // Get current user's full profile with stats
 router.get('/me/profile', async (req, res) => {
   try {
     // Get user basic info
     const [users] = await db.pool.query(
-      `SELECT id, username, email, balance, total_spent, total_earned, created_at
+      `SELECT id, username, email, balance, total_spent, total_earned, preferred_currency, created_at
        FROM users WHERE id = ?`,
       [req.user.id]
     );
@@ -115,6 +141,7 @@ router.get('/me/profile', async (req, res) => {
           balance: parseFloat(user.balance),
           totalSpent: parseFloat(user.total_spent),
           totalEarned: parseFloat(user.total_earned),
+          preferredCurrency: user.preferred_currency || 'ZYNK',
           joinedAt: user.created_at
         },
         stats: {

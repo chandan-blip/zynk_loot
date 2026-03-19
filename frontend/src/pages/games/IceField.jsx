@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoIceField } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 const COLS = 5;
@@ -44,9 +45,10 @@ function IceField() {
   const [stats, setStats] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const ifStats = (statsRes.data.data || []).find(s => s.game_type === 'ice_field');
@@ -82,14 +84,16 @@ function IceField() {
     sounds.click();
 
     try {
-      const res = await playIceField(betAmount, difficulty, targetRows);
+      const res = isDemoMode(user)
+        ? demoIceField(betAmount, difficulty, targetRows)
+        : await playIceField(betAmount, difficulty, targetRows);
       const data = res.data.data;
       setGameData(data);
       setRevealedTiles({});
       setPickedTiles({});
       setCurrentRow(1);
       setPhase('walking');
-      checkAuth();
+      if (!data.isDemo) checkAuth();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     }
@@ -113,8 +117,7 @@ function IceField() {
         setPhase('result');
         setResult(gameData);
         setShowResult(true);
-        loadData();
-        setHistoryKey(k => k + 1);
+        if (!gameData.isDemo) { loadData(); setHistoryKey(k => k + 1); }
       } else {
         setCurrentRow(prev => prev + 1);
       }
@@ -124,8 +127,7 @@ function IceField() {
       setPhase('result');
       setResult(gameData);
       setShowResult(true);
-      loadData();
-      setHistoryKey(k => k + 1);
+      if (!gameData.isDemo) { loadData(); setHistoryKey(k => k + 1); }
     }
     setRevealing(false);
   };

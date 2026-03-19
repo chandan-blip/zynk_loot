@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoEggHatch } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 
@@ -94,9 +95,10 @@ function EggHatch() {
   const [stats, setStats] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const ehStats = (statsRes.data.data || []).find(s => s.game_type === 'egg_hatch');
@@ -117,7 +119,9 @@ function EggHatch() {
     sounds.click();
 
     try {
-      const res = await playEggHatch(betAmount);
+      const res = isDemoMode(user)
+        ? demoEggHatch(betAmount)
+        : await playEggHatch(betAmount);
       const data = res.data.data;
 
       // Crack the picked egg first
@@ -145,9 +149,11 @@ function EggHatch() {
 
       setResult(data);
       setShowResult(true);
-      checkAuth();
-      loadData();
-      setHistoryKey(k => k + 1);
+      if (!data.isDemo) {
+        checkAuth();
+        loadData();
+        setHistoryKey(k => k + 1);
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     } finally {

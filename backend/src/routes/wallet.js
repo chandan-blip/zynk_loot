@@ -678,8 +678,8 @@ router.get('/withdrawals', async (req, res) => {
        JOIN payment_methods pm ON w.payment_method_id = pm.id
        WHERE w.user_id = ?
        ORDER BY w.created_at DESC
-       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
-      [req.user.id]
+       LIMIT ? OFFSET ?`,
+      [req.user.id, parseInt(limit), parseInt(offset)]
     );
 
     const [countResult] = await db.pool.query(
@@ -803,8 +803,8 @@ router.get('/transactions', async (req, res) => {
       `SELECT * FROM transactions
        WHERE user_id = ?
        ORDER BY created_at DESC
-       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
-      [req.user.id]
+       LIMIT ? OFFSET ?`,
+      [req.user.id, parseInt(limit), parseInt(offset)]
     );
 
     const [countResult] = await db.pool.query(
@@ -984,8 +984,8 @@ router.get('/transfers', async (req, res) => {
        JOIN users recipient ON t.recipient_id = recipient.id
        WHERE ${whereClause}
        ORDER BY t.created_at DESC
-       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
-      [req.user.id, ...params]
+       LIMIT ? OFFSET ?`,
+      [req.user.id, ...params, parseInt(limit), parseInt(offset)]
     );
 
     const [countResult] = await db.pool.query(

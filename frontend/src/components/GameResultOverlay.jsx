@@ -1,7 +1,9 @@
 import { useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiX } from 'react-icons/fi';
 import { sounds } from '../utils/sounds';
+import useStore from '../store/useStore';
 
 // Reusable win/loss overlay for any game
 // Props:
@@ -12,7 +14,11 @@ import { sounds } from '../utils/sounds';
 //   autoCloseMs?: number (default 4000)
 
 function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4000 }) {
+  const navigate = useNavigate();
+  const { user } = useStore();
   const isWin = result?.isWin;
+  const isDemo = result?.isDemo;
+  const isLoggedIn = !!user;
 
   useEffect(() => {
     if (!show || !result) return;
@@ -132,6 +138,23 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4000 })
                 >
                   You picked <span className="capitalize text-gray-300">{result.prediction}</span> — {title || 'result'} was <span className="capitalize text-gray-300">{result.result}</span>
                 </motion.p>
+              )}
+
+              {isDemo && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 }}
+                  className="mt-5 space-y-2"
+                >
+                  <p className="text-yellow-400/80 text-xs font-medium">This was a free demo play</p>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onClose(); navigate('/wallet'); }}
+                    className="px-6 py-2.5 rounded-lg bg-accent hover:bg-accent/90 text-dark-900 font-bold text-sm transition-colors"
+                  >
+                    Deposit to Play for Real
+                  </button>
+                </motion.div>
               )}
             </motion.div>
           </motion.div>

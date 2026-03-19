@@ -15,11 +15,13 @@ import {
   FiShield,
   FiLock,
   FiChevronRight,
-  FiInfo
+  FiInfo,
+  FiMessageCircle
 } from 'react-icons/fi';
 import { SiBitcoin, SiEthereum, SiTether } from 'react-icons/si';
 import { getZynkPackages, getPaymentSettings, checkout } from '../services/api';
 import { useCurrency } from '../contexts/CurrencyContext';
+import SupportChat from '../components/SupportChat';
 
 const PAYMENT_METHODS = [
   { id: 'upi', name: 'UPI', icon: FiSmartphone, color: 'from-purple-500 to-pink-500', description: 'GPay, PhonePe, Paytm' },
@@ -80,6 +82,7 @@ export default function Checkout() {
   const [success, setSuccess] = useState(false);
   const [step, setStep] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     if (!packageId) {
@@ -509,6 +512,21 @@ export default function Checkout() {
                     );
                   })}
                 </div>
+
+                {/* Support contact for unavailable methods */}
+                <div className="mt-4 p-4 rounded-xl bg-dark-800/50 border border-dark-600 flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FiInfo className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                    <p className="text-sm text-gray-400">Can't find your preferred payment method?</p>
+                  </div>
+                  <button
+                    onClick={() => setChatOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent/10 border border-accent/20 text-accent text-sm font-medium hover:bg-accent/20 transition-colors flex-shrink-0"
+                  >
+                    <FiMessageCircle className="w-4 h-4" />
+                    Chat with us
+                  </button>
+                </div>
               </motion.div>
             )}
 
@@ -723,6 +741,8 @@ export default function Checkout() {
           </div>
         </div>
       </div>
+
+      <SupportChat isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

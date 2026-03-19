@@ -4,7 +4,7 @@ const db = require('../config/database');
 const seedAdmin = async () => {
   try {
     // Check if admin exists
-    const [existingAdmin] = await db.query(
+    const [existingAdmin] = await db.pool.query(
       'SELECT id FROM users WHERE email = ?',
       ['admin@loot.com']
     );
@@ -17,7 +17,7 @@ const seedAdmin = async () => {
     // Create admin with proper hash
     const passwordHash = await bcrypt.hash('admin123', 10);
 
-    await db.query(
+    await db.pool.query(
       `INSERT INTO users (username, email, password_hash, balance, is_admin)
        VALUES (?, ?, ?, ?, ?)`,
       ['admin', 'admin@loot.com', passwordHash, 0, true]

@@ -42,8 +42,8 @@ class NotificationService {
       `SELECT * FROM notifications
        WHERE user_id = ? OR type IN ('global', 'update')
        ORDER BY created_at DESC
-       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`,
-      [userId]
+       LIMIT ? OFFSET ?`,
+      [userId, parseInt(limit), parseInt(offset)]
     );
 
     const [countResult] = await db.pool.query(
@@ -105,7 +105,8 @@ class NotificationService {
        FROM notifications n
        LEFT JOIN users u ON n.user_id = u.id
        ORDER BY n.created_at DESC
-       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
+       LIMIT ? OFFSET ?`,
+      [parseInt(limit), parseInt(offset)]
     );
     return rows;
   }

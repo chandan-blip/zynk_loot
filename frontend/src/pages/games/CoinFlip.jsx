@@ -10,6 +10,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoCoinFlip } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 
@@ -27,9 +28,10 @@ function CoinFlip() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const coinStats = (statsRes.data.data || []).find(s => s.game_type === 'coin_flip');
@@ -56,7 +58,9 @@ function CoinFlip() {
     sounds.flip();
 
     try {
-      const res = await playCoinFlip(betAmount, prediction);
+      const res = isDemoMode(user)
+        ? demoCoinFlip(betAmount, prediction)
+        : await playCoinFlip(betAmount, prediction);
       // Delay showing result for animation
       await new Promise(r => setTimeout(r, 1500));
 
@@ -64,9 +68,11 @@ function CoinFlip() {
       setResult(data);
       setShowResult(true);
 
-      checkAuth(); // Refresh balance
-      loadData();  // Refresh stats
-      setHistoryKey(k => k + 1);
+      if (!data.isDemo) {
+        checkAuth(); // Refresh balance
+        loadData();  // Refresh stats
+        setHistoryKey(k => k + 1);
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     } finally {

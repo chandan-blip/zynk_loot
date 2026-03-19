@@ -284,7 +284,7 @@ function Profile() {
                 className="absolute right-0 w-72 top-0 mt-2 rounded-xl bg-dark-800 border border-dark-500 shadow-xl z-50 overflow-hidden"
               >
                 <div className="p-2 border-b border-dark-500">
-                  <p className="text-xs text-gray-500 px-2">Display Currency</p>
+                  <p className="text-xs text-gray-500 px-2">Display Currency (saved to your account)</p>
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   {currencies.map((currency) => {

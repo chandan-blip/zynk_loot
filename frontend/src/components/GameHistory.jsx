@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { FiClock, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { getGameHistory } from '../services/api';
+import useStore from '../store/useStore';
 
 const PER_PAGE = 5;
 
 function GameHistory({ gameType, title, renderItem, refreshKey }) {
+  const { user } = useStore();
   const [history, setHistory] = useState([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -13,6 +15,7 @@ function GameHistory({ gameType, title, renderItem, refreshKey }) {
   const containerRef = useRef(null);
 
   const loadHistory = async (p = page) => {
+    if (!user) { setInitialLoad(false); return; }
     setLoading(true);
     try {
       const res = await getGameHistory(p, PER_PAGE, gameType);
@@ -27,7 +30,7 @@ function GameHistory({ gameType, title, renderItem, refreshKey }) {
     }
   };
 
-  useEffect(() => { loadHistory(page); }, [page]);
+  useEffect(() => { loadHistory(page); }, [page, user]);
 
   // Reset to page 1 on refresh (after a new game)
   useEffect(() => {

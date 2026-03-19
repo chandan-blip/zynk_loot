@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import useStore from './store/useStore';
-import { CurrencyProvider } from './contexts/CurrencyContext';
+import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import Home from './pages/Home';
@@ -96,6 +96,20 @@ function AdminRoute({ children }) {
   return children;
 }
 
+// Syncs user's preferred currency from backend into CurrencyContext
+function CurrencySync() {
+  const { user } = useStore();
+  const { initFromUser } = useCurrency();
+
+  useEffect(() => {
+    if (user?.preferredCurrency) {
+      initFromUser(user.preferredCurrency);
+    }
+  }, [user?.preferredCurrency, initFromUser]);
+
+  return null;
+}
+
 function App() {
   const { checkAuth } = useStore();
 
@@ -105,6 +119,7 @@ function App() {
 
   return (
     <CurrencyProvider>
+      <CurrencySync />
       <Toaster
         position="top-right"
         toastOptions={{
@@ -159,18 +174,18 @@ function App() {
           <Route path="checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
           <Route path="profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="promote" element={<PrivateRoute><Promote /></PrivateRoute>} />
-          <Route path="invest" element={<PrivateRoute><Invest /></PrivateRoute>} />
+          <Route path="invest" element={<Invest />} />
           <Route path="notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="games" element={<Games />} />
-          <Route path="games/coin-flip" element={<PrivateRoute><CoinFlip /></PrivateRoute>} />
-          <Route path="games/dice-roll" element={<PrivateRoute><DiceRoll /></PrivateRoute>} />
-          <Route path="games/lucky-spin" element={<PrivateRoute><LuckySpin /></PrivateRoute>} />
-          <Route path="games/balloon-pop" element={<PrivateRoute><BalloonPop /></PrivateRoute>} />
-          <Route path="games/dragon-tower" element={<PrivateRoute><DragonTower /></PrivateRoute>} />
-          <Route path="games/ice-field" element={<PrivateRoute><IceField /></PrivateRoute>} />
-          <Route path="games/arrow-roulette" element={<PrivateRoute><ArrowRoulette /></PrivateRoute>} />
-          <Route path="games/egg-hatch" element={<PrivateRoute><EggHatch /></PrivateRoute>} />
-          <Route path="games/fuse" element={<PrivateRoute><FuseGame /></PrivateRoute>} />
+          <Route path="games/coin-flip" element={<CoinFlip />} />
+          <Route path="games/dice-roll" element={<DiceRoll />} />
+          <Route path="games/lucky-spin" element={<LuckySpin />} />
+          <Route path="games/balloon-pop" element={<BalloonPop />} />
+          <Route path="games/dragon-tower" element={<DragonTower />} />
+          <Route path="games/ice-field" element={<IceField />} />
+          <Route path="games/arrow-roulette" element={<ArrowRoulette />} />
+          <Route path="games/egg-hatch" element={<EggHatch />} />
+          <Route path="games/fuse" element={<FuseGame />} />
           <Route path="leaderboard" element={<Leaderboard />} />
           <Route path="history" element={<History />} />
           <Route path="faq" element={<FAQ />} />

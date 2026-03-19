@@ -675,7 +675,7 @@ router.get('/jobs/stats/summary', async (req, res) => {
 router.get('/draws/:periodId/winners', async (req, res) => {
   try {
     const [winners] = await db.pool.query(
-      `SELECT w.*, u.username, n.number
+      `SELECT w.*, u.username, n.number, n.purchased_at_reveal
        FROM winners w
        JOIN users u ON w.user_id = u.id
        JOIN numbers n ON w.number_id = n.id
@@ -691,34 +691,47 @@ router.get('/draws/:periodId/winners', async (req, res) => {
   }
 });
 
-// Get all winners (with pagination)
+// Get all winners (with pagination + status filter)
 router.get('/winners', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
+    const status = req.query.status; // optional: pending, approved, rejected
+
+    let where = '';
+    const params = [];
+    if (status) {
+      where = 'WHERE w.status = ?';
+      params.push(status);
+    }
 
     const [winners] = await db.pool.query(
-      `SELECT w.id, w.period_id, w.matching_digits, w.prize_amount, w.created_at,
-              u.username, u.email, n.number,
+      `SELECT w.id, w.period_id, w.matching_digits, w.prize_amount, w.status, w.reviewed_at, w.created_at,
+              u.username, u.email, n.number, n.purchased_at_reveal,
               d.winning_number, d.draw_date
        FROM winners w
        JOIN users u ON w.user_id = u.id
        JOIN numbers n ON w.number_id = n.id
        JOIN daily_draws d ON w.draw_id = d.id
+       ${where}
        ORDER BY w.created_at DESC
-       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), parseInt(offset)]
     );
 
-    const [countResult] = await db.pool.query('SELECT COUNT(*) as total FROM winners');
+    const countWhere = status ? 'WHERE status = ?' : '';
+    const countParams = status ? [status] : [];
+    const [countResult] = await db.pool.query(`SELECT COUNT(*) as total FROM winners ${countWhere}`, countParams);
 
     // Get summary stats
     const [stats] = await db.pool.query(
       `SELECT
          COUNT(*) as totalWinners,
-         SUM(prize_amount) as totalPrizesPaid,
-         COUNT(CASE WHEN matching_digits = 7 THEN 1 END) as jackpotWinners,
-         MAX(prize_amount) as biggestPrize
+         SUM(CASE WHEN status = 'approved' THEN prize_amount ELSE 0 END) as totalPrizesPaid,
+         COUNT(CASE WHEN matching_digits = 7 AND status = 'approved' THEN 1 END) as jackpotWinners,
+         MAX(CASE WHEN status = 'approved' THEN prize_amount ELSE 0 END) as biggestPrize,
+         COUNT(CASE WHEN status = 'pending' THEN 1 END) as pendingCount
        FROM winners`
     );
 
@@ -730,7 +743,8 @@ router.get('/winners', async (req, res) => {
           totalWinners: stats[0].totalWinners || 0,
           totalPrizesPaid: parseFloat(stats[0].totalPrizesPaid || 0),
           jackpotWinners: stats[0].jackpotWinners || 0,
-          biggestPrize: parseFloat(stats[0].biggestPrize || 0)
+          biggestPrize: parseFloat(stats[0].biggestPrize || 0),
+          pendingCount: stats[0].pendingCount || 0
         },
         pagination: {
           page,
@@ -743,6 +757,171 @@ router.get('/winners', async (req, res) => {
   } catch (error) {
     console.error('Get all winners error:', error);
     res.status(500).json({ success: false, message: 'Failed to get winners' });
+  }
+});
+
+// Approve a pending winner — credits prize to user balance
+router.post('/winners/:id/approve', async (req, res) => {
+  const conn = await db.pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query('SELECT * FROM winners WHERE id = ? AND status = ?', [req.params.id, 'pending']);
+    if (rows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, message: 'Pending winner not found' });
+    }
+
+    const winner = rows[0];
+
+    await conn.query(
+      `UPDATE winners SET status = 'approved', reviewed_at = NOW() WHERE id = ?`,
+      [winner.id]
+    );
+
+    const [[user]] = await conn.query('SELECT balance FROM users WHERE id = ?', [winner.user_id]);
+    const balanceBefore = parseFloat(user.balance);
+    const balanceAfter = balanceBefore + parseFloat(winner.prize_amount);
+
+    await conn.query(
+      `UPDATE users SET balance = ?, total_earned = total_earned + ? WHERE id = ?`,
+      [balanceAfter, winner.prize_amount, winner.user_id]
+    );
+
+    await conn.query(
+      `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, description) VALUES (?, 'prize', ?, ?, ?, ?)`,
+      [winner.user_id, winner.prize_amount, balanceBefore, balanceAfter, `Draw ${winner.period_id} - ${winner.matching_digits} digit match prize`]
+    );
+
+    await conn.query(
+      `UPDATE numbers SET times_won = times_won + 1, last_won_date = NOW() WHERE id = ?`,
+      [winner.number_id]
+    );
+
+    await conn.commit();
+    conn.release();
+
+    // Notify user via socket + persistent notification
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${winner.user_id}`).emit('prize:won', {
+        periodId: winner.period_id,
+        prize: parseFloat(winner.prize_amount),
+        matchType: winner.matching_digits === 7 ? 'exact' : 'near'
+      });
+    }
+
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      const matchLabel = winner.matching_digits === 7 ? 'Jackpot! Exact match' : `${winner.matching_digits} digit match`;
+      await notificationService.create({
+        userId: winner.user_id,
+        type: 'personal',
+        title: '🏆 You Won a Prize!',
+        message: `${matchLabel} on Draw #${winner.period_id}! You won ${parseFloat(winner.prize_amount).toLocaleString()} Z. The amount has been credited to your balance.`
+      });
+    }
+
+    res.json({ success: true, message: `Winner approved. ${winner.prize_amount} Z credited.` });
+  } catch (error) {
+    await conn.rollback();
+    conn.release();
+    console.error('Approve winner error:', error);
+    res.status(500).json({ success: false, message: 'Failed to approve winner' });
+  }
+});
+
+// Reject a pending winner
+router.post('/winners/:id/reject', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query('SELECT * FROM winners WHERE id = ? AND status = ?', [req.params.id, 'pending']);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Pending winner not found' });
+    }
+
+    await db.pool.query(
+      `UPDATE winners SET status = 'rejected', reviewed_at = NOW() WHERE id = ?`,
+      [req.params.id]
+    );
+
+    res.json({ success: true, message: 'Winner rejected.' });
+  } catch (error) {
+    console.error('Reject winner error:', error);
+    res.status(500).json({ success: false, message: 'Failed to reject winner' });
+  }
+});
+
+// Bulk approve all pending winners for a draw
+router.post('/draws/:periodId/approve-all', async (req, res) => {
+  const conn = await db.pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [pending] = await conn.query(
+      'SELECT * FROM winners WHERE period_id = ? AND status = ?',
+      [req.params.periodId, 'pending']
+    );
+
+    if (pending.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, message: 'No pending winners for this draw' });
+    }
+
+    for (const winner of pending) {
+      await conn.query(`UPDATE winners SET status = 'approved', reviewed_at = NOW() WHERE id = ?`, [winner.id]);
+
+      const [[user]] = await conn.query('SELECT balance FROM users WHERE id = ?', [winner.user_id]);
+      const balanceBefore = parseFloat(user.balance);
+      const balanceAfter = balanceBefore + parseFloat(winner.prize_amount);
+
+      await conn.query(
+        `UPDATE users SET balance = ?, total_earned = total_earned + ? WHERE id = ?`,
+        [balanceAfter, winner.prize_amount, winner.user_id]
+      );
+
+      await conn.query(
+        `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, description) VALUES (?, 'prize', ?, ?, ?, ?)`,
+        [winner.user_id, winner.prize_amount, balanceBefore, balanceAfter, `Draw ${winner.period_id} - ${winner.matching_digits} digit match prize`]
+      );
+
+      await conn.query(
+        `UPDATE numbers SET times_won = times_won + 1, last_won_date = NOW() WHERE id = ?`,
+        [winner.number_id]
+      );
+    }
+
+    await conn.commit();
+    conn.release();
+
+    const io = req.app.get('io');
+    const notificationService = req.app.get('notificationService');
+    for (const winner of pending) {
+      if (io) {
+        io.to(`user:${winner.user_id}`).emit('prize:won', {
+          periodId: winner.period_id,
+          prize: parseFloat(winner.prize_amount),
+          matchType: winner.matching_digits === 7 ? 'exact' : 'near'
+        });
+      }
+      if (notificationService) {
+        const matchLabel = winner.matching_digits === 7 ? 'Jackpot! Exact match' : `${winner.matching_digits} digit match`;
+        await notificationService.create({
+          userId: winner.user_id,
+          type: 'personal',
+          title: '🏆 You Won a Prize!',
+          message: `${matchLabel} on Draw #${winner.period_id}! You won ${parseFloat(winner.prize_amount).toLocaleString()} Z. The amount has been credited to your balance.`
+        });
+      }
+    }
+
+    res.json({ success: true, message: `${pending.length} winners approved and credited.` });
+  } catch (error) {
+    await conn.rollback();
+    conn.release();
+    console.error('Bulk approve error:', error);
+    res.status(500).json({ success: false, message: 'Failed to approve winners' });
   }
 });
 

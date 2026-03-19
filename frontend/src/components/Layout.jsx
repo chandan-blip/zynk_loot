@@ -30,7 +30,7 @@ const navItems = [
   { path: '/', label: 'Home', icon: FiHome },
   // { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true },
   // { path: '/profile', label: 'Profile', icon: FiUser, authRequired: true },
-  { path: '/invest', label: 'Invest', icon: FiTrendingUp, authRequired: true },
+  { path: '/invest', label: 'Invest', icon: FiTrendingUp },
   { path: '/games', label: 'Games', icon: FiPlay, special: true },
   { path: '/promote', label: 'Promote', icon: FiShare2, authRequired: true },
   // { path: '/leaderboard', label: 'Leaderboard', icon: GiTrophy },
@@ -183,7 +183,7 @@ function Layout() {
               <nav className="flex-1 p-5 overflow-y-auto scrollbar-hide">
                 <div className="flex flex-col gap-1">
                   {navItems
-                    .filter(item => isLoading || !item.authRequired || isAuthenticated)
+                    .filter(item => !item.authRequired || isAuthenticated || (isLoading && localStorage.getItem('token')))
                     .map((item) => {
                     const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));
                     return (
@@ -399,7 +399,7 @@ function Layout() {
             <div className="glass-strong border-t border-white/5 mx-2 mb-2 rounded-lg overflow-hidden">
               <div className="flex items-center justify-around h-16">
                 {navItems
-                  .filter(item => isLoading || !item.authRequired || isAuthenticated)
+                  .filter(item => !item.authRequired || isAuthenticated || (isLoading && localStorage.getItem('token')))
                   .map((item) => {
                   const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));
                   return (

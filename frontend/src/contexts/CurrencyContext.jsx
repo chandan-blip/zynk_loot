@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getUserExchangeRates } from '../services/api';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { getUserExchangeRates, updateUserSettings } from '../services/api';
 
 const CurrencyContext = createContext();
 
@@ -14,13 +14,55 @@ const DEFAULT_CURRENCY = {
 };
 
 export function CurrencyProvider({ children }) {
-  const [selectedCurrency, setSelectedCurrency] = useState(() => {
+  const [selectedCurrency, setSelectedCurrencyState] = useState(() => {
     const saved = localStorage.getItem('selectedCurrency');
     return saved ? JSON.parse(saved) : DEFAULT_CURRENCY;
   });
   const [currencies, setCurrencies] = useState([DEFAULT_CURRENCY]);
   const [zynkToUsd, setZynkToUsd] = useState(1.0);
   const [loading, setLoading] = useState(true);
+  const initializedFromUser = useRef(false);
+
+  // Wrapper that saves to both localStorage and backend
+  const setSelectedCurrency = useCallback((currencyOrUpdater) => {
+    setSelectedCurrencyState(prev => {
+      const next = typeof currencyOrUpdater === 'function'
+        ? currencyOrUpdater(prev)
+        : currencyOrUpdater;
+
+      // Persist to backend (fire-and-forget)
+      if (next && next.code && next.code !== prev.code) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          updateUserSettings({ preferredCurrency: next.code }).catch(() => {});
+        }
+      }
+
+      return next;
+    });
+  }, []);
+
+  // Initialize from user's backend preference
+  const initFromUser = useCallback((preferredCurrencyCode) => {
+    if (initializedFromUser.current) return;
+    if (!preferredCurrencyCode || preferredCurrencyCode === 'ZYNK') {
+      initializedFromUser.current = true;
+      return;
+    }
+
+    // Try to find the currency in the loaded list
+    setSelectedCurrencyState(prev => {
+      if (prev.code === preferredCurrencyCode) return prev;
+      const match = currencies.find(c => c.code === preferredCurrencyCode);
+      if (match) {
+        initializedFromUser.current = true;
+        return match;
+      }
+      // Currency not loaded yet — store the code so fetchRates can resolve it
+      return { ...DEFAULT_CURRENCY, code: preferredCurrencyCode, _pending: true };
+    });
+    initializedFromUser.current = true;
+  }, [currencies]);
 
   // Fetch exchange rates
   const fetchRates = useCallback(async () => {
@@ -46,7 +88,7 @@ export function CurrencyProvider({ children }) {
       setCurrencies(currencyList);
 
       // Update selectedCurrency with fresh rate from server
-      setSelectedCurrency(prev => {
+      setSelectedCurrencyState(prev => {
         if (prev.code === 'ZYNK') return prev;
         const fresh = currencyList.find(c => c.code === prev.code);
         return fresh || DEFAULT_CURRENCY;
@@ -134,7 +176,8 @@ export function CurrencyProvider({ children }) {
     convertFromZynk,
     formatCurrency,
     formatCurrencyFull,
-    refreshRates: fetchRates
+    refreshRates: fetchRates,
+    initFromUser
   };
 
   return (

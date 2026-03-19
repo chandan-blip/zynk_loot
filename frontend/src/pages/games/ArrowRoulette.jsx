@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoArrowRoulette } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 
@@ -135,9 +136,10 @@ function ArrowRoulette() {
   const [stats, setStats] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const arStats = (statsRes.data.data || []).find(s => s.game_type === 'arrow_roulette');
@@ -158,7 +160,9 @@ function ArrowRoulette() {
     sounds.click();
 
     try {
-      const res = await playArrowRoulette(betAmount);
+      const res = isDemoMode(user)
+        ? demoArrowRoulette(betAmount)
+        : await playArrowRoulette(betAmount);
       const data = res.data.data;
 
       // Play arrow sound
@@ -176,9 +180,11 @@ function ArrowRoulette() {
 
       setResult(data);
       setShowResult(true);
-      checkAuth();
-      loadData();
-      setHistoryKey(k => k + 1);
+      if (!data.isDemo) {
+        checkAuth();
+        loadData();
+        setHistoryKey(k => k + 1);
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
     } finally {

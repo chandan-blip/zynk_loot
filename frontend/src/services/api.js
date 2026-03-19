@@ -22,7 +22,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isAuthRoute = error.config?.url?.startsWith('/auth/');
+    if (error.response?.status === 401 && localStorage.getItem('token') && !isAuthRoute) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }
@@ -133,6 +134,7 @@ export const createInvestmentTier = (data) => api.post('/admin/investment-tiers'
 
 // User Profile
 export const getUserProfile = () => api.get('/users/me/profile');
+export const updateUserSettings = (settings) => api.put('/users/me/settings', settings);
 
 // User Transfers (P2P)
 export const searchUsers = (query) => api.get(`/users/search?q=${encodeURIComponent(query)}`);
@@ -152,7 +154,10 @@ export const triggerCompleteDraw = () => api.post('/admin/draws/trigger-complete
 export const revealNextDigit = () => api.post('/admin/draws/reveal-next');
 export const setWinningNumber = (winningNumber) => api.post('/admin/draws/set-number', { winningNumber });
 export const getDrawWinners = (periodId) => api.get(`/admin/draws/${periodId}/winners`);
-export const getAdminWinners = (page = 1, limit = 20) => api.get(`/admin/winners?page=${page}&limit=${limit}`);
+export const getAdminWinners = (page = 1, limit = 20, status = '') => api.get(`/admin/winners?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}`);
+export const approveWinner = (id) => api.post(`/admin/winners/${id}/approve`);
+export const rejectWinner = (id) => api.post(`/admin/winners/${id}/reject`);
+export const approveAllDrawWinners = (periodId) => api.post(`/admin/draws/${periodId}/approve-all`);
 export const getAdminNumbers = (page = 1, limit = 50) => api.get(`/admin/numbers?page=${page}&limit=${limit}`);
 export const getAdminSettings = () => api.get('/admin/settings');
 export const updateSetting = (key, value) => api.put(`/admin/settings/${key}`, { value });

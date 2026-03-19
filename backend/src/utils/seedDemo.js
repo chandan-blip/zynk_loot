@@ -41,7 +41,7 @@ const seedDemo = async () => {
     ];
 
     for (const [key, value, description] of essentialSettings) {
-      await db.query(
+      await db.pool.query(
         `INSERT INTO settings (setting_key, setting_value, description)
          VALUES (?, ?, ?)
          ON DUPLICATE KEY UPDATE description = VALUES(description)`,
@@ -51,7 +51,7 @@ const seedDemo = async () => {
     console.log('[SEED] Configuration settings seeded');
 
     // Check if test user already exists
-    const [existingUser] = await db.query(
+    const [existingUser] = await db.pool.query(
       'SELECT id FROM users WHERE email = ?',
       ['test@loot.com']
     );
@@ -59,7 +59,7 @@ const seedDemo = async () => {
     if (existingUser.length === 0) {
       // Create one test user
       const passwordHash = await bcrypt.hash('test123', 10);
-      await db.query(
+      await db.pool.query(
         `INSERT INTO users (username, email, password_hash, balance, total_spent, total_earned)
          VALUES (?, ?, ?, ?, ?, ?)`,
         ['test_user', 'test@loot.com', passwordHash, 100, 0, 0]

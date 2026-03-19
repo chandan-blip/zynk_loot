@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import { isDemoMode, demoBalloonPop } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
 const MULTIPLIER_PRESETS = [1.5, 2, 3, 5, 10, 25];
@@ -84,7 +85,7 @@ function BalloonPop() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -95,6 +96,7 @@ function BalloonPop() {
   }, []);
 
   const loadData = async () => {
+    if (!user) return;
     try {
       const statsRes = await getGameStats();
       const bpStats = (statsRes.data.data || []).find(s => s.game_type === 'balloon_pop');
@@ -141,7 +143,9 @@ function BalloonPop() {
     sounds.click();
 
     try {
-      const res = await playBalloonPop(betAmount, target);
+      const res = isDemoMode(user)
+        ? demoBalloonPop(betAmount, target)
+        : await playBalloonPop(betAmount, target);
       const data = res.data.data;
 
       // Determine animation end point
@@ -185,9 +189,11 @@ function BalloonPop() {
             }, 400);
           }
           setInflating(false);
-          checkAuth();
-          loadData();
-          setHistoryKey(k => k + 1);
+          if (!data.isDemo) {
+            checkAuth();
+            loadData();
+            setHistoryKey(k => k + 1);
+          }
         }
       };
 

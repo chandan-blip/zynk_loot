@@ -2,9 +2,9 @@ const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 
 if (!process.env.JWT_SECRET) {
-  console.error('[SECURITY] JWT_SECRET not set in environment! Using insecure fallback.');
+  console.error('[SECURITY] JWT_SECRET not set! Set JWT_SECRET environment variable before running in production.');
 }
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-change-me-in-production-' + Date.now();
+const JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(64).toString('hex');
 
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -16,7 +16,7 @@ const authenticateToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const [users] = await db.query(
+    const [users] = await db.pool.query(
       'SELECT id, username, email, balance, is_admin, is_active FROM users WHERE id = ?',
       [decoded.userId]
     );
@@ -50,5 +50,6 @@ const generateToken = (userId) => {
 module.exports = {
   authenticateToken,
   requireAdmin,
-  generateToken
+  generateToken,
+  JWT_SECRET
 };
