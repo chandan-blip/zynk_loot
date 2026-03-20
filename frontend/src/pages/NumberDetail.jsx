@@ -16,6 +16,7 @@ import {
 import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer, cashOutTicket, scheduleTicketCashout, getCurrentDraw, getUpcomingSession } from '../services/api';
 import socketService from '../services/socket';
 import useStore from '../store/useStore';
+import GameCrossPromo from '../components/GameCrossPromo';
 
 const TOTAL_DIGITS = 7;
 const SESSION_NAMES = { 1: 'Morning', 2: 'Evening', 3: 'Night' };
@@ -1404,6 +1405,9 @@ function NumberDetail() {
           )}
         </motion.div>
       </AnimatePresence>
+
+      {/* Cross Promotion */}
+      <GameCrossPromo currentGame="" />
 
       {/* Offer Modal */}
       {showOfferModal && (

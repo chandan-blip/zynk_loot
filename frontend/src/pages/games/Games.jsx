@@ -40,7 +40,7 @@ const games = [
     name: "Lucky Spin",
     description: "Spin the wheel for a chance to win big prizes",
     icon: FiStar,
-    minBet: 20,
+    minBet: 5,
     maxWin: "10x",
     color: "from-purple-500/20 to-pink-500/20",
     borderColor: "border-purple-500/30",

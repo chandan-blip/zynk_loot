@@ -10,6 +10,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import GameCrossPromo from '../../components/GameCrossPromo';
 import { isDemoMode, demoCoinFlip } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
@@ -275,6 +276,7 @@ function CoinFlip() {
           </div>
         </div>
       </div>
+      <GameCrossPromo currentGame="coin-flip" />
     </div>
   );
 }

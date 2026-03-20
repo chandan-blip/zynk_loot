@@ -5,6 +5,25 @@ const { authenticateToken } = require('../middleware/auth');
 // All game routes require auth
 router.use(authenticateToken);
 
+// Fire-and-forget tracking for game plays
+router.use((req, res, next) => {
+  if (req.method !== 'POST') return next();
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (body?.success && body?.data?.game_type && !req.user?.is_admin) {
+      const ts = req.app.get('trackingService');
+      ts?.recordServerEvent(req.user?.id, null, 'game_play', {
+        game_type: body.data.game_type,
+        bet_amount: body.data.bet_amount,
+        win_amount: body.data.win_amount,
+        is_win: body.data.is_win,
+      }).catch(() => {});
+    }
+    return originalJson(body);
+  };
+  next();
+});
+
 // Play coin flip
 router.post('/coin-flip', async (req, res) => {
   try {

@@ -18,7 +18,11 @@ import {
   FiShare2,
   FiTrendingUp,
   FiPlay,
-  FiBell
+  FiBell,
+  FiMail,
+  FiInfo,
+  FiHeart,
+  FiLock
 } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
@@ -41,6 +45,11 @@ const footerLinks = [
   { path: '/faq', label: 'FAQ', icon: FiHelpCircle },
   { path: '/rules', label: 'Rules', icon: FiFileText },
   { path: '/privacy', label: 'Privacy', icon: FiShield },
+  { path: '/terms', label: 'Terms of Service', icon: FiFileText },
+  { path: '/contact', label: 'Contact Us', icon: FiMail },
+  { path: '/about', label: 'About Us', icon: FiInfo },
+  { path: '/responsible-gaming', label: 'Responsible Gaming', icon: FiHeart },
+  { path: '/security', label: 'Security', icon: FiLock },
 ];
 
 function Layout() {
@@ -142,9 +151,7 @@ function Layout() {
                 <div className="p-5 border-b border-white/5">
                   <Link to="/profile" onClick={closeSidebar} className="flex items-center gap-3 mb-4 hover:opacity-80 transition-opacity">
                     <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent/20 to-purple/20 border border-accent/30 flex items-center justify-center">
-                      <span className="text-accent font-bold text-lg">
-                        {user?.username?.[0]?.toUpperCase() || 'U'}
-                      </span>
+                      <FiUser className="w-5 h-5 text-accent" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-semibold truncate">{user?.username}</p>
@@ -328,9 +335,7 @@ function Layout() {
                       whileHover={{ scale: 1.05 }}
                       className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent/20 to-purple/20 border border-accent/30 flex items-center justify-center cursor-pointer"
                     >
-                      <span className="text-accent font-bold text-sm">
-                        {user?.username?.[0]?.toUpperCase() || 'U'}
-                      </span>
+                      <FiUser className="w-4 h-4 text-accent" />
                     </motion.div>
                   </Link>
                 </>
@@ -390,7 +395,7 @@ function Layout() {
         {/* Page Content */}
         <main className="py-2 px-3 2xl:px-0 sm:px-4 sm:py-4 min-h-[calc(100vh-4rem)]">
           <Outlet />
-          <div className="h-36"></div>
+          <div className="h-22"></div>
         </main>
 
         {/* Mobile Bottom Navigation */}

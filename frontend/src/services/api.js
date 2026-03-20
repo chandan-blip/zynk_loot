@@ -247,4 +247,19 @@ export const markAllNotificationsRead = () => api.post('/notifications/read-all'
 export const adminCreateNotification = (data) => api.post('/notifications/admin/create', data);
 export const adminGetNotifications = (page = 1) => api.get(`/notifications/admin/all?page=${page}`);
 
+// Admin Analytics / Tracking
+export const getTrackingDashboard = (days = 30) => api.get(`/admin/tracking/dashboard?days=${days}`);
+export const getTrackingEvents = (page = 1, limit = 50, filters = {}) => {
+  const params = new URLSearchParams({ page, limit, ...filters });
+  return api.get(`/admin/tracking/events?${params}`);
+};
+export const getTrackingSessions = (page = 1, limit = 50) => api.get(`/admin/tracking/sessions?page=${page}&limit=${limit}`);
+export const getUserTracking = (userId, page = 1) => api.get(`/admin/tracking/user/${userId}?page=${page}`);
+export const getPageAnalytics = (days = 30) => api.get(`/admin/tracking/pages?days=${days}`);
+export const getRealtimeStats = () => api.get('/admin/tracking/realtime');
+export const getEventBreakdown = (days = 30) => api.get(`/admin/tracking/event-breakdown?days=${days}`);
+export const getTopClicks = (days = 30) => api.get(`/admin/tracking/top-clicks?days=${days}`);
+export const getScrollStats = (days = 30) => api.get(`/admin/tracking/scroll-stats?days=${days}`);
+export const getUserTrackingSummary = (userId) => api.get(`/admin/tracking/user/${userId}/summary`);
+
 export default api;

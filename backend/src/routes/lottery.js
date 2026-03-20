@@ -123,7 +123,7 @@ router.get('/numbers', async (req, res) => {
         `SELECT n.*, u.username as owner_name
          FROM numbers n
          LEFT JOIN users u ON n.owner_id = u.id
-         WHERE n.number LIKE ? AND (n.draw_id = ? OR n.draw_id IS NULL)
+         WHERE n.number LIKE ? AND n.draw_id = ?
          ORDER BY n.total_votes DESC
          LIMIT ?`,
         [`%${search}%`, activeDrawId, limit]
@@ -190,7 +190,7 @@ router.get('/numbers', async (req, res) => {
       `SELECT n.*, u.username as owner_name
        FROM numbers n
        LEFT JOIN users u ON n.owner_id = u.id
-       WHERE n.draw_id = ? OR n.draw_id IS NULL
+       WHERE n.draw_id = ?
        ORDER BY n.total_votes DESC, n.created_at DESC
        LIMIT ? OFFSET ?`,
       [activeDrawId, limit, offset]
@@ -198,7 +198,7 @@ router.get('/numbers', async (req, res) => {
 
     // Get total count for pagination - only active draw
     const [countResult] = await db.pool.query(
-      'SELECT COUNT(*) as total FROM numbers WHERE draw_id = ? OR draw_id IS NULL',
+      'SELECT COUNT(*) as total FROM numbers WHERE draw_id = ?',
       [activeDrawId]
     );
     const totalInDb = countResult[0].total;
@@ -457,6 +457,13 @@ router.post('/numbers/:number/buy', authenticateToken, async (req, res) => {
     const price = basePrice + 5 * revealedDigits;
 
     const result = await lotteryService.buyNumber(req.user.id, numberStr, price);
+
+    // Fire-and-forget tracking (skip admins)
+    if (!req.user.is_admin) {
+      req.app.get('trackingService')?.recordServerEvent(req.user.id, null, 'number_buy', {
+        number: numberStr, price
+      }).catch(() => {});
+    }
 
     res.json({
       success: true,

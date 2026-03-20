@@ -609,14 +609,17 @@ class LotteryService {
     return numbers;
   }
 
-  // Get user's numbers with matching info
+  // Get user's numbers with matching info (current draw only)
   async getUserNumbers(userId) {
+    // Only return numbers for the current active draw (or pending tickets)
+    // to prevent old draw tickets from leaking into the current draw UI
     const [numbers] = await db.pool.query(
       `SELECT n.*, d.revealed_digits as draw_revealed_digits, d.status as draw_status,
               d.session_number, d.period_id
        FROM numbers n
        LEFT JOIN daily_draws d ON n.draw_id = d.id
        WHERE n.owner_id = ?
+         AND (d.status IN ('pending', 'revealing', 'active') OR n.ticket_status = 'pending')
        ORDER BY n.created_at DESC, n.matched_digits DESC`,
       [userId]
     );

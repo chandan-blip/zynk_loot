@@ -486,18 +486,27 @@ class TicketService {
     );
   }
 
-  // Reset all tickets for new draw
+  // Reset all tickets for new draw — release ownership from previous draws
   async resetTicketsForNewDraw(drawId) {
-    // Only reset tickets that are owned and not in terminal states from previous draws
+    // Clear ownership of numbers from previous draws so they are available in the new draw.
+    // Pending tickets (bought between draws) are enrolled separately in cronService.
     await db.pool.query(
       `UPDATE numbers SET
-       draw_id = ?,
+       owner_id = NULL,
+       draw_id = NULL,
        matched_digits = 0,
        current_return = 0,
        ticket_status = 'active',
-       last_reveal_index = 0
+       last_reveal_index = 0,
+       purchased_at_reveal = 0,
+       buy_amount = NULL,
+       cashed_out_at = NULL,
+       cashout_matched_digits = NULL,
+       cashout_multiplier = NULL,
+       cashout_payout = NULL
        WHERE owner_id IS NOT NULL
-       AND ticket_status NOT IN ('cashed_out', 'sold')`,
+       AND (draw_id != ? OR draw_id IS NULL)
+       AND ticket_status NOT IN ('pending')`,
       [drawId]
     );
   }

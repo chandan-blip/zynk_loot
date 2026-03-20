@@ -10,6 +10,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import GameCrossPromo from '../../components/GameCrossPromo';
 import { isDemoMode, demoDiceRoll } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
@@ -324,6 +325,7 @@ function DiceRoll() {
       </div>
         </div>
       </div>
+      <GameCrossPromo currentGame="dice-roll" />
     </div>
   );
 }

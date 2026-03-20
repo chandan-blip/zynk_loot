@@ -31,6 +31,10 @@ class CronService {
     this.investService = svc;
   }
 
+  setTrackingService(svc) {
+    this.trackingService = svc;
+  }
+
   // Load configuration from database
   async loadConfig() {
     try {
@@ -1095,6 +1099,23 @@ class CronService {
       }, { timezone })
     );
     console.log('[CRON] Winners cleanup job scheduled at 01:00 daily');
+
+    // Register and schedule Tracking Aggregation & Cleanup (02:00 daily)
+    if (this.trackingService) {
+      const trackingCron = '0 2 * * *';
+      await this.registerJob('tracking_daily_aggregate', 'maintenance', trackingCron, null, { description: 'Aggregate daily tracking stats and cleanup old events' });
+      this.scheduledJobs.push(
+        cron.schedule(trackingCron, async () => {
+          await this.executeWithLogging('tracking_daily_aggregate', async () => {
+            await this.trackingService.aggregateDaily();
+            await this.trackingService.cleanupOldEvents(90);
+            await this.trackingService.cleanupStaleSessions();
+            return { status: 'completed' };
+          });
+        }, { timezone })
+      );
+      console.log('[CRON] Tracking aggregation job scheduled at 02:00 daily');
+    }
 
     console.log('[CRON] Cron jobs scheduled and registered in database:');
     console.log(`  Timezone: ${timezone}`);

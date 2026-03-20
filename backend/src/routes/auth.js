@@ -194,6 +194,14 @@ router.post('/login', async (req, res) => {
 
     const token = generateToken(user.id);
 
+    // Fire-and-forget login tracking (skip admins)
+    if (!user.is_admin) {
+      req.app.get('trackingService')?.recordServerEvent(user.id, null, 'login', {
+        method: user.phone ? 'phone' : 'email',
+        ip: req.ip,
+      }).catch(() => {});
+    }
+
     res.json({
       success: true,
       data: {

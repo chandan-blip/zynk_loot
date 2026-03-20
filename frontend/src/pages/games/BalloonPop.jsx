@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import GameCrossPromo from '../../components/GameCrossPromo';
 import { isDemoMode, demoBalloonPop } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
@@ -418,6 +419,7 @@ function BalloonPop() {
       </div>
         </div>
       </div>
+      <GameCrossPromo currentGame="balloon-pop" />
     </div>
   );
 }

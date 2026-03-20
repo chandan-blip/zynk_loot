@@ -9,6 +9,7 @@ import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
+import GameCrossPromo from '../../components/GameCrossPromo';
 import { isDemoMode, demoArrowRoulette } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
@@ -360,6 +361,7 @@ function ArrowRoulette() {
       </div>
         </div>
       </div>
+      <GameCrossPromo currentGame="arrow-roulette" />
     </div>
   );
 }

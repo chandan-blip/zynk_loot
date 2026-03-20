@@ -35,6 +35,8 @@ const referralRoutes = require('./routes/referral');
 const investRoutes = require('./routes/invest');
 const gameRoutes = require('./routes/games');
 const notificationRoutes = require('./routes/notifications');
+const TrackingService = require('./services/trackingService');
+const trackingRoutes = require('./routes/tracking');
 
 const app = express();
 const server = http.createServer(app);
@@ -63,6 +65,7 @@ const investService = new InvestService(io);
 const activityService = new ActivityService(io);
 const gameService = new GameService(io);
 const notificationService = new NotificationService(io);
+const trackingService = new TrackingService(io);
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -70,6 +73,7 @@ lotteryService.setCronService(cronService);
 lotteryService.setReferralService(referralService);
 ticketService.setReferralService(referralService);
 cronService.setInvestService(investService);
+cronService.setTrackingService(trackingService);
 
 app.set('ticketService', ticketService);
 app.set('lotteryService', lotteryService);
@@ -80,6 +84,7 @@ app.set('investService', investService);
 app.set('activityService', activityService);
 app.set('gameService', gameService);
 app.set('notificationService', notificationService);
+app.set('trackingService', trackingService);
 app.set('io', io);
 
 // Socket authentication middleware
@@ -177,6 +182,7 @@ app.use('/api/referral', apiLimiter, referralRoutes);
 app.use('/api/invest', apiLimiter, investRoutes);
 app.use('/api/games', gameLimiter, gameRoutes);
 app.use('/api/notifications', apiLimiter, notificationRoutes);
+app.use('/api/tracking', apiLimiter, trackingRoutes);
 
 // Recent activities (public, no auth needed)
 app.get('/api/activities/recent', (req, res) => {

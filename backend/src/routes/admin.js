@@ -2319,4 +2319,150 @@ router.post('/payment-accounts/reset-daily', async (req, res) => {
   }
 });
 
+// ── Analytics / Tracking ──
+
+// Dashboard overview
+router.get('/tracking/dashboard', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const days = parseInt(req.query.days) || 30;
+    const data = await trackingService.getDashboardStats(days);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Tracking dashboard error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get tracking dashboard' });
+  }
+});
+
+// Event log
+router.get('/tracking/events', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const filters = {
+      userId: req.query.userId || null,
+      eventType: req.query.eventType || null,
+      sessionId: req.query.sessionId || null,
+      startDate: req.query.startDate || null,
+      endDate: req.query.endDate || null,
+    };
+    const data = await trackingService.getEvents(page, limit, filters);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Tracking events error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get tracking events' });
+  }
+});
+
+// Session list
+router.get('/tracking/sessions', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const data = await trackingService.getSessions(page, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Tracking sessions error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get tracking sessions' });
+  }
+});
+
+// User activity
+router.get('/tracking/user/:id', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const page = parseInt(req.query.page) || 1;
+    const data = await trackingService.getUserActivity(req.params.id, page);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('User tracking error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get user activity' });
+  }
+});
+
+// Top pages
+router.get('/tracking/pages', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const days = parseInt(req.query.days) || 30;
+    const data = await trackingService.getTopPages(days);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Tracking pages error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get page analytics' });
+  }
+});
+
+// Event type breakdown
+router.get('/tracking/event-breakdown', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const days = parseInt(req.query.days) || 30;
+    const data = await trackingService.getEventBreakdown(days);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Event breakdown error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get event breakdown' });
+  }
+});
+
+// Top clicked elements
+router.get('/tracking/top-clicks', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const days = parseInt(req.query.days) || 30;
+    const data = await trackingService.getTopClicks(days);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Top clicks error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get top clicks' });
+  }
+});
+
+// Scroll & time-on-page stats
+router.get('/tracking/scroll-stats', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const days = parseInt(req.query.days) || 30;
+    const data = await trackingService.getScrollStats(days);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Scroll stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get scroll stats' });
+  }
+});
+
+// User activity summary (for user detail modal)
+router.get('/tracking/user/:id/summary', async (req, res) => {
+  try {
+    const trackingService = req.app.get('trackingService');
+    const data = await trackingService.getUserSummary(req.params.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('User summary error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get user summary' });
+  }
+});
+
+// Realtime stats
+router.get('/tracking/realtime', async (req, res) => {
+  try {
+    const [stats] = await db.pool.query(
+      `SELECT COUNT(*) as active_sessions, COUNT(DISTINCT user_id) as active_users
+       FROM user_sessions WHERE is_active = TRUE AND started_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`
+    );
+    const [recentEvents] = await db.pool.query(
+      `SELECT event_type, COUNT(*) as count
+       FROM user_events WHERE created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+       GROUP BY event_type`
+    );
+    res.json({ success: true, data: { ...stats[0], recentEvents } });
+  } catch (error) {
+    console.error('Realtime stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get realtime stats' });
+  }
+});
+
 module.exports = router;

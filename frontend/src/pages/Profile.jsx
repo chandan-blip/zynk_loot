@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { copyToClipboard } from "../utils/clipboard";
+import useStore from "../store/useStore";
 import PageHeader from "../components/PageHeader";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -24,6 +26,7 @@ import {
   FiShield,
   FiStar,
   FiThumbsUp,
+  FiLogOut,
 } from "react-icons/fi";
 import { GiTwoCoins, GiTrophy, GiPodium } from "react-icons/gi";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
@@ -36,6 +39,8 @@ import usePageTitle from "../hooks/usePageTitle";
 
 function Profile() {
   usePageTitle('Profile');
+  const navigate = useNavigate();
+  const { logout } = useStore();
 
   const {
     selectedCurrency,
@@ -350,8 +355,8 @@ function Profile() {
           <div className="flex flex-col sm:flex-row gap-6">
             {/* Avatar */}
             <div className="flex-shrink-0">
-              <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center text-4xl sm:text-5xl font-bold text-dark-900">
-                {userData.username[0].toUpperCase()}
+              <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center">
+                <FiUser className="w-10 h-10 sm:w-14 sm:h-14 text-dark-900" />
               </div>
             </div>
 
@@ -996,6 +1001,25 @@ function Profile() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Logout Button */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="mt-6"
+      >
+        <button
+          onClick={() => {
+            logout();
+            navigate('/login');
+          }}
+          className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 font-semibold hover:bg-red-500/20 transition-colors"
+        >
+          <FiLogOut className="w-5 h-5" />
+          Log Out
+        </button>
+      </motion.div>
 
       {/* Close dropdown on outside click */}
       {showCurrencyDropdown && (

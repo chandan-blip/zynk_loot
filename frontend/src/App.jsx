@@ -11,6 +11,11 @@ import History from './pages/History';
 import FAQ from './pages/FAQ';
 import Rules from './pages/Rules';
 import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
+import Contact from './pages/Contact';
+import About from './pages/About';
+import ResponsibleGaming from './pages/ResponsibleGaming';
+import Security from './pages/Security';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -45,6 +50,8 @@ import FuseGame from './pages/games/Fuse';
 import Notifications from './pages/Notifications';
 import AdminInvestments from './pages/admin/AdminInvestments';
 import AdminNotifications from './pages/admin/AdminNotifications';
+import AdminAnalytics from './pages/admin/AdminAnalytics';
+import useTracking from './hooks/useTracking';
 
 function PublicRoute({ children }) {
   const { isAuthenticated, isLoading } = useStore();
@@ -110,6 +117,11 @@ function CurrencySync() {
   return null;
 }
 
+function TrackingInit() {
+  useTracking();
+  return null;
+}
+
 function App() {
   const { checkAuth } = useStore();
 
@@ -142,6 +154,7 @@ function App() {
           },
         }}
       />
+      <TrackingInit />
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
@@ -163,6 +176,7 @@ function App() {
           <Route path="support" element={<AdminSupport />} />
           <Route path="investments" element={<AdminInvestments />} />
           <Route path="notifications" element={<AdminNotifications />} />
+          <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
 
@@ -191,6 +205,11 @@ function App() {
           <Route path="faq" element={<FAQ />} />
           <Route path="rules" element={<Rules />} />
           <Route path="privacy" element={<Privacy />} />
+          <Route path="terms" element={<Terms />} />
+          <Route path="contact" element={<Contact />} />
+          <Route path="about" element={<About />} />
+          <Route path="responsible-gaming" element={<ResponsibleGaming />} />
+          <Route path="security" element={<Security />} />
         </Route>
       </Routes>
     </CurrencyProvider>
