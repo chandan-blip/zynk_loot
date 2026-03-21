@@ -133,6 +133,17 @@ io.on('connection', (socket) => {
     console.log(`Admin ${socket.userId} left support room`);
   });
 
+  // Order management - admin joins order room for real-time notifications
+  socket.on('order:joinAdmin', () => {
+    socket.join('order:admin');
+    console.log(`Admin ${socket.userId} joined order room`);
+  });
+
+  socket.on('order:leaveAdmin', () => {
+    socket.leave('order:admin');
+    console.log(`Admin ${socket.userId} left order room`);
+  });
+
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
   });

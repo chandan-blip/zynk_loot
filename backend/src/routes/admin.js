@@ -1,10 +1,72 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../config/database');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { authenticateToken, requireAdmin, generateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Apply auth middleware to all routes
+// Admin-only login (no auth middleware - public endpoint)
+router.post('/login', async (req, res) => {
+  try {
+    const { email, phone, password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ success: false, message: 'Password is required' });
+    }
+    if (!email && !phone) {
+      return res.status(400).json({ success: false, message: 'Email or phone is required' });
+    }
+
+    let query, param;
+    if (email) {
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, preferred_currency FROM users WHERE email = ? AND is_admin = 1';
+      param = email.trim().toLowerCase();
+    } else {
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, preferred_currency FROM users WHERE phone = ? AND is_admin = 1';
+      param = phone.trim();
+    }
+
+    const [users] = await db.pool.query(query, [param]);
+
+    if (users.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const user = users[0];
+
+    if (!user.is_active) {
+      return res.status(403).json({ success: false, message: 'Account is deactivated' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const token = generateToken(user.id);
+
+    res.json({
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+          balance: parseFloat(user.balance),
+          isAdmin: true,
+          preferredCurrency: user.preferred_currency || 'ZYNK'
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    res.status(500).json({ success: false, message: 'Login failed' });
+  }
+});
+
+// Apply auth middleware to all routes below
 router.use(authenticateToken);
 router.use(requireAdmin);
 
@@ -1852,6 +1914,12 @@ router.post('/orders/:id/approve', async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`user:${order.user_id}`).emit('balance:update', { balance: newBalance });
+      io.to('order:admin').emit('order:updated', {
+        id: order.id,
+        status: 'completed',
+        adminNote: adminNote,
+        processedAt: new Date().toISOString(),
+      });
     }
 
     res.json({
@@ -1901,6 +1969,17 @@ router.post('/orders/:id/reject', async (req, res) => {
         title: 'Order Rejected',
         message: `Your purchase order was rejected. Reason: ${note}`,
       }).catch(() => {});
+    }
+
+    // Notify admin clients via socket
+    const io = req.app.get('io');
+    if (io) {
+      io.to('order:admin').emit('order:updated', {
+        id: parseInt(req.params.id),
+        status: 'rejected',
+        adminNote: note,
+        processedAt: new Date().toISOString(),
+      });
     }
 
     res.json({ success: true, message: 'Order rejected' });

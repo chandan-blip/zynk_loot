@@ -461,6 +461,31 @@ router.post('/checkout', [
 
     await connection.commit();
 
+    // Fetch username for notification
+    const [userRows] = await db.pool.query('SELECT username FROM users WHERE id = ?', [req.user.id]);
+    const username = userRows[0]?.username || 'Unknown';
+
+    // Notify admin via socket
+    const io = req.app.get('io');
+    if (io) {
+      io.to('order:admin').emit('order:new', {
+        id: orderResult.insertId,
+        userId: req.user.id,
+        username,
+        package: pkg.name,
+        zynkAmount: pkg.zynk_amount,
+        bonusAmount,
+        totalZynk,
+        price: parseFloat(pkg.price),
+        paymentMethod: payment_method,
+        paymentCurrency: payment_currency || null,
+        paymentAmount: payment_amount || null,
+        paymentReference: payment_reference || null,
+        status: 'awaiting_approval',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
     res.json({
       success: true,
       message: 'Order submitted! Your order is awaiting admin approval.',
