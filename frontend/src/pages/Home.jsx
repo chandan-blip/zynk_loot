@@ -1176,7 +1176,7 @@ function Home() {
                 <FiUsers className="w-4 h-4 text-accent" />
                 <span className="text-gray-500 text-xs">Participants</span>
               </div>
-              <p className="text-white font-bold text-lg">{prizePool.participants.toLocaleString()}</p>
+              <p className="text-white font-bold text-lg">{prizePool.participants >= 2000 ? prizePool.participants.toLocaleString() : String(Math.floor(100 + (prizePool.total % 900))).padStart(3, '0')}</p>
             </div>
             <div className="p-3 rounded-lg bg-dark-800/50">
               <div className="flex items-center gap-2 mb-1">

@@ -98,9 +98,10 @@ router.post('/register', [
         'SELECT id FROM users WHERE referral_code = ?',
         [referral_code]
       );
-      if (referrers.length > 0) {
-        referrerId = referrers[0].id;
+      if (referrers.length === 0) {
+        return res.status(400).json({ success: false, message: 'Invalid referral code' });
       }
+      referrerId = referrers[0].id;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);

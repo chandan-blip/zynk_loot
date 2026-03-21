@@ -11,6 +11,23 @@ const USERNAMES = [
   'PixelDust', 'VoltStrike', 'ZenMaster', 'NovaStar', 'EchoWave'
 ];
 
+const GAME_NAMES = [
+  'Coin Flip', 'Dice Roll', 'Lucky Spin', 'Balloon Pop',
+  'Dragon Tower', 'Ice Field', 'Arrow Roulette', 'Egg Hatch', 'Fuse'
+];
+
+const GAME_RESULTS = {
+  'Coin Flip':       (a) => `won ${a}Z on Coin Flip`,
+  'Dice Roll':       (a) => `rolled ${a}Z on Dice Roll`,
+  'Lucky Spin':      (a) => `spun ${a}Z on Lucky Spin`,
+  'Balloon Pop':     (a) => `popped ${a}Z on Balloon Pop`,
+  'Dragon Tower':    (a) => `climbed Dragon Tower for ${a}Z`,
+  'Ice Field':       (a) => `cleared Ice Field for ${a}Z`,
+  'Arrow Roulette':  (a) => `hit ${a}Z on Arrow Roulette`,
+  'Egg Hatch':       (a) => `hatched ${a}Z on Egg Hatch`,
+  'Fuse':            (a) => `defused Fuse for ${a}Z`,
+};
+
 const ACTIVITY_TYPES = [
   { type: 'vote', descFn: (u, n, a) => `voted for ${n}` },
   { type: 'buy', descFn: (u, n, a) => `bought ${n} for ${a}Z` },
@@ -19,6 +36,8 @@ const ACTIVITY_TYPES = [
   { type: 'zynk_buy', descFn: (u, n, a) => `purchased ${a}Z` },
   { type: 'transfer', descFn: (u, n, a) => `sent ${a}Z` },
   { type: 'withdrawal', descFn: (u, n, a) => `withdrew ${a}Z` },
+  { type: 'game_win', descFn: (u, n, a, g) => g ? GAME_RESULTS[g](a) : `won ${a}Z in a game` },
+  { type: 'game_play', descFn: (u, n, a, g) => `bet ${a}Z on ${g || 'a game'}` },
 ];
 
 class ActivityService {
@@ -33,13 +52,15 @@ class ActivityService {
       amountDigitsMin: 2,
       amountDigitsMax: 4,
       weights: {
-        vote: 20,
-        buy: 25,
-        sell: 10,
+        vote: 15,
+        buy: 20,
+        sell: 8,
         win: 5,
-        zynk_buy: 15,
-        transfer: 15,
-        withdrawal: 10,
+        zynk_buy: 10,
+        transfer: 10,
+        withdrawal: 7,
+        game_win: 13,
+        game_play: 12,
       }
     };
   }
@@ -59,13 +80,15 @@ class ActivityService {
       this.config.amountDigitsMin = parseInt(map.activity_amount_digits_min) || 2;
       this.config.amountDigitsMax = parseInt(map.activity_amount_digits_max) || 4;
       this.config.weights = {
-        vote: parseInt(map.activity_weight_vote) || 20,
-        buy: parseInt(map.activity_weight_buy) || 25,
-        sell: parseInt(map.activity_weight_sell) || 10,
+        vote: parseInt(map.activity_weight_vote) || 15,
+        buy: parseInt(map.activity_weight_buy) || 20,
+        sell: parseInt(map.activity_weight_sell) || 8,
         win: parseInt(map.activity_weight_win) || 5,
-        zynk_buy: parseInt(map.activity_weight_zynk_buy) || 15,
-        transfer: parseInt(map.activity_weight_transfer) || 15,
-        withdrawal: parseInt(map.activity_weight_withdrawal) || 10,
+        zynk_buy: parseInt(map.activity_weight_zynk_buy) || 10,
+        transfer: parseInt(map.activity_weight_transfer) || 10,
+        withdrawal: parseInt(map.activity_weight_withdrawal) || 7,
+        game_win: parseInt(map.activity_weight_game_win) || 13,
+        game_play: parseInt(map.activity_weight_game_play) || 12,
       };
     } catch (err) {
       console.error('[ACTIVITY] Failed to load config:', err.message);
@@ -120,8 +143,13 @@ class ActivityService {
     const max = Math.pow(10, digits) - 1;
     const amount = Math.floor(Math.random() * (max - min + 1)) + min;
 
+    // Pick a random game for game-related activity types
+    const gameName = (type === 'game_win' || type === 'game_play')
+      ? GAME_NAMES[Math.floor(Math.random() * GAME_NAMES.length)]
+      : null;
+
     const typeDef = ACTIVITY_TYPES.find(t => t.type === type) || ACTIVITY_TYPES[0];
-    const description = typeDef.descFn(username, number, amount);
+    const description = typeDef.descFn(username, number, amount, gameName);
 
     return {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -129,6 +157,7 @@ class ActivityService {
       username,
       description,
       amount,
+      game: gameName,
       time: 'Just now',
       timestamp: Date.now(),
     };

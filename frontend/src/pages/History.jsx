@@ -111,52 +111,55 @@ function History() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ delay: i * 0.02 }}
-                  className="grid grid-cols-12 gap-2 md:gap-4 px-3 sm:px-6 py-4 hover:bg-dark-700/30 transition-colors items-center"
+                  className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 px-3 sm:px-6 py-4 hover:bg-dark-700/30 transition-colors md:items-center"
                 >
-                  {/* Period */}
-                  <div className="col-span-4 md:col-span-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-dark-700/50 flex items-center justify-center border border-dark-400/30">
-                        <GiTrophy className="w-4 h-4 text-accent" />
-                      </div>
-                      <div>
+                  {/* Top row (mobile): Period + Date */}
+                  <div className="flex items-center justify-between md:contents">
+                    {/* Period */}
+                    <div className="md:col-span-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-dark-700/50 flex items-center justify-center border border-dark-400/30">
+                          <GiTrophy className="w-4 h-4 text-accent" />
+                        </div>
                         <p className="text-xs sm:text-sm font-bold text-white">
                           #{item.period_id || item.id}
                         </p>
-                        <p className="text-xs text-gray-500 md:hidden">{formatDate(item.draw_date)}</p>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Date - Desktop only */}
-                  <div className="hidden md:block md:col-span-3">
-                    <p className="text-white text-sm">{formatDate(item.draw_date)}</p>
-                    <p className="text-xs text-gray-500">
-                      {item.status === 'completed' ? 'Completed' : item.status}
-                    </p>
-                  </div>
-
-                  {/* Winning Number */}
-                  <div className="col-span-4 md:col-span-3 text-center">
-                    <div className="inline-flex items-center gap-1">
-                      {item.winning_number.split('').map((digit, idx) => (
-                        <span
-                          key={idx}
-                          className="w-6 h-7 sm:w-7 sm:h-8 rounded bg-accent/20 text-accent font-mono font-bold text-sm sm:text-base flex items-center justify-center"
-                        >
-                          {digit}
-                        </span>
-                      ))}
+                    {/* Date */}
+                    <div className="md:col-span-3">
+                      <p className="text-white text-xs sm:text-sm">{formatDate(item.draw_date)}</p>
+                      <p className="text-xs text-gray-500 text-right md:text-left">
+                        {item.status === 'completed' ? 'Completed' : item.status}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Pool */}
-                  <div className="col-span-4 md:col-span-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <GiTwoCoins className="w-4 h-4 text-accent" />
-                      <span className="text-accent font-bold text-sm sm:text-base">
-                        {parseFloat(item.total_pool || 0).toLocaleString()}
-                      </span>
+                  {/* Bottom row (mobile): Winning Number + Pool */}
+                  <div className="flex items-center justify-between md:contents">
+                    {/* Winning Number */}
+                    <div className="md:col-span-3 md:text-center">
+                      <div className="inline-flex items-center gap-1">
+                        {item.winning_number.split('').map((digit, idx) => (
+                          <span
+                            key={idx}
+                            className="w-6 h-7 sm:w-7 sm:h-8 rounded bg-accent/20 text-accent font-mono font-bold text-sm sm:text-base flex items-center justify-center"
+                          >
+                            {digit}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pool */}
+                    <div className="md:col-span-3 md:text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <GiTwoCoins className="w-4 h-4 text-accent shrink-0" />
+                        <span className="text-accent font-bold text-sm sm:text-base">
+                          {parseFloat(item.total_pool || 0).toLocaleString()}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </motion.div>

@@ -174,7 +174,19 @@ function Contact() {
           </div>
         </div>
         <p className="text-gray-400 text-sm leading-relaxed">
-          LOOT Market Technologies Pvt. Ltd.
+          LOOT Market, operated by Curacao eGaming Licence Holder
+        </p>
+        <p className="text-gray-400 text-sm leading-relaxed mt-1">
+          Regent Gaming Ltd.
+        </p>
+        <p className="text-gray-400 text-sm leading-relaxed mt-1">
+          Fransche Bloemweg 4, Willemstad, Curacao
+        </p>
+        <p className="text-gray-400 text-sm leading-relaxed mt-1">
+          Licence No: 365/JAZ | Registered in Curacao
+        </p>
+        <p className="text-gray-400 text-sm leading-relaxed mt-1">
+          Email: compliance@lootmarket.store
         </p>
       </motion.div>
     </div>

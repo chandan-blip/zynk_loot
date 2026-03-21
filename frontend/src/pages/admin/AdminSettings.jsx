@@ -48,6 +48,8 @@ const settingIcons = {
   activity_weight_zynk_buy: FiPercent,
   activity_weight_transfer: FiPercent,
   activity_weight_withdrawal: FiPercent,
+  activity_weight_game_win: FiPercent,
+  activity_weight_game_play: FiPercent,
 
   // Session hours
   session_1_generate_hour: FiClock,
@@ -104,6 +106,8 @@ const settingLabels = {
   activity_weight_zynk_buy: 'Zynk Buy Weight (%)',
   activity_weight_transfer: 'Transfer Weight (%)',
   activity_weight_withdrawal: 'Withdrawal Weight (%)',
+  activity_weight_game_win: 'Game Win Weight (%)',
+  activity_weight_game_play: 'Game Play Weight (%)',
 
   // Session 1
   session_1_generate_hour: 'Session 1 Generate Hour',
@@ -128,7 +132,7 @@ const settingCategories = {
   'Prize Settings': ['exact_match_multiplier', 'near_match_multiplier', 'vote_reward'],
   'Referral Settings': ['referral_commission_rate'],
   'Investment Settings': ['invest_enabled', 'invest_min_amount', 'invest_max_amount', 'invest_max_per_user', 'invest_base_rate_min', 'invest_base_rate_max', 'invest_early_withdraw_penalty'],
-  'Live Activity Feed': ['activity_enabled', 'activity_frequency_min', 'activity_frequency_max', 'activity_amount_digits_min', 'activity_amount_digits_max', 'activity_weight_vote', 'activity_weight_buy', 'activity_weight_sell', 'activity_weight_win', 'activity_weight_zynk_buy', 'activity_weight_transfer', 'activity_weight_withdrawal'],
+  'Live Activity Feed': ['activity_enabled', 'activity_frequency_min', 'activity_frequency_max', 'activity_amount_digits_min', 'activity_amount_digits_max', 'activity_weight_vote', 'activity_weight_buy', 'activity_weight_sell', 'activity_weight_win', 'activity_weight_zynk_buy', 'activity_weight_transfer', 'activity_weight_withdrawal', 'activity_weight_game_win', 'activity_weight_game_play'],
   'Session 1 (Morning)': ['session_1_generate_hour', 'session_1_reveal_start_hour', 'session_1_reveal_end_hour'],
   'Session 2 (Evening)': ['session_2_generate_hour', 'session_2_reveal_start_hour', 'session_2_reveal_end_hour'],
   'Session 3 (Night)': ['session_3_generate_hour', 'session_3_reveal_start_hour', 'session_3_reveal_end_hour']

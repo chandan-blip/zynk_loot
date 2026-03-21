@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiMail, FiLock, FiLogIn, FiPhone, FiAlertCircle } from 'react-icons/fi';
+import { FiMail, FiLock, FiUser, FiPhone, FiAlertCircle, FiGift } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import * as api from '../services/api';
@@ -9,13 +9,16 @@ import useStore from '../store/useStore';
 import { validatePhone } from '../utils/validators';
 import usePageTitle from '../hooks/usePageTitle';
 
-function Login() {
+function Register() {
   usePageTitle('Register');
 
+  const [searchParams] = useSearchParams();
   const [authMethod, setAuthMethod] = useState('phone');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState(searchParams.get('ref') || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { login } = useStore();
@@ -26,8 +29,23 @@ function Login() {
 
     setError('');
     const contact = authMethod === 'email' ? email : phone;
-    if (!contact || !password) {
+    if (!username || !contact || !password) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      setError('Username can only contain letters, numbers, and underscores');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
 
@@ -40,18 +58,20 @@ function Login() {
 
     setLoading(true);
     try {
-      const response = await api.login({
+      const response = await api.register({
+        username,
         email: authMethod === 'email' ? email : undefined,
         phone: authMethod === 'phone' ? normalizedPhone : undefined,
         password,
+        referralCode: referralCode || undefined,
       });
       if (response.data.success) {
         login(response.data.data.token, response.data.data.user);
-        toast.success('Welcome back!');
+        toast.success('Account created successfully!');
         navigate('/');
       }
     } catch (err) {
-      const msg = err.response?.data?.message || 'Login failed';
+      const msg = err.response?.data?.message || 'Registration failed';
       setError(msg);
       toast.error(msg);
     } finally {
@@ -74,8 +94,8 @@ function Login() {
             </div>
             <span className="text-2xl font-bold text-white">LOOT</span>
           </Link>
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
-          <p className="text-gray-500">Sign in to continue</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Create Account</h1>
+          <p className="text-gray-500">Sign up to get started</p>
         </div>
 
         {/* Form */}
@@ -109,6 +129,23 @@ function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Username */}
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Username</label>
+              <div className="relative">
+                <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
+                <input
+                  type="text"
+                  name="username"
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 50))}
+                  className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
+                  placeholder="Choose a username"
+                />
+              </div>
+            </div>
+
             {/* Phone or Email */}
             {authMethod === 'phone' ? (
               <div>
@@ -157,7 +194,23 @@ function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
-                  placeholder="Enter your password"
+                  placeholder="At least 6 characters"
+                />
+              </div>
+            </div>
+
+            {/* Referral Code */}
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Referral Code <span className="text-dark-200">(optional)</span></label>
+              <div className="relative">
+                <FiGift className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-200 w-5 h-5" />
+                <input
+                  type="text"
+                  name="referralCode"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value)}
+                  className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
+                  placeholder="Enter referral code"
                 />
               </div>
             </div>
@@ -185,21 +238,21 @@ function Login() {
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <div className="w-5 h-5 border-2 border-dark-900 border-t-transparent rounded-full animate-spin" />
-                  <span>Signing in...</span>
+                  <span>Creating account...</span>
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
-                  <FiLogIn className="w-5 h-5" />
-                  <span>Sign In</span>
+                  <FiUser className="w-5 h-5" />
+                  <span>Create Account</span>
                 </span>
               )}
             </motion.button>
           </form>
 
           <div className="mt-6 text-center text-gray-500">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-accent hover:underline font-medium">
-              Create one
+            Already have an account?{' '}
+            <Link to="/login" className="text-accent hover:underline font-medium">
+              Sign in
             </Link>
           </div>
         </div>
@@ -208,4 +261,4 @@ function Login() {
   );
 }
 
-export default Login;
+export default Register;
