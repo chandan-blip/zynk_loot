@@ -3,4 +3,4 @@ Allow: /
 Disallow: /api/
 Disallow: /admin/
 
-Sitemap: https://lootmarket.in/sitemap.xml
+Sitemap: https://lootmarket.store/sitemap.xml

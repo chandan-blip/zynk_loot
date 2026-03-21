@@ -10,7 +10,7 @@ const contactMethods = [
     icon: FiMail,
     title: 'Email Support',
     description: 'Get help via email',
-    detail: 'support@lootmarket.com',
+    detail: 'support@lootmarket.store',
     responseTime: 'Response within 24 hours',
   },
   {

@@ -63,7 +63,7 @@ const platformTools = [
 const helpResources = [
   { name: 'National Problem Gambling Helpline', detail: '1-800-522-4700', available: '24/7, Free & Confidential' },
   { name: 'Gamblers Anonymous', detail: 'www.gamblersanonymous.org', available: 'Online support & meetings' },
-  { name: 'LOOT Support Team', detail: 'support@lootmarket.com', available: '24/7 Platform Support' },
+  { name: 'LOOT Support Team', detail: 'support@lootmarket.store', available: '24/7 Platform Support' },
 ];
 
 function ResponsibleGaming() {

@@ -1,92 +1,92 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://lootmarket.in/</loc>
+    <loc>https://lootmarket.store/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games</loc>
+    <loc>https://lootmarket.store/games</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/coin-flip</loc>
+    <loc>https://lootmarket.store/games/coin-flip</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/dice-roll</loc>
+    <loc>https://lootmarket.store/games/dice-roll</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/lucky-spin</loc>
+    <loc>https://lootmarket.store/games/lucky-spin</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/balloon-pop</loc>
+    <loc>https://lootmarket.store/games/balloon-pop</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/dragon-tower</loc>
+    <loc>https://lootmarket.store/games/dragon-tower</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/ice-field</loc>
+    <loc>https://lootmarket.store/games/ice-field</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/arrow-roulette</loc>
+    <loc>https://lootmarket.store/games/arrow-roulette</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/egg-hatch</loc>
+    <loc>https://lootmarket.store/games/egg-hatch</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/games/fuse</loc>
+    <loc>https://lootmarket.store/games/fuse</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/invest</loc>
+    <loc>https://lootmarket.store/invest</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/leaderboard</loc>
+    <loc>https://lootmarket.store/leaderboard</loc>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/register</loc>
+    <loc>https://lootmarket.store/register</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/login</loc>
+    <loc>https://lootmarket.store/login</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/faq</loc>
+    <loc>https://lootmarket.store/faq</loc>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/rules</loc>
+    <loc>https://lootmarket.store/rules</loc>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://lootmarket.in/privacy</loc>
+    <loc>https://lootmarket.store/privacy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>

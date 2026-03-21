@@ -116,7 +116,7 @@ const faqCategories = [
       },
       {
         question: 'How do I contact support?',
-        answer: 'Use the in-app support chat (available when logged in), visit our Contact Us page, or email us at support@lootmarket.com. We typically respond within 24 hours, and live chat responses are usually under 5 minutes.'
+        answer: 'Use the in-app support chat (available when logged in), visit our Contact Us page, or email us at support@lootmarket.store. We typically respond within 24 hours, and live chat responses are usually under 5 minutes.'
       },
     ],
   },
