@@ -75,7 +75,7 @@ function AdminNotifications() {
           {/* Type Selector */}
           <div>
             <label className="text-sm text-gray-400 mb-2 block">Type</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {TYPE_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
@@ -147,7 +147,7 @@ function AdminNotifications() {
 
       {/* Notification History */}
       <div className="rounded-xl bg-dark-800 border border-dark-600 overflow-hidden">
-        <div className="px-6 py-4 border-b border-dark-600 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-dark-600 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">Sent Notifications</h2>
           <span className="text-xs text-gray-500">{notifications.length} total</span>
         </div>
@@ -161,8 +161,8 @@ function AdminNotifications() {
         ) : (
           <div className="divide-y divide-dark-600">
             {notifications.map(n => (
-              <div key={n.id} className="px-6 py-4 hover:bg-dark-700/30 transition-colors">
-                <div className="flex items-start justify-between gap-4">
+              <div key={n.id} className="px-4 sm:px-6 py-4 hover:bg-dark-700/30 transition-colors">
+                <div className="flex items-start justify-between gap-2 sm:gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${

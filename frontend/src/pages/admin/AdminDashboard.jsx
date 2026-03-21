@@ -83,11 +83,11 @@ function AdminDashboard() {
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
           <p className="text-gray-500">Lottery draw management</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
           <motion.button
             onClick={handleTriggerNew}
             disabled={triggering === 'new'}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-all disabled:opacity-50"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-all disabled:opacity-50"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -101,7 +101,7 @@ function AdminDashboard() {
           <motion.button
             onClick={handleTriggerComplete}
             disabled={triggering === 'complete'}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold bg-green-500 text-white hover:bg-green-600 transition-all disabled:opacity-50"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-lg font-semibold bg-green-500 text-white hover:bg-green-600 transition-all disabled:opacity-50"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -116,7 +116,7 @@ function AdminDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Users', value: stats?.users?.total || 0, icon: FiUsers, color: 'text-blue-400', bg: 'bg-blue-500/10' },
           { label: 'User Balances', value: stats?.users?.totalBalance || 0, icon: GiTwoCoins, color: 'text-accent', bg: 'bg-accent/10' },
@@ -149,7 +149,7 @@ function AdminDashboard() {
           transition={{ delay: 0.2 }}
           className="bg-gradient-to-br from-dark-800 to-dark-700 border border-dark-600 rounded-xl p-6"
         >
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6">
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-lg bg-accent/20 flex items-center justify-center">
@@ -188,7 +188,7 @@ function AdminDashboard() {
                 {(currentDraw.winningNumber || '???????').split('').map((digit, idx) => (
                   <div
                     key={idx}
-                    className={`w-10 h-12 rounded-lg flex items-center justify-center font-mono font-bold text-xl ${
+                    className={`w-8 h-10 sm:w-10 sm:h-12 rounded-lg flex items-center justify-center font-mono font-bold text-base sm:text-xl ${
                       idx < (currentDraw.revealedDigits || 0)
                         ? 'bg-accent/20 text-accent border border-accent/30'
                         : 'bg-dark-700 text-gray-500 border border-dark-500'
@@ -204,7 +204,7 @@ function AdminDashboard() {
       )}
 
       {/* Quick Stats */}
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         {/* Draw Status */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

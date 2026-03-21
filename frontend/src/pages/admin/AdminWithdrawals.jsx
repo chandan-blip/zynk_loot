@@ -382,7 +382,7 @@ function AdminWithdrawals() {
               </div>
 
               {/* Amount & Status */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 bg-dark-700 rounded-lg">
                   <p className="text-sm text-gray-500">Amount</p>
                   <p className="font-semibold text-red-400">₹{parseFloat(selectedWithdrawal.amount || 0).toLocaleString()}</p>
@@ -447,7 +447,7 @@ function AdminWithdrawals() {
               </div>
 
               {/* Dates */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 bg-dark-700 rounded-lg">
                   <p className="text-sm text-gray-500">Requested</p>
                   <p className="font-semibold text-white text-sm">{formatDate(selectedWithdrawal.created_at)}</p>

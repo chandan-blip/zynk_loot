@@ -115,7 +115,7 @@ function AdminAnalytics() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-4 p-4 rounded-xl bg-accent/5 border border-accent/20"
+          className="flex flex-wrap items-center gap-3 sm:gap-4 p-4 rounded-xl bg-accent/5 border border-accent/20"
         >
           <div className="w-3 h-3 rounded-full bg-accent animate-pulse" />
           <span className="text-white font-semibold text-sm">
@@ -133,7 +133,7 @@ function AdminAnalytics() {
       )}
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Sessions Today', value: today.sessions || 0, icon: FiUsers, color: 'text-accent' },
           { label: 'Page Views', value: today.page_views || 0, icon: FiEye, color: 'text-blue-400' },
@@ -239,7 +239,7 @@ function AdminAnalytics() {
       </div>
 
       {/* Event Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Unique Users', value: today.uniqueUsers || 0 },
           { label: 'Logins', value: today.logins || 0 },
@@ -369,22 +369,22 @@ function AdminAnalytics() {
               <thead>
                 <tr className="border-b border-dark-600">
                   <th className="text-left text-gray-500 font-medium px-3 py-2 text-xs">Label</th>
-                  <th className="text-left text-gray-500 font-medium px-3 py-2 text-xs">Element</th>
-                  <th className="text-left text-gray-500 font-medium px-3 py-2 text-xs">Page</th>
+                  <th className="text-left text-gray-500 font-medium px-3 py-2 text-xs hidden sm:table-cell">Element</th>
+                  <th className="text-left text-gray-500 font-medium px-3 py-2 text-xs hidden md:table-cell">Page</th>
                   <th className="text-right text-gray-500 font-medium px-3 py-2 text-xs">Clicks</th>
-                  <th className="text-right text-gray-500 font-medium px-3 py-2 text-xs">Users</th>
+                  <th className="text-right text-gray-500 font-medium px-3 py-2 text-xs hidden sm:table-cell">Users</th>
                 </tr>
               </thead>
               <tbody>
                 {topClicksData.slice(0, 15).map((c, i) => (
                   <tr key={i} className="border-b border-dark-700/30 hover:bg-dark-700/20">
                     <td className="px-3 py-2 text-white text-xs max-w-[200px] truncate">{c.label || '-'}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 hidden sm:table-cell">
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-dark-700 text-gray-400">{c.element}</span>
                     </td>
-                    <td className="px-3 py-2 text-gray-500 text-xs max-w-[150px] truncate">{c.page_url || '-'}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs max-w-[150px] truncate hidden md:table-cell">{c.page_url || '-'}</td>
                     <td className="px-3 py-2 text-right text-accent text-xs font-bold">{c.clicks}</td>
-                    <td className="px-3 py-2 text-right text-gray-400 text-xs">{c.unique_users}</td>
+                    <td className="px-3 py-2 text-right text-gray-400 text-xs hidden sm:table-cell">{c.unique_users}</td>
                   </tr>
                 ))}
               </tbody>
@@ -408,11 +408,11 @@ function AdminAnalytics() {
             <thead>
               <tr className="border-b border-dark-600">
                 <th className="text-left text-gray-500 font-medium px-4 py-3">User</th>
-                <th className="text-left text-gray-500 font-medium px-4 py-3">Device</th>
-                <th className="text-left text-gray-500 font-medium px-4 py-3">Browser</th>
+                <th className="text-left text-gray-500 font-medium px-4 py-3 hidden sm:table-cell">Device</th>
+                <th className="text-left text-gray-500 font-medium px-4 py-3 hidden lg:table-cell">Browser</th>
                 <th className="text-left text-gray-500 font-medium px-4 py-3">Duration</th>
-                <th className="text-left text-gray-500 font-medium px-4 py-3">Events</th>
-                <th className="text-left text-gray-500 font-medium px-4 py-3">Started</th>
+                <th className="text-left text-gray-500 font-medium px-4 py-3 hidden md:table-cell">Events</th>
+                <th className="text-left text-gray-500 font-medium px-4 py-3 hidden md:table-cell">Started</th>
                 <th className="text-left text-gray-500 font-medium px-4 py-3">Status</th>
               </tr>
             </thead>
@@ -420,7 +420,7 @@ function AdminAnalytics() {
               {(sessions.sessions || []).map((s) => (
                 <tr key={s.id} className="border-b border-dark-700/50 hover:bg-dark-700/30">
                   <td className="px-4 py-3 text-white">{s.username || 'Anonymous'}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 hidden sm:table-cell">
                     <span className="flex items-center gap-1 text-gray-400">
                       {s.device_type === 'mobile' ? <FiSmartphone className="w-3.5 h-3.5" /> :
                        s.device_type === 'tablet' ? <FiTablet className="w-3.5 h-3.5" /> :
@@ -428,10 +428,10 @@ function AdminAnalytics() {
                       {s.device_type}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400">{s.browser || '-'}</td>
+                  <td className="px-4 py-3 text-gray-400 hidden lg:table-cell">{s.browser || '-'}</td>
                   <td className="px-4 py-3 text-gray-400">{formatDuration(s.duration_seconds)}</td>
-                  <td className="px-4 py-3 text-gray-400">{s.event_count || 0}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="px-4 py-3 text-gray-400 hidden md:table-cell">{s.event_count || 0}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">
                     {new Date(s.started_at).toLocaleString()}
                   </td>
                   <td className="px-4 py-3">

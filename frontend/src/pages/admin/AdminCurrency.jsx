@@ -122,7 +122,7 @@ function AdminCurrency() {
       </div>
 
       {/* Rate Source Info */}
-      <div className="flex items-center gap-4 text-sm text-gray-400">
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-sm text-gray-400">
         <div className="flex items-center gap-2">
           <FiGlobe className="w-4 h-4 text-accent" />
           <span>Source: <span className="text-white capitalize">{rateSource}</span></span>
@@ -183,7 +183,7 @@ function AdminCurrency() {
           ) : (
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <p className="text-3xl font-bold text-white">1 Z = ${zynkRate}</p>
+                <p className="text-xl sm:text-3xl font-bold text-white">1 Z = ${zynkRate}</p>
                 <p className="text-sm text-gray-400">Base conversion rate</p>
               </div>
               <button
@@ -207,14 +207,15 @@ function AdminCurrency() {
           Live Exchange Rates ({rates.length} currencies)
         </h3>
         <div className="bg-dark-800 border border-dark-600 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-dark-700">
               <tr>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Currency</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Symbol</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-gray-400 hidden sm:table-cell">Symbol</th>
                 <th className="text-right px-4 py-3 text-sm font-medium text-gray-400">1 Z =</th>
-                <th className="text-right px-4 py-3 text-sm font-medium text-gray-400">100 Z =</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-400">Status</th>
+                <th className="text-right px-4 py-3 text-sm font-medium text-gray-400 hidden md:table-cell">100 Z =</th>
+                <th className="text-center px-4 py-3 text-sm font-medium text-gray-400 hidden sm:table-cell">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-600">
@@ -226,20 +227,20 @@ function AdminCurrency() {
                       <p className="text-xs text-gray-500">{rate.currency_name}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-xl">{rate.currency_symbol}</td>
+                  <td className="px-4 py-3 text-xl hidden sm:table-cell">{rate.currency_symbol}</td>
                   <td className="px-4 py-3 text-right">
                     <span className="text-accent font-mono">
                       {rate.currency_symbol}{rate.rate_from_zynk?.toFixed(rate.decimal_precision || 2)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right hidden md:table-cell">
                     <span className="text-white font-mono">
                       {rate.currency_symbol}{(rate.rate_from_zynk * 100)?.toLocaleString(undefined, {
                         maximumFractionDigits: rate.decimal_precision || 2
                       })}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center hidden sm:table-cell">
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
                       rate.is_active
                         ? 'bg-green-500/20 text-green-400'
@@ -253,6 +254,7 @@ function AdminCurrency() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

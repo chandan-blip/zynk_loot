@@ -274,11 +274,11 @@ function AdminDraws() {
                 </div>
 
                 {/* Winning Number */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap">
                   {(draw.winning_number || '???????').split('').map((digit, idx) => (
                     <div
                       key={idx}
-                      className={`w-8 h-10 rounded flex items-center justify-center font-mono font-bold ${
+                      className={`w-7 h-9 sm:w-8 sm:h-10 rounded flex items-center justify-center font-mono font-bold text-sm sm:text-base ${
                         draw.status === 'completed'
                           ? 'bg-accent/20 text-accent border border-accent/30'
                           : idx < (draw.revealed_digits || 0)
@@ -292,7 +292,7 @@ function AdminDraws() {
                 </div>
 
                 {/* Stats */}
-                <div className="flex items-center gap-6">
+                <div className="flex items-center gap-4 sm:gap-6">
                   <div className="text-center">
                     <div className="flex items-center gap-1 text-gray-500 text-xs">
                       <GiTwoCoins className="text-accent" />

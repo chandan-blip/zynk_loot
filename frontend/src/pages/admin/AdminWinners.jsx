@@ -93,7 +93,7 @@ function AdminWinners() {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { label: 'Total Winners', value: stats.totalWinners, icon: FiUsers, color: 'text-blue-400', bg: 'bg-blue-500/10' },
             { label: 'Total Prizes Paid', value: stats.totalPrizesPaid, icon: FiDollarSign, color: 'text-accent', bg: 'bg-accent/10', suffix: ' Z' },

@@ -174,7 +174,7 @@ function AdminInvestments() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Pool', value: `${(stats?.totalPool || 0).toLocaleString()} Z`, icon: FiDollarSign, color: 'text-accent', bg: 'bg-accent/10' },
           { label: 'Active Value', value: `${(stats?.activeValue || 0).toLocaleString()} Z`, icon: FiTrendingUp, color: 'text-green-400', bg: 'bg-green-500/10' },
@@ -269,27 +269,27 @@ function AdminInvestments() {
             <thead>
               <tr className="text-gray-500 text-xs border-b border-dark-600">
                 <th className="text-left px-4 py-3">User</th>
-                <th className="text-left px-4 py-3">Tier</th>
+                <th className="text-left px-4 py-3 hidden sm:table-cell">Tier</th>
                 <th className="text-right px-4 py-3">Amount</th>
-                <th className="text-right px-4 py-3">Current Value</th>
-                <th className="text-right px-4 py-3">Returns</th>
+                <th className="text-right px-4 py-3 hidden lg:table-cell">Current Value</th>
+                <th className="text-right px-4 py-3 hidden md:table-cell">Returns</th>
                 <th className="text-center px-4 py-3">Status</th>
-                <th className="text-left px-4 py-3">Invested</th>
-                <th className="text-left px-4 py-3">Locked Until</th>
+                <th className="text-left px-4 py-3 hidden md:table-cell">Invested</th>
+                <th className="text-left px-4 py-3 hidden lg:table-cell">Locked Until</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-600">
               {investments.map((inv) => (
                 <tr key={inv.id} className="hover:bg-dark-700 transition-colors">
                   <td className="px-4 py-3 text-white font-medium">{inv.username}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 hidden sm:table-cell">
                     <span className="px-2 py-0.5 rounded bg-dark-600 text-gray-300 text-xs">
                       {inv.tier_name} ({inv.multiplier}x)
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-white">{parseFloat(inv.amount).toLocaleString()} Z</td>
-                  <td className="px-4 py-3 text-right text-green-400">{parseFloat(inv.current_value).toLocaleString()} Z</td>
-                  <td className="px-4 py-3 text-right text-accent">+{parseFloat(inv.total_returns).toLocaleString()} Z</td>
+                  <td className="px-4 py-3 text-right text-green-400 hidden lg:table-cell">{parseFloat(inv.current_value).toLocaleString()} Z</td>
+                  <td className="px-4 py-3 text-right text-accent hidden md:table-cell">+{parseFloat(inv.total_returns).toLocaleString()} Z</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       inv.status === 'active' ? 'bg-blue-500/10 text-blue-400' :
@@ -300,8 +300,8 @@ function AdminInvestments() {
                       {inv.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400">{formatDate(inv.invested_at)}</td>
-                  <td className="px-4 py-3 text-gray-400">{formatDate(inv.locked_until)}</td>
+                  <td className="px-4 py-3 text-gray-400 hidden md:table-cell">{formatDate(inv.invested_at)}</td>
+                  <td className="px-4 py-3 text-gray-400 hidden lg:table-cell">{formatDate(inv.locked_until)}</td>
                 </tr>
               ))}
               {investments.length === 0 && (
@@ -355,7 +355,7 @@ function AdminInvestments() {
         {/* New tier form */}
         {showNewTier && (
           <div className="p-4 border-b border-dark-600 bg-dark-700/50">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-3">
               <input
                 placeholder="Name"
                 value={newTierForm.name}
@@ -406,7 +406,7 @@ function AdminInvestments() {
           {tiers.map(tier => (
             <div key={tier.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               {editingTier === tier.id ? (
-                <div className="flex-1 grid grid-cols-2 sm:grid-cols-7 gap-2">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
                   <div>
                     <label className="text-xs text-gray-500">Name</label>
                     <input
@@ -490,7 +490,7 @@ function AdminInvestments() {
                       <span className="text-gray-500 text-sm ml-2">({tier.slug})</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-400">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-gray-400">
                     <span>{tier.lock_days}d lock</span>
                     <span className="text-accent font-medium">{tier.multiplier}x</span>
                     <span>{parseFloat(tier.min_amount).toLocaleString()} - {parseFloat(tier.max_amount).toLocaleString()} Z</span>
@@ -510,7 +510,7 @@ function AdminInvestments() {
 
       {/* Status Summary */}
       {stats && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded-xl bg-dark-800 border border-dark-600 text-center">
             <p className="text-blue-400 text-2xl font-bold">{stats.activeCount}</p>
             <p className="text-gray-500 text-sm">Active</p>

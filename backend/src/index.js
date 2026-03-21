@@ -37,8 +37,10 @@ const gameRoutes = require('./routes/games');
 const notificationRoutes = require('./routes/notifications');
 const TrackingService = require('./services/trackingService');
 const trackingRoutes = require('./routes/tracking');
+const prerenderMiddleware = require('./middleware/prerender');
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
@@ -189,6 +191,9 @@ app.get('/api/activities/recent', (req, res) => {
   const activityService = req.app.get('activityService');
   res.json({ success: true, data: activityService?.getRecent() || [] });
 });
+
+// Prerender for social crawlers - serves page-specific OG meta tags
+app.get('/api/og/*', prerenderMiddleware);
 
 // Health check
 app.get('/api/health', (req, res) => {

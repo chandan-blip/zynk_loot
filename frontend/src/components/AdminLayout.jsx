@@ -106,7 +106,7 @@ function AdminLayout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             const badgeCount = item.badge && item.path === '/admin/support' ? supportUnread : 0;

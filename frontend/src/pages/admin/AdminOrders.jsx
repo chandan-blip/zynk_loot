@@ -177,7 +177,7 @@ export default function AdminOrders() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div
           onClick={() => setStatusFilter('awaiting_approval')}
           className={`card cursor-pointer transition-all ${statusFilter === 'awaiting_approval' ? 'ring-2 ring-yellow-400' : 'hover:bg-dark-700'}`}
@@ -458,7 +458,7 @@ export default function AdminOrders() {
               </div>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-dark-700 rounded-lg p-3">
                     <p className="text-gray-400 text-xs">User</p>
                     <p className="text-white font-medium">{selectedOrder.username}</p>

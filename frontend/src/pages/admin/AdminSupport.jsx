@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { FiMessageCircle, FiSend, FiUser, FiClock, FiCheck, FiCheckCircle, FiXCircle, FiFilter } from 'react-icons/fi';
+import { FiMessageCircle, FiSend, FiUser, FiClock, FiCheck, FiCheckCircle, FiXCircle, FiFilter, FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import {
   getAdminConversations,
@@ -230,9 +230,9 @@ function AdminSupport() {
         </div>
       </div>
 
-      <div className="h-[calc(100%-4rem)] flex gap-4">
+      <div className="h-[calc(100%-4rem)] flex flex-col md:flex-row gap-4">
         {/* Conversations List */}
-        <div className="w-80 bg-dark-800 rounded-xl border border-dark-400/50 flex flex-col overflow-hidden">
+        <div className={`w-full md:w-80 bg-dark-800 rounded-xl border border-dark-400/50 flex flex-col overflow-hidden ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
           <div className="p-4 border-b border-dark-400/50">
             <h2 className="text-white font-semibold">Conversations</h2>
             <p className="text-xs text-gray-500 mt-1">{conversations.length} total</p>
@@ -293,12 +293,18 @@ function AdminSupport() {
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 bg-dark-800 rounded-xl border border-dark-400/50 flex flex-col overflow-hidden">
+        <div className={`flex-1 bg-dark-800 rounded-xl border border-dark-400/50 flex flex-col overflow-hidden ${selectedConversation ? 'flex' : 'hidden md:flex'}`}>
           {selectedConversation ? (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b border-dark-400/50 flex items-center justify-between bg-dark-700">
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSelectedConversation(null)}
+                    className="md:hidden p-2 text-gray-400 hover:text-white"
+                  >
+                    <FiArrowLeft className="w-5 h-5" />
+                  </button>
                   <div className="w-10 h-10 rounded-lg bg-dark-600 flex items-center justify-center">
                     <FiUser className="w-5 h-5 text-gray-400" />
                   </div>
@@ -346,7 +352,7 @@ function AdminSupport() {
                             className={`flex ${message.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
-                              className={`max-w-[70%] rounded-lg px-4 py-2 ${
+                              className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-4 py-2 ${
                                 message.sender_type === 'admin'
                                   ? 'bg-accent text-dark-900'
                                   : 'bg-dark-600 text-white'

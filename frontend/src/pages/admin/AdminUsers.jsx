@@ -294,7 +294,7 @@ function AdminUsers() {
               ) : activityData ? (
                 <div className="space-y-4">
                   {/* Session Stats */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                       { label: 'Sessions', value: activityData.sessions?.total_sessions || 0 },
                       { label: 'Total Time', value: (() => { const s = activityData.sessions?.total_time || 0; return s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`; })() },
@@ -309,7 +309,7 @@ function AdminUsers() {
                   </div>
 
                   {/* Event Counts & Top Pages side by side */}
-                  <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Event Counts */}
                     <div className="bg-dark-700 rounded-lg p-4">
                       <h4 className="text-white text-sm font-semibold mb-3 flex items-center gap-1.5">

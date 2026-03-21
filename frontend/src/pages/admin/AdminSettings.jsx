@@ -209,7 +209,7 @@ function AdminSettings() {
         return (
           <div key={category} className="space-y-3">
             <h2 className="text-lg font-semibold text-white border-b border-dark-600 pb-2">{category}</h2>
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-4 gap-3">
               {categorySettings.map((setting, i) => {
                 const Icon = settingIcons[setting.setting_key] || FiSettings;
                 const label = settingLabels[setting.setting_key] || setting.setting_key;
@@ -243,7 +243,7 @@ function AdminSettings() {
                             ...prev,
                             [setting.setting_key]: e.target.value
                           }))}
-                          className={`w-40 px-3 py-2 rounded-lg bg-dark-700 border text-white text-sm placeholder-gray-500 focus:outline-none transition-colors ${
+                          className={`w-full sm:w-40 px-3 py-2 rounded-lg bg-dark-700 border text-white text-sm placeholder-gray-500 focus:outline-none transition-colors ${
                             changed ? 'border-accent' : 'border-dark-500 focus:border-accent'
                           }`}
                         />
@@ -281,7 +281,7 @@ function AdminSettings() {
           <FiClock className="text-accent" />
           Session Schedule (IST Timezone)
         </h3>
-        <div className="grid sm:grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           {[
             { session: 1, label: 'Morning', gen: editValues.session_1_generate_hour || '8', end: editValues.session_1_reveal_end_hour || '15' },
             { session: 2, label: 'Evening', gen: editValues.session_2_generate_hour || '15', end: editValues.session_2_reveal_end_hour || '23' },
@@ -316,7 +316,7 @@ function AdminSettings() {
           <FiPercent className="text-accent" />
           Prize Distribution
         </h3>
-        <div className="grid sm:grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           <div className="p-4 bg-dark-700/50 rounded-lg text-center">
             <p className="text-gray-400 text-xs mb-1">Exact Match</p>
             <p className="text-accent text-2xl font-bold">{(parseFloat(editValues.exact_match_multiplier) * 100 || 40)}%</p>
@@ -346,7 +346,7 @@ function AdminSettings() {
           <code className="text-accent text-sm">Price = BasePrice x (RevealedDigits + 10)</code>
           <p className="text-gray-500 text-xs mt-2">Base Price: {editValues.number_base_price || 10}Z</p>
         </div>
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2 text-xs">
           {Array.from({ length: (parseInt(editValues.total_digits) || 7) + 1 }, (_, i) => i).map(digits => (
             <div key={digits} className="p-2 bg-dark-600 rounded text-center">
               <p className="text-gray-500">{digits} digits</p>

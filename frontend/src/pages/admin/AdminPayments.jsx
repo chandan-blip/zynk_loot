@@ -540,7 +540,7 @@ function AdminPayments() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
           <p className="text-gray-500 text-sm">Total Accounts</p>
           <p className="text-2xl font-bold text-white">{stats.total}</p>
@@ -649,7 +649,7 @@ function AdminPayments() {
                 {!editingAccount && (
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-2">Payment Type</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                       {Object.entries(PAYMENT_TYPES).map(([type, info]) => (
                         <button
                           key={type}
