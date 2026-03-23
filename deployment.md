@@ -1,7 +1,8 @@
 Updating your VPS
 
 Deploy:
-rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.env' /home/dev/Documents/loot/ root@89.117.58.200:/var/www/loot/
+rsync -avz --exclude '
+' --exclude '.git' --exclude '.env' /home/dev/Documents/loot/ root@89.117.58.200:/var/www/loot/
 
 On VPS:
 mysql -u loot_user -p'Zynk@dmin123!' loot_db < /var/www/loot/migration/sql/042-create-user-tracking.sql

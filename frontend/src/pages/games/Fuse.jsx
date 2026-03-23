@@ -10,6 +10,7 @@ import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
 import GameCrossPromo from '../../components/GameCrossPromo';
+import GameLiveFeed from '../../components/GameLiveFeed';
 import { isDemoMode, demoFuse } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
@@ -161,15 +162,15 @@ function FuseGame() {
             <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Total Games</p>
-                <p className="text-lg font-bold text-white">{stats.total_bets}</p>
+                <p className="text-sm font-bold text-white">{stats.total_bets}</p>
               </div>
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Win Rate</p>
-                <p className="text-lg font-bold text-white">{winRate}%</p>
+                <p className="text-sm font-bold text-white">{winRate}%</p>
               </div>
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
-                <p className={`text-lg font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
+                <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
                   {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit} Z
                 </p>
               </div>
@@ -212,7 +213,7 @@ function FuseGame() {
 
         {/* Game (right on md+, top on mobile) */}
         <div className="md:order-2 order-1">
-      <div className="rounded-xl p-6">
+      <div className="rounded-xl p-6 relative">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-white flex items-center justify-center gap-3">
             <FiAlertTriangle className="w-7 h-7 text-orange-400" />
@@ -220,6 +221,8 @@ function FuseGame() {
           </h1>
           <p className="text-gray-400 text-sm mt-1">Set your cut point, light the fuse, snip before it blows!</p>
         </div>
+
+        <GameLiveFeed />
 
         {/* Fuse Visual */}
         <div className="mb-8 py-4">
@@ -337,7 +340,7 @@ function FuseGame() {
         </div>
 
         {/* Bet Amount */}
-        <div className="mb-4">
+        <div className="mb-4 hidden md:block">
           <label className="text-sm text-gray-400 mb-2 block">Bet Amount (Z)</label>
           <input
             type="number"
@@ -369,37 +372,58 @@ function FuseGame() {
         </div>
 
         {/* Potential Win */}
-        {amount && parseFloat(amount) > 0 && targetMultiplier && parseFloat(targetMultiplier) >= 1.1 && (
-          <div className="text-center mb-4 text-sm text-gray-400">
-            Potential win: <span className="text-accent font-bold">{(parseFloat(amount) * parseFloat(targetMultiplier)).toFixed(2)} Z</span>
-          </div>
-        )}
+        <div className="text-center text-sm text-gray-400">
+          Potential win: <span className="text-accent font-bold">{((parseFloat(amount) || 0) * (parseFloat(targetMultiplier) || 0)).toFixed(2)} Z</span>
+        </div>
 
         {/* Light Button */}
-        <motion.button
-          whileHover={!burning ? { scale: 1.02 } : {}}
-          whileTap={!burning ? { scale: 0.98 } : {}}
-          onClick={handleLight}
-          disabled={burning || !amount || !targetMultiplier}
-          className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-            burning || !amount || !targetMultiplier
-              ? 'bg-dark-700/60 border border-white/10 text-gray-500 cursor-not-allowed'
-              : 'btn-premium'
-          }`}
-        >
-          {burning ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Burning...
-            </span>
-          ) : (
-            'Light the Fuse'
-          )}
-        </motion.button>
+            <div className="fixed bottom-0 left-0 right-0 z-30 p-3 pb-4 bg-dark-500/95 backdrop-blur-sm border-t border-white/5 md:static md:p-0 md:bg-transparent md:backdrop-blur-none md:border-0">
+          <div className="flex gap-2 mb-2 md:hidden">
+            {QUICK_AMOUNTS.map(qa => (
+              <button
+                key={qa}
+                onClick={() => { if (!burning) { setAmount(String(qa)); sounds.tap(); } }}
+                disabled={burning}
+                className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${amount === String(qa) ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-dark-700/60 border-white/10 text-gray-400 hover:text-white'}`}
+              >
+                {qa}
+              </button>
+            ))}
+            <button
+              onClick={() => { if (!burning && user?.balance) { setAmount(String(Math.floor(user.balance))); sounds.tap(); } }}
+              disabled={burning}
+              className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${user?.balance && amount === String(Math.floor(user.balance)) ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-dark-700/60 border-white/10 text-gray-400 hover:text-white'}`}
+            >
+              MAX
+            </button>
+          </div>
+          <motion.button
+            whileHover={!burning ? { scale: 1.02 } : {}}
+            whileTap={!burning ? { scale: 0.98 } : {}}
+            onClick={handleLight}
+            disabled={burning || !amount || !targetMultiplier}
+            className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
+              burning || !amount || !targetMultiplier
+                ? 'bg-dark-700/60 border border-white/10 text-gray-500 cursor-not-allowed'
+                : 'btn-premium'
+            }`}
+          >
+            {burning ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Burning...
+              </span>
+            ) : (
+              'Light the Fuse'
+            )}
+          </motion.button>
+        </div>
       </div>
         </div>
       </div>
       <GameCrossPromo currentGame="fuse" />
+            <div className="h-36 md:hidden"></div>
+
     </div>
   );
 }

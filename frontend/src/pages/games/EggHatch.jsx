@@ -10,6 +10,7 @@ import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
 import GameCrossPromo from '../../components/GameCrossPromo';
+import GameLiveFeed from '../../components/GameLiveFeed';
 import { isDemoMode, demoEggHatch } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
@@ -193,15 +194,15 @@ function EggHatch() {
             <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Total Hatches</p>
-                <p className="text-lg font-bold text-white">{stats.total_bets}</p>
+                <p className="text-sm font-bold text-white">{stats.total_bets}</p>
               </div>
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Win Rate</p>
-                <p className="text-lg font-bold text-white">{winRate}%</p>
+                <p className="text-sm font-bold text-white">{winRate}%</p>
               </div>
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
-                <p className={`text-lg font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
+                <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
                   {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit} Z
                 </p>
               </div>
@@ -238,7 +239,7 @@ function EggHatch() {
 
         {/* Game (right on md+, top on mobile) */}
         <div className="md:order-2 order-1">
-      <div className="rounded-xl p-6">
+      <div className="rounded-xl p-6 relative">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-white flex items-center justify-center gap-3">
             <FiGift className="w-7 h-7 text-amber-400" />
@@ -246,6 +247,8 @@ function EggHatch() {
           </h1>
           <p className="text-gray-400 text-sm mt-1">Pick an egg — each hides a multiplier up to 15x!</p>
         </div>
+
+        <GameLiveFeed />
 
         {/* Eggs Grid */}
         <div className="grid grid-cols-3 gap-6 justify-items-center mb-8 py-4">

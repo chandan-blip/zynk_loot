@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import useStore from './store/useStore';
 import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
@@ -117,6 +117,12 @@ function CurrencySync() {
   return null;
 }
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
+
 function TrackingInit() {
   useTracking();
   return null;
@@ -154,6 +160,7 @@ function App() {
           },
         }}
       />
+      <ScrollToTop />
       <TrackingInit />
       <Routes>
         {/* Public Routes */}

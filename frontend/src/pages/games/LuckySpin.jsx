@@ -14,6 +14,7 @@ import GameResultOverlay from "../../components/GameResultOverlay";
 import usePageTitle from "../../hooks/usePageTitle";
 import GameHistory from "../../components/GameHistory";
 import GameCrossPromo from '../../components/GameCrossPromo';
+import GameLiveFeed from '../../components/GameLiveFeed';
 import { isDemoMode, demoLuckySpin } from '../../utils/demoGame';
 
 const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
@@ -247,16 +248,16 @@ function LuckySpin() {
             <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Total Spins</p>
-                <p className="text-lg font-bold text-white">{stats.total_bets}</p>
+                <p className="text-sm font-bold text-white">{stats.total_bets}</p>
               </div>
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Win Rate</p>
-                <p className="text-lg font-bold text-white">{winRate}%</p>
+                <p className="text-sm font-bold text-white">{winRate}%</p>
               </div>
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
                 <p
-                  className={`text-lg font-bold ${parseFloat(netProfit) >= 0 ? "text-accent" : "text-red-400"}`}
+                  className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? "text-accent" : "text-red-400"}`}
                 >
                   {parseFloat(netProfit) >= 0 ? "+" : ""}
                   {netProfit} Z
@@ -316,16 +317,18 @@ function LuckySpin() {
 
         {/* Game (right on md+, top on mobile) */}
         <div className="md:order-2 order-1">
-      <div className="rounded-xl p-6">
+      <div className="rounded-xl p-6 relative">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-white flex items-center justify-center gap-3">
-            <GiCartwheel className="w-7 h-7 text-purple-400" /> 
+            <GiCartwheel className="w-7 h-7 text-purple-400" />
             Lucky Spin
           </h1>
           <p className="text-gray-400 text-sm mt-1">
             Spin the wheel and win up to 10x your bet
           </p>
         </div>
+
+        <GameLiveFeed />
 
         {/* Wheel */}
         <div className="flex justify-center mb-8 py-4">
@@ -350,7 +353,7 @@ function LuckySpin() {
         </div>
 
         {/* Bet Amount */}
-        <div className="mb-4">
+        <div className="mb-4 hidden md:block">
           <label className="text-sm text-gray-400 mb-2 block">
             Bet Amount (Z)
           </label>
@@ -394,30 +397,53 @@ function LuckySpin() {
         </div>
 
         {/* Spin Button */}
-        <motion.button
-          whileHover={!spinning ? { scale: 1.02 } : {}}
-          whileTap={!spinning ? { scale: 0.98 } : {}}
-          onClick={handleSpin}
-          disabled={spinning || !amount}
-          className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-            spinning || !amount
-              ? "bg-dark-700/60 border border-white/10 text-gray-500 cursor-not-allowed"
-              : "btn-premium"
-          }`}
-        >
-          {spinning ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Spinning...
-            </span>
-          ) : (
-            "Spin the Wheel"
-          )}
-        </motion.button>
+            <div className="fixed bottom-0 left-0 right-0 z-30 p-3 pb-4 bg-dark-500/95 backdrop-blur-sm border-t border-white/5 md:static md:p-0 md:bg-transparent md:backdrop-blur-none md:border-0">
+          <div className="flex gap-2 mb-2 md:hidden">
+            {QUICK_AMOUNTS.map(qa => (
+              <button
+                key={qa}
+                onClick={() => { if (!spinning) { setAmount(String(qa)); sounds.tap(); } }}
+                disabled={spinning}
+                className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${amount === String(qa) ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-dark-700/60 border-white/10 text-gray-400 hover:text-white'}`}
+              >
+                {qa}
+              </button>
+            ))}
+            <button
+              onClick={() => { if (!spinning && user?.balance) { setAmount(String(Math.floor(user.balance))); sounds.tap(); } }}
+              disabled={spinning}
+              className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${user?.balance && amount === String(Math.floor(user.balance)) ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-dark-700/60 border-white/10 text-gray-400 hover:text-white'}`}
+            >
+              MAX
+            </button>
+          </div>
+          <motion.button
+            whileHover={!spinning ? { scale: 1.02 } : {}}
+            whileTap={!spinning ? { scale: 0.98 } : {}}
+            onClick={handleSpin}
+            disabled={spinning || !amount}
+            className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
+              spinning || !amount
+                ? "bg-dark-700/60 border border-white/10 text-gray-500 cursor-not-allowed"
+                : "btn-premium"
+            }`}
+          >
+            {spinning ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Spinning...
+              </span>
+            ) : (
+              "Spin the Wheel"
+            )}
+          </motion.button>
+        </div>
       </div>
         </div>
       </div>
       <GameCrossPromo currentGame="lucky-spin" />
+            <div className="h-36 md:hidden"></div>
+
     </div>
   );
 }

@@ -395,11 +395,11 @@ function Layout() {
         {/* Page Content */}
         <main className="py-2 px-3 2xl:px-0 sm:px-4 sm:py-4 min-h-[calc(100vh-4rem)]">
           <Outlet />
-          <div className="h-22"></div>
+          {!location.pathname.startsWith('/games/') && <div className="h-22"></div>}
         </main>
 
-        {/* Mobile Bottom Navigation */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden">
+        {/* Mobile Bottom Navigation — hidden inside game pages */}
+        <nav className={`fixed bottom-0 left-0 right-0 z-40 lg:hidden ${location.pathname.startsWith('/games/') ? 'hidden' : ''}`}>
           <div className="max-w-[1400px] mx-auto">
             <div className="glass-strong border-t border-white/5 mx-2 mb-2 rounded-lg overflow-hidden">
               <div className="flex items-center justify-around h-16">

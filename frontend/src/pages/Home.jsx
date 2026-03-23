@@ -165,6 +165,8 @@ function Home() {
     zynk_buy: { icon: FiDollarSign, color: 'text-emerald-light', bgColor: 'bg-emerald/20' },
     transfer: { icon: FiSend, color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
     withdrawal: { icon: FiArrowDownRight, color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
+    game_win: { icon: FiAward, color: 'text-emerald-light', bgColor: 'bg-emerald/20' },
+    game_play: { icon: FiPlay, color: 'text-purple-light', bgColor: 'bg-purple/20' },
   };
 
   // Load recent activities on mount so first-time visitors see activity immediately
