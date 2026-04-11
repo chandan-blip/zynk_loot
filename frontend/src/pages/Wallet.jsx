@@ -606,6 +606,7 @@ function Wallet() {
         {[
           { id: 'buy', label: 'Buy Zynk', icon: FiPlus },
           { id: 'deposits', label: 'Deposits', icon: FiDownload },
+          { id: 'withdrawals', label: 'Withdrawals', icon: FiArrowUpCircle },
           { id: 'methods', label: 'Methods', icon: FiCreditCard },
           { id: 'transfer', label: 'Transfer', icon: FiSend },
           { id: 'analytics', label: 'Analytics', icon: FiTrendingUp },
@@ -703,7 +704,20 @@ function Wallet() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {orders.map((order) => (
+                  {orders.map((order) => {
+                    const currencySymbols = { INR: '₹', USD: '$', BTC: '₿', ETH: 'Ξ', USDT: '$' };
+                    const payCurr = order.payment_currency || 'USD';
+                    const paySymbol = currencySymbols[payCurr] || '';
+                    const payAmount = order.payment_amount != null
+                      ? parseFloat(order.payment_amount)
+                      : parseFloat(order.price);
+                    const isCrypto = ['BTC', 'ETH'].includes(payCurr);
+                    const formattedAmount = isCrypto
+                      ? `${payAmount.toFixed(8)} ${payCurr}`
+                      : payCurr === 'USDT'
+                        ? `${payAmount.toFixed(2)} USDT`
+                        : `${paySymbol}${payAmount.toLocaleString(payCurr === 'INR' ? 'en-IN' : 'en-US', { maximumFractionDigits: 2 })}`;
+                    return (
                     <div key={order.id} className="flex items-center justify-between p-4 bg-dark-800 rounded-lg hover:bg-dark-600/50 transition-colors">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center">
@@ -714,7 +728,7 @@ function Wallet() {
                             {(order.zynk_amount + (order.bonus_amount || 0)).toLocaleString()} ZYNK
                           </p>
                           <p className="text-sm text-gray-500">
-                            {order.payment_method?.replace('_', ' ').toUpperCase()} • ${parseFloat(order.price).toLocaleString()}
+                            {order.payment_method?.replace('_', ' ').toUpperCase()} • {formattedAmount}
                           </p>
                         </div>
                       </div>
@@ -725,7 +739,94 @@ function Wallet() {
                         </p>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Withdrawals Tab */}
+        {activeTab === 'withdrawals' && (
+          <motion.div
+            key="withdrawals"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-4"
+          >
+            {/* Timeline */}
+            <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">Withdrawal Timeline</h3>
+                <span className="text-xs text-gray-500">{withdrawals.length} total</span>
+              </div>
+              {withdrawals.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 rounded-full bg-dark-800 flex items-center justify-center mx-auto mb-3">
+                    <FiArrowUpCircle className="w-8 h-8 text-gray-600" />
+                  </div>
+                  <p className="text-gray-400 font-medium">No withdrawals yet</p>
+                  <p className="text-gray-500 text-sm mt-1">Your withdrawal requests will appear here</p>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-5 top-2 bottom-2 w-px bg-gradient-to-b from-red-500/40 via-dark-500 to-transparent" />
+                  <div className="space-y-3">
+                    {withdrawals.map((w) => {
+                      const statusColors = {
+                        pending: { dot: 'bg-yellow-500', ring: 'ring-yellow-500/30', text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' },
+                        approved: { dot: 'bg-blue-500', ring: 'ring-blue-500/30', text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+                        completed: { dot: 'bg-green-500', ring: 'ring-green-500/30', text: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20' },
+                        rejected: { dot: 'bg-red-500', ring: 'ring-red-500/30', text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+                      };
+                      const c = statusColors[w.status] || statusColors.pending;
+                      const destination = w.payment_type === 'upi' ? w.upi_id
+                        : w.payment_type === 'crypto' ? `${w.wallet_type}: ${w.wallet_address?.slice(0, 8)}...${w.wallet_address?.slice(-6)}`
+                        : w.payment_type === 'bank' ? `${w.bank_name} ****${w.account_number?.slice(-4)}`
+                        : w.payment_label;
+                      return (
+                        <div key={w.id} className="relative pl-12">
+                          <div className={`absolute left-3 top-4 w-5 h-5 rounded-full ${c.dot} ring-4 ${c.ring} z-10`}>
+                            <div className={`w-full h-full rounded-full ${c.dot} ${w.status === 'pending' ? 'animate-pulse' : ''}`} />
+                          </div>
+                          <div className={`rounded-xl border ${c.border} ${c.bg} p-4 transition-all hover:scale-[1.01]`}>
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-baseline gap-2 flex-wrap">
+                                  <p className="text-xl font-bold text-white">−{parseFloat(w.amount).toLocaleString()}</p>
+                                  <span className="text-xs text-gray-400 font-medium">ZYNK</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                  to <span className="text-gray-300 font-mono">{destination}</span>
+                                </p>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${c.text} ${c.bg} border ${c.border} whitespace-nowrap`}>
+                                {w.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-white/5">
+                              <div className="flex items-center gap-1.5">
+                                <FiCalendar className="w-3 h-3" />
+                                <span>{new Date(w.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                <span className="text-gray-600">•</span>
+                                <span>{new Date(w.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              <span className="text-gray-600">#{w.id}</span>
+                            </div>
+                            {w.admin_note && (
+                              <div className="mt-2 pt-2 border-t border-white/5">
+                                <p className="text-xs text-gray-400">
+                                  <span className="text-gray-500">Note:</span> {w.admin_note}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -1383,35 +1484,6 @@ function Wallet() {
               )}
             </div>
 
-            {/* Withdrawals Section */}
-            <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
-              <h3 className="text-lg font-semibold text-white mb-4">Withdrawal Requests</h3>
-              {withdrawals.length === 0 ? (
-                <p className="text-gray-400 text-center py-4">No withdrawal requests yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {withdrawals.map((w) => (
-                    <div key={w.id} className="flex items-center justify-between p-3 bg-dark-800 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
-                          <FiArrowUpCircle className="w-4 h-4 text-red-400" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-white text-sm">{parseFloat(w.amount).toLocaleString()} ZYNK</p>
-                          <p className="text-xs text-gray-500">{w.payment_label}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        {getStatusBadge(w.status)}
-                        <p className="text-xs text-gray-500 mt-1">
-                          {new Date(w.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -5,6 +5,19 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Get active social/floating links (public)
+router.get('/social-links', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      'SELECT id, name, icon, url, color FROM social_links WHERE is_active = 1 ORDER BY sort_order ASC, id ASC'
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get social links error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get social links' });
+  }
+});
+
 // Get current draw status
 router.get('/draw', async (req, res) => {
   try {

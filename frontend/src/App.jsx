@@ -25,6 +25,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminDraws from './pages/admin/AdminDraws';
 import AdminSettings from './pages/admin/AdminSettings';
+import AdminSocialLinks from './pages/admin/AdminSocialLinks';
 import AdminDeposits from './pages/admin/AdminDeposits';
 import AdminWithdrawals from './pages/admin/AdminWithdrawals';
 import AdminWinners from './pages/admin/AdminWinners';
@@ -190,6 +191,7 @@ function App() {
           <Route path="notifications" element={<AdminNotifications />} />
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
+          <Route path="social-links" element={<AdminSocialLinks />} />
         </Route>
 
         {/* Main App Routes */}

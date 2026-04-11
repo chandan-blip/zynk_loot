@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiSearch,
@@ -27,6 +27,7 @@ import { GiTwoCoins, GiTrophy, GiPodium } from "react-icons/gi";
 import { Link } from "react-router-dom";
 import LootCard from "../components/LootCard";
 import OnboardingGuide from "../components/OnboardingGuide";
+import FloatingSocialIcons from "../components/FloatingSocialIcons";
 import { getNumbers, getCurrentDraw, getUpcomingSession, getPrizePool, getRecentWinners, getMyNumbers, getMyVotes, cashOutTicket, scheduleTicketCashout, buyNumber, voteForNumber, unvoteForNumber, getRecentActivities } from "../services/api";
 import toast from "react-hot-toast";
 import socketService from "../services/socket";
@@ -43,6 +44,40 @@ const SESSION_NAMES = {
   2: 'Evening',
   3: 'Night'
 };
+
+// Static session schedule in IST (UTC+5:30)
+// Session 1: 8:00 AM IST = 02:30 UTC
+// Session 2: 3:00 PM IST = 09:30 UTC
+// Session 3: 11:00 PM IST = 17:30 UTC
+const SESSIONS_UTC = [
+  { number: 1, name: 'Morning', utcHour: 2,  utcMinute: 30 },
+  { number: 2, name: 'Evening', utcHour: 9,  utcMinute: 30 },
+  { number: 3, name: 'Night',   utcHour: 17, utcMinute: 30 },
+];
+
+// Returns the next upcoming session start as a Date in user's local timezone
+function getNextSessionStart() {
+  const now = new Date();
+  for (const s of SESSIONS_UTC) {
+    const start = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      s.utcHour, s.utcMinute, 0, 0
+    ));
+    if (start.getTime() > now.getTime()) {
+      return { ...s, start };
+    }
+  }
+  // All sessions passed today — roll over to first session tomorrow
+  const tomorrow = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+    SESSIONS_UTC[0].utcHour, SESSIONS_UTC[0].utcMinute, 0, 0
+  ));
+  return { ...SESSIONS_UTC[0], start: tomorrow };
+}
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -748,6 +783,9 @@ function Home() {
       {/* Onboarding Guide Modal for First-Time Users */}
       <OnboardingGuide />
 
+      {/* Floating social/contact icons (draggable) */}
+      <FloatingSocialIcons />
+
       {/* Sticky Number Display Bar - Outside main container to avoid space-y margin */}
       <AnimatePresence>
         {showStickyBar && (
@@ -946,40 +984,45 @@ function Home() {
               </div>
 
               {/* Countdown */}
-              <div className="flex items-center gap-3">
-                <FiClock className="w-4 h-4 text-gray-500" />
-                {isEffectivelyComplete && upcomingSession ? (
-                  <UpcomingSessionCountdown session={upcomingSession} />
-                ) : isEffectivelyComplete ? (
-                  <span className="badge badge-success">
-                    <FiAward className="w-3 h-3 mr-1" />
-                    Result Announced!
-                  </span>
-                ) : !hasActiveDraw && upcomingSession ? (
-                  <UpcomingSessionCountdown session={upcomingSession} />
-                ) : !hasActiveDraw ? (
-                  <span className="text-gray-500 text-sm">Waiting for next draw...</span>
-                ) : revealState.status === "waiting" ? (
-                  <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-3">
+                  <FiClock className="w-4 h-4 text-gray-500" />
+                  {isEffectivelyComplete && upcomingSession ? (
+                    <UpcomingSessionCountdown session={upcomingSession} />
+                  ) : isEffectivelyComplete ? (
+                    <span className="badge badge-success">
+                      <FiAward className="w-3 h-3 mr-1" />
+                      Result Announced!
+                    </span>
+                  ) : !hasActiveDraw && upcomingSession ? (
+                    <UpcomingSessionCountdown session={upcomingSession} />
+                  ) : !hasActiveDraw ? (
+                    <span className="text-gray-500 text-sm">Waiting for next draw...</span>
+                  ) : revealState.status === "waiting" ? (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 text-sm">
+                          First digit in
+                        </span>
+                        <CountdownDisplay
+                          seconds={revealState.nextRevealIn}
+                          showSeconds
+                        />
+                      </div>
+                    </div>
+                  ) : (
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-400 text-sm">
-                        First digit in
-                      </span>
+                      <span className="text-gray-400 text-sm">Next digit in</span>
                       <CountdownDisplay
                         seconds={revealState.nextRevealIn}
                         showSeconds
                       />
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-400 text-sm">Next digit in</span>
-                    <CountdownDisplay
-                      seconds={revealState.nextRevealIn}
-                      showSeconds
-                    />
-                  </div>
-                )}
+                  )}
+                </div>
+                <div className="flex items-center gap-3 pl-7">
+                  <UpcomingSessionCountdown />
+                </div>
               </div>
 
               {/* Time until complete */}
@@ -1054,7 +1097,7 @@ function Home() {
           {/* Scrolling activity feed */}
           <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
             <AnimatePresence initial={false} mode="popLayout">
-              {recentActivities.map((activity, index) => {
+              {recentActivities.map((activity) => {
                 const IconComponent = activity.icon;
                 return (
                   <motion.div
@@ -1516,21 +1559,20 @@ function TimeUnit({ value, label }) {
 }
 
 // Sticky bar upcoming countdown (compact version)
-function StickyUpcomingCountdown({ session }) {
-  const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
-
-  // Re-sync when server provides new timeUntilStart
-  useEffect(() => {
-    setTimeLeft(session.timeUntilStart || 0);
-  }, [session.timeUntilStart]);
+function StickyUpcomingCountdown() {
+  const [timeLeft, setTimeLeft] = useState(() =>
+    Math.max(0, Math.floor((getNextSessionStart().start.getTime() - Date.now()) / 1000))
+  );
 
   useEffect(() => {
-    if (timeLeft <= 0) return;
-    const interval = setInterval(() => {
-      setTimeLeft(prev => Math.max(0, prev - 1));
-    }, 1000);
+    const tick = () => {
+      const left = Math.max(0, Math.floor((getNextSessionStart().start.getTime() - Date.now()) / 1000));
+      setTimeLeft(left);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [timeLeft > 0]);
+  }, []);
 
   const hrs = Math.floor(timeLeft / 3600);
   const mins = Math.floor((timeLeft % 3600) / 60);
@@ -1566,50 +1608,23 @@ function StickyUpcomingCountdown({ session }) {
   );
 }
 
-// Upcoming Session Countdown Component
-function UpcomingSessionCountdown({ session }) {
-  const [timeLeft, setTimeLeft] = useState(session.timeUntilStart || 0);
-
-  // Re-sync when server provides new timeUntilStart
-  useEffect(() => {
-    setTimeLeft(session.timeUntilStart || 0);
-  }, [session.timeUntilStart]);
+// Upcoming Session Time Component — shows next session local start time
+function UpcomingSessionCountdown() {
+  const [next, setNext] = useState(() => getNextSessionStart());
 
   useEffect(() => {
-    if (timeLeft <= 0) return;
-
     const interval = setInterval(() => {
-      setTimeLeft(prev => Math.max(0, prev - 1));
-    }, 1000);
-
+      setNext(getNextSessionStart());
+    }, 30000);
     return () => clearInterval(interval);
-  }, [timeLeft > 0]);
+  }, []);
 
-  const hours = Math.floor(timeLeft / 3600);
-  const minutes = Math.floor((timeLeft % 3600) / 60);
-  const seconds = timeLeft % 60;
+  const localStartTime = next.start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <span className="text-accent text-sm font-medium">
-          {session.sessionName} starts in
-        </span>
-        <div className="flex items-center gap-1">
-          {hours > 0 && (
-            <>
-              <TimeUnit value={hours} label="h" />
-              <span className="text-gray-600">:</span>
-            </>
-          )}
-          <TimeUnit value={minutes} label="m" />
-          <span className="text-gray-600">:</span>
-          <TimeUnit value={seconds} label="s" />
-        </div>
-      </div>
-      <span className="text-xs text-gray-500">
-        Buy now to participate in the upcoming session
-      </span>
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-gray-400">Next {next.name} session at</span>
+      <span className="text-accent font-semibold">{localStartTime}</span>
     </div>
   );
 }

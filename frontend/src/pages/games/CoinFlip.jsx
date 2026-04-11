@@ -12,9 +12,10 @@ import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
 import GameCrossPromo from '../../components/GameCrossPromo';
 import GameLiveFeed from '../../components/GameLiveFeed';
+import BetStepper from '../../components/BetStepper';
 import { isDemoMode, demoCoinFlip } from '../../utils/demoGame';
 
-const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
+const QUICK_AMOUNTS = [5, 10, 50, 100, 500, 1000];
 
 function CoinFlip() {
   usePageTitle('Coin Flip');
@@ -255,6 +256,9 @@ function CoinFlip() {
             </div>
 
             <div className="fixed bottom-0 left-0 right-0 z-30 p-3 pb-4 bg-dark-500/95 backdrop-blur-sm border-t border-white/5 md:static md:p-0 md:bg-transparent md:backdrop-blur-none md:border-0">
+              <div className="md:hidden">
+                <BetStepper amount={amount} setAmount={setAmount} disabled={flipping} />
+              </div>
               <div className="flex gap-2 mb-2 md:hidden">
                 {QUICK_AMOUNTS.map(qa => (
                   <button

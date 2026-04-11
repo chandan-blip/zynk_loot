@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { copyToClipboard } from '../utils/clipboard';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,7 +19,7 @@ import {
   FiInfo,
   FiMessageCircle
 } from 'react-icons/fi';
-import { SiBitcoin, SiEthereum, SiTether } from 'react-icons/si';
+import { SiBitcoin, SiEthereum, SiTether, SiGooglepay, SiPhonepe, SiPaytm } from 'react-icons/si';
 import { getZynkPackages, getPaymentSettings, checkout } from '../services/api';
 import { useCurrency } from '../contexts/CurrencyContext';
 import SupportChat from '../components/SupportChat';
@@ -117,9 +118,10 @@ export default function Checkout() {
     }
   };
 
-  const copyToClipboard = (text, label) => {
+  const handleCopy = (text, label) => {
     copyToClipboard(text);
     setCopied(label);
+    toast.success('Copied to clipboard');
     setTimeout(() => setCopied(''), 2000);
   };
 
@@ -199,7 +201,7 @@ export default function Checkout() {
 
     const CopyButton = ({ text, label }) => (
       <button
-        onClick={() => copyToClipboard(text, label)}
+        onClick={() => handleCopy(text, label)}
         className="p-2 rounded-lg bg-dark-600 hover:bg-dark-500 transition-all group"
       >
         {copied === label ? (
@@ -211,7 +213,18 @@ export default function Checkout() {
     );
 
     switch (selectedMethod) {
-      case 'upi':
+      case 'upi': {
+        const upiCurr = getPaymentCurrency('upi');
+        const upiAmount = (selectedPackage.zynk_amount * upiCurr.rate).toFixed(2);
+        const upiNote = `Zynk-${selectedPackage.id}`;
+        const upiParams = `pa=${encodeURIComponent(paymentSettings.upi.id)}&pn=${encodeURIComponent(paymentSettings.upi.name || 'Merchant')}&am=${upiAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`;
+        const upiUri = `upi://pay?${upiParams}`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=${encodeURIComponent(upiUri)}`;
+        const upiApps = [
+          { name: 'GPay', uri: `tez://upi/pay?${upiParams}`, Icon: SiGooglepay, bg: 'bg-white', iconClass: 'text-[#4285F4] w-12 h-6' },
+          { name: 'PhonePe', uri: `phonepe://pay?${upiParams}`, Icon: SiPhonepe, bg: 'bg-white', iconClass: 'text-[#5F259F] w-6 h-6' },
+          { name: 'Paytm', uri: `paytmmp://pay?${upiParams}`, Icon: SiPaytm, bg: 'bg-white', iconClass: 'text-[#00BAF2] w-12 h-6' },
+        ];
         return (
           <div className="space-y-4">
             <div className="bg-dark-800 border border-dark-600 rounded-xl p-5">
@@ -219,22 +232,58 @@ export default function Checkout() {
                 <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
                   <FiSmartphone className="w-7 h-7 text-white" />
                 </div>
-                <p className="text-gray-400 text-sm">Send payment to</p>
+                <p className="text-gray-400 text-sm">Scan QR or send to UPI ID</p>
+              </div>
+              <div className="flex justify-center mb-4">
+                <a
+                  href={upiUri}
+                  className="block p-3 bg-white rounded-xl shadow-lg"
+                  title="Tap on mobile to open UPI app"
+                >
+                  <img
+                    src={qrUrl}
+                    alt="UPI QR Code"
+                    width={240}
+                    height={240}
+                    className="block"
+                  />
+                </a>
               </div>
               <div className="bg-dark-700 rounded-lg p-4 flex items-center justify-between">
                 <div>
                   <p className="text-xl font-bold text-white font-mono">{paymentSettings.upi.id}</p>
                   <p className="text-gray-500 text-sm">{paymentSettings.upi.name}</p>
+                  <p className="text-accent text-sm font-semibold mt-1">₹{upiAmount}</p>
                 </div>
                 <CopyButton text={paymentSettings.upi.id} label="upi" />
+              </div>
+              <div className="mt-4">
+                <p className="text-xs text-gray-500 mb-2 text-center md:hidden">Pay directly with</p>
+                <p className="text-xs text-gray-500 mb-2 text-center hidden md:block">Open on your phone to use these</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {upiApps.map(app => {
+                    const Icon = app.Icon;
+                    return (
+                      <a
+                        key={app.name}
+                        href={app.uri}
+                        className={`${app.bg} flex items-center justify-center py-3 px-2 rounded-lg hover:opacity-90 active:scale-95 transition-all border border-white/10`}
+                        title={`Pay with ${app.name}`}
+                      >
+                        <Icon className={app.iconClass} />
+                      </a>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             <div className="flex items-start gap-3 text-sm text-gray-400 bg-dark-700 rounded-lg p-3">
               <FiInfo className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-              <p>Open any UPI app (GPay, PhonePe, Paytm) and send the exact amount to this UPI ID</p>
+              <p>On mobile, tap any app above (or scan the QR) to open it with the amount pre-filled. On desktop, scan the QR with your phone's UPI app.</p>
             </div>
           </div>
         );
+      }
 
       case 'bank':
         const bankDetails = [
@@ -403,7 +452,6 @@ export default function Checkout() {
 
   const bonusAmount = selectedPackage ? Math.floor(selectedPackage.zynk_amount * selectedPackage.bonus_percent / 100) : 0;
   const totalZynk = selectedPackage ? selectedPackage.zynk_amount + bonusAmount : 0;
-  const priceUsd = selectedPackage ? (selectedPackage.zynk_amount * zynkToUsd).toFixed(2) : 0;
 
   return (
     <div className="mx-auto space-y-3">

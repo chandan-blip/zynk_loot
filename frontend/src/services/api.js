@@ -284,4 +284,11 @@ export const getTopClicks = (days = 30) => api.get(`/admin/tracking/top-clicks?d
 export const getScrollStats = (days = 30) => api.get(`/admin/tracking/scroll-stats?days=${days}`);
 export const getUserTrackingSummary = (userId) => api.get(`/admin/tracking/user/${userId}/summary`);
 
+// Social / floating links
+export const getSocialLinks = () => api.get('/lottery/social-links');
+export const adminGetSocialLinks = () => api.get('/admin/social-links');
+export const adminCreateSocialLink = (data) => api.post('/admin/social-links', data);
+export const adminUpdateSocialLink = (id, data) => api.put(`/admin/social-links/${id}`, data);
+export const adminDeleteSocialLink = (id) => api.delete(`/admin/social-links/${id}`);
+
 export default api;

@@ -11,9 +11,10 @@ import usePageTitle from '../../hooks/usePageTitle';
 import GameHistory from '../../components/GameHistory';
 import GameCrossPromo from '../../components/GameCrossPromo';
 import GameLiveFeed from '../../components/GameLiveFeed';
+import BetStepper from '../../components/BetStepper';
 import { isDemoMode, demoEggHatch } from '../../utils/demoGame';
 
-const QUICK_AMOUNTS = [10, 50, 100, 500, 1000];
+const QUICK_AMOUNTS = [5, 10, 50, 100, 500, 1000];
 
 // Colors for each egg
 const EGG_COLORS = [
@@ -273,14 +274,7 @@ function EggHatch() {
         {/* Bet Amount */}
         <div className="mb-4">
           <label className="text-sm text-gray-400 mb-2 block">Bet Amount (Z)</label>
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Enter amount..."
-            disabled={picking}
-            className="w-full px-4 py-3 rounded-lg bg-dark-700/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50 transition-colors"
-          />
+          <BetStepper amount={amount} setAmount={setAmount} disabled={picking} />
           <div className="flex flex-wrap gap-2 mt-2">
             {QUICK_AMOUNTS.map(qa => (
               <button

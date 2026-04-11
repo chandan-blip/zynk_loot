@@ -1,5 +1,8 @@
 const db = require('../config/database');
 
+// House takes 10% from winnings — players receive 90% of gross win amount
+const WIN_PAYOUT_RATIO = 0.9;
+
 class GameService {
   constructor(io) {
     this.io = io;
@@ -28,7 +31,7 @@ class GameService {
       const result = Math.random() < 0.5 ? 'heads' : 'tails';
       const isWin = result === prediction;
       const multiplier = isWin ? 1.95 : 0;
-      const winAmount = isWin ? Math.floor(betAmount * multiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * multiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
 
       // Calculate new balance
       const balanceAfterBet = currentBalance - betAmount;
@@ -114,7 +117,7 @@ class GameService {
       const result = Math.floor(Math.random() * 6) + 1;
       const isWin = result === prediction;
       const multiplier = isWin ? 5.7 : 0;
-      const winAmount = isWin ? Math.floor(betAmount * multiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * multiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
 
       const balanceAfterBet = currentBalance - betAmount;
       const finalBalance = isWin ? balanceAfterBet + winAmount : balanceAfterBet;
@@ -216,7 +219,7 @@ class GameService {
       const segment = segments[selectedIndex];
       const multiplier = segment.multiplier;
       const isWin = multiplier > 0;
-      const winAmount = isWin ? Math.floor(betAmount * multiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * multiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
 
       const balanceAfterBet = currentBalance - betAmount;
       const finalBalance = balanceAfterBet + winAmount;
@@ -305,7 +308,7 @@ class GameService {
 
       const isWin = cashoutMultiplier <= popPoint;
       const multiplier = isWin ? cashoutMultiplier : 0;
-      const winAmount = isWin ? Math.floor(betAmount * cashoutMultiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * cashoutMultiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
 
       const balanceAfterBet = currentBalance - betAmount;
       const finalBalance = isWin ? balanceAfterBet + winAmount : balanceAfterBet;
@@ -406,7 +409,7 @@ class GameService {
       const multiplier = isWin
         ? Math.round(Math.pow(GameService.TOWER_MULTIPLIER_BASE, targetFloors) * 100) / 100
         : 0;
-      const winAmount = isWin ? Math.floor(betAmount * multiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * multiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
       const failedFloor = isWin ? null : survivedFloors + 1;
 
       const balanceAfterBet = currentBalance - betAmount;
@@ -513,7 +516,7 @@ class GameService {
       const multiplier = isWin
         ? Math.round(Math.pow(multiplierPerRow, targetRows) * 100) / 100
         : 0;
-      const winAmount = isWin ? Math.floor(betAmount * multiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * multiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
       const failedRow = isWin ? null : survivedRows + 1;
 
       const balanceAfterBet = currentBalance - betAmount;
@@ -621,7 +624,7 @@ class GameService {
       const ring = rings[ringIndex];
       const multiplier = ring.multiplier;
       const isWin = multiplier > 0;
-      const winAmount = isWin ? Math.floor(betAmount * multiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * multiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
 
       const balanceAfterBet = currentBalance - betAmount;
       const finalBalance = balanceAfterBet + winAmount;
@@ -721,7 +724,7 @@ class GameService {
       const egg = eggs[selectedIndex];
       const multiplier = egg.multiplier;
       const isWin = multiplier > 0;
-      const winAmount = isWin ? Math.floor(betAmount * multiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * multiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
 
       const balanceAfterBet = currentBalance - betAmount;
       const finalBalance = balanceAfterBet + winAmount;
@@ -802,7 +805,7 @@ class GameService {
 
       const isWin = cashoutMultiplier <= boomPoint;
       const multiplier = isWin ? cashoutMultiplier : 0;
-      const winAmount = isWin ? Math.floor(betAmount * cashoutMultiplier * 100) / 100 : 0;
+      const winAmount = isWin ? Math.floor(betAmount * cashoutMultiplier * WIN_PAYOUT_RATIO * 100) / 100 : 0;
 
       const balanceAfterBet = currentBalance - betAmount;
       const finalBalance = isWin ? balanceAfterBet + winAmount : balanceAfterBet;

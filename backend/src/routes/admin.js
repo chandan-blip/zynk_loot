@@ -1292,6 +1292,65 @@ router.get('/settings', async (req, res) => {
   }
 });
 
+// ===== Social / floating links =====
+router.get('/social-links', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query('SELECT * FROM social_links ORDER BY sort_order ASC, id ASC');
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get social links error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get social links' });
+  }
+});
+
+router.post('/social-links', async (req, res) => {
+  try {
+    const { name, icon, url, color, sort_order, is_active } = req.body;
+    if (!name || !icon || !url) {
+      return res.status(400).json({ success: false, message: 'name, icon and url are required' });
+    }
+    const [result] = await db.pool.query(
+      'INSERT INTO social_links (name, icon, url, color, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, icon, url, color || null, sort_order || 0, is_active !== false ? 1 : 0]
+    );
+    res.json({ success: true, data: { id: result.insertId } });
+  } catch (error) {
+    console.error('Create social link error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create social link' });
+  }
+});
+
+router.put('/social-links/:id', async (req, res) => {
+  try {
+    const { name, icon, url, color, sort_order, is_active } = req.body;
+    await db.pool.query(
+      `UPDATE social_links
+       SET name = COALESCE(?, name),
+           icon = COALESCE(?, icon),
+           url = COALESCE(?, url),
+           color = ?,
+           sort_order = COALESCE(?, sort_order),
+           is_active = COALESCE(?, is_active)
+       WHERE id = ?`,
+      [name, icon, url, color || null, sort_order, is_active == null ? null : (is_active ? 1 : 0), req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update social link error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update social link' });
+  }
+});
+
+router.delete('/social-links/:id', async (req, res) => {
+  try {
+    await db.pool.query('DELETE FROM social_links WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete social link error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete social link' });
+  }
+});
+
 // Update setting
 router.put('/settings/:key', async (req, res) => {
   try {
