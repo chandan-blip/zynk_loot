@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, 'Segoe UI', 'Amazon Ember', Roboto, sans-serif; }
+  body { width: 400px; min-height: 870px; background: #f3f4f6; color: #0f172a; }
+
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px 8px; font-size: 15px; font-weight: 700; background: #FFD03B; color: #0f172a; }
+  .statusbar .sb-right { display: flex; align-items: center; gap: 6px; }
+  .sb-net { font-size: 12px; font-weight: 700; letter-spacing: 0.3px; }
+
+  .yellow-top { background: linear-gradient(180deg, #FFD03B 0%, #FFE066 100%); padding: 34px 20px 24px; text-align: center; }
+  .ap-logo { display: inline-flex; align-items: baseline; gap: 6px; font-size: 28px; font-weight: 700; color: #0f172a; font-family: 'Segoe UI', sans-serif; letter-spacing: -0.5px; }
+  .ap-logo .pay { font-weight: 400; color: #0f172a; }
+  .ap-smile { display: block; width: 120px; height: 16px; margin: 4px auto 0; }
+  .ap-smile svg { width: 100%; height: 100%; }
+
+  .yellow-card-wrap { padding: 20px 20px 0; margin-top: -2px; background: linear-gradient(180deg, #FFE066 0%, #FFE066 30px, #f3f4f6 30px, #f3f4f6 100%); }
+  .rec-card { background: #fff; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .rec-card .rline { display: flex; align-items: center; gap: 10px; }
+  .rec-card .check { width: 22px; height: 22px; background: #1e8e3e; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+  .rec-card .check svg { width: 13px; height: 13px; }
+  .rec-card .rt { font-size: 20px; font-weight: 700; color: #1e8e3e; }
+  .rec-card .amt { font-size: 34px; font-weight: 700; color: #0f172a; margin-top: 10px; }
+  .rec-card .via { font-size: 14px; color: #0f172a; font-weight: 600; margin-top: 4px; }
+
+  .white { background: #fff; padding: 18px 20px; margin-top: 10px; }
+  .white .lbl { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+  .row { display: flex; align-items: center; gap: 14px; }
+  .row .av { width: 52px; height: 52px; border-radius: 50%; background: #5b7bb7; color: #fff; font-weight: 700; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .row .name { font-size: 16px; color: #0f172a; font-weight: 700; }
+  .row .sub { font-size: 13px; color: #6b7280; margin-top: 2px; }
+
+  .cred { background: #fff; padding: 18px 20px; }
+  .cred .lbl { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+  .cred-row { display: flex; gap: 14px; align-items: flex-start; }
+  .pay-ring { width: 52px; height: 52px; border-radius: 50%; background: #fff; border: 1px solid #e5e7eb; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
+  .pay-ring .t { font-size: 12px; font-weight: 700; color: #0f172a; line-height: 1; }
+  .pay-ring svg { width: 22px; height: 6px; margin-top: 3px; }
+  .cred-info .t { font-size: 15px; color: #0f172a; font-weight: 700; }
+  .cred-info .bank { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: #0f172a; font-weight: 500; }
+  .upi-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 3px; background: #fff; border: 1px solid #e5e7eb; color: #ff6b1a; }
+  .cred-info .mask { font-size: 13px; color: #6b7280; font-weight: 500; }
+  .cred-info .upiid { font-size: 12px; color: #6b7280; margin-top: 3px; }
+
+  .detail-block { background: #fff; padding: 20px; margin-top: 10px; }
+  .drow { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; gap: 14px; }
+  .drow .k { font-size: 14px; color: #6b7280; flex: 1; }
+  .drow .v { font-size: 14px; color: #0f172a; font-weight: 500; text-align: right; max-width: 55%; word-break: break-all; }
+
+  .pb-footer { text-align: center; padding: 36px 0 20px; }
+  .pb-footer .t { font-size: 10px; color: #6b7280; font-weight: 600; letter-spacing: 0.5px; }
+  .upi-logo { font-size: 18px; font-weight: 900; letter-spacing: 1px; margin-top: 4px; background: linear-gradient(90deg, #ff6b1a 0%, #00a859 50%, #0066ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+</style>
+</head>
+<body>
+  <div class="statusbar">
+    <div>{{statusBarTime}}</div>
+    <div class="sb-right">
+      <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+      <span class="sb-net">5G</span>
+      <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="19" height="10" rx="2.5" stroke="currentColor" stroke-width="1.4"/><rect x="20.5" y="4" width="1.8" height="4" rx="0.5" fill="currentColor"/><rect x="3" y="3" width="13" height="6" rx="1" fill="currentColor"/></svg>
+    </div>
+  </div>
+
+  <div class="yellow-top">
+    <div class="ap-logo"><span>amazon</span><span class="pay">pay</span></div>
+    <div class="ap-smile">
+      <svg viewBox="0 0 120 16" fill="none"><path d="M4 6 Q60 20 116 6" stroke="#ff9900" stroke-width="3" stroke-linecap="round" fill="none"/><path d="M110 7 L116 6 L112 11" stroke="#ff9900" stroke-width="3" stroke-linecap="round" fill="none"/></svg>
+    </div>
+  </div>
+
+  <div class="yellow-card-wrap">
+    <div class="rec-card">
+      <div class="rline">
+        <span class="check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5L10 17L19 7.5" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="rt">Received</span>
+      </div>
+      <div class="amt">₹{{amountFormatted}}</div>
+      <div class="via">Sent using Paytm UPI</div>
+    </div>
+  </div>
+
+  <div class="white">
+    <div class="lbl">Received from</div>
+    <div class="row">
+      <div class="av">{{senderInitial}}{{senderInitial}}</div>
+      <div>
+        <div class="name">{{senderName}}</div>
+        <div class="sub">{{senderUpiId}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cred">
+    <div class="lbl">Credited to</div>
+    <div class="cred-row">
+      <div class="pay-ring">
+        <div class="t">pay</div>
+        <svg viewBox="0 0 22 6" fill="none"><path d="M1 1 Q11 7 21 1" stroke="#ff9900" stroke-width="1.6" stroke-linecap="round" fill="none"/><path d="M18 1.8 L21 1 L19.5 4" stroke="#ff9900" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>
+      </div>
+      <div class="cred-info">
+        <div class="t">Amazon Pay UPI</div>
+        <div class="bank">
+          <span class="upi-badge">UPI</span>
+          <span>{{bankName}}</span>
+          <span class="mask">****{{bankLast4}}</span>
+        </div>
+        <div class="upiid">{{recipientUpiId}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-block">
+    <div class="drow"><div class="k">UPI transaction ID</div><div class="v">{{upiTxnId}}</div></div>
+    <div class="drow"><div class="k">Amazon reference ID</div><div class="v">{{amazonRefId}}</div></div>
+    <div class="drow"><div class="k">Date and time</div><div class="v">{{dateTime}}</div></div>
+  </div>
+
+  <div class="pb-footer">
+    <div class="t">Powered by</div>
+    <div class="upi-logo">UPI</div>
+  </div>
+</body>
+</html>

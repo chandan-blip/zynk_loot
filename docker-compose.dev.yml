@@ -65,6 +65,8 @@ services:
       dockerfile: Dockerfile.dev
     container_name: zynk_backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       NODE_ENV: development
       DB_HOST: mysql
@@ -73,6 +75,8 @@ services:
       DB_USER: ${MYSQL_USER:-zynk_user}
       DB_PASSWORD: ${MYSQL_PASSWORD:-zynkpassword}
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
     ports:
       - "5000:5000"
     volumes:

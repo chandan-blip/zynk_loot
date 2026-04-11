@@ -21,6 +21,7 @@
     "morgan": "^1.10.0",
     "mysql2": "^3.6.5",
     "node-cron": "^3.0.3",
+    "puppeteer": "^23.11.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

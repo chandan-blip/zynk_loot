@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import Home from './pages/Home';
 import Leaderboard from './pages/Leaderboard';
+import RecentWinners from './pages/RecentWinners';
 import History from './pages/History';
 import FAQ from './pages/FAQ';
 import Rules from './pages/Rules';
@@ -27,6 +28,8 @@ import AdminSettings from './pages/admin/AdminSettings';
 import AdminDeposits from './pages/admin/AdminDeposits';
 import AdminWithdrawals from './pages/admin/AdminWithdrawals';
 import AdminWinners from './pages/admin/AdminWinners';
+import AdminDailyWinners from './pages/admin/AdminDailyWinners';
+import AdminPaymentTemplates from './pages/admin/AdminPaymentTemplates';
 import AdminPackages from './pages/admin/AdminPackages';
 import AdminCurrency from './pages/admin/AdminCurrency';
 import AdminOrders from './pages/admin/AdminOrders';
@@ -173,6 +176,8 @@ function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="draws" element={<AdminDraws />} />
           <Route path="winners" element={<AdminWinners />} />
+          <Route path="daily-winners" element={<AdminDailyWinners />} />
+          <Route path="payment-templates" element={<AdminPaymentTemplates />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="packages" element={<AdminPackages />} />
           <Route path="currency" element={<AdminCurrency />} />
@@ -208,6 +213,7 @@ function App() {
           <Route path="games/egg-hatch" element={<EggHatch />} />
           <Route path="games/fuse" element={<FuseGame />} />
           <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="winners" element={<RecentWinners />} />
           <Route path="history" element={<History />} />
           <Route path="faq" element={<FAQ />} />
           <Route path="rules" element={<Rules />} />

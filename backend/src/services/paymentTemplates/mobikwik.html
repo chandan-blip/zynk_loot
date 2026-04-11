@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  body { width: 400px; min-height: 870px; background: #f4f7f5; color: #1a1a1a; }
+
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 18px 8px; font-size: 15px; color: #1a1a1a; font-weight: 700; background: #dff4e6; }
+  .statusbar .r { display: flex; gap: 6px; align-items: center; }
+  .sb-net { font-size: 12px; font-weight: 700; letter-spacing: 0.3px; }
+
+  .mint-top { background: #dff4e6; padding: 14px 20px 28px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; }
+  .close { font-size: 22px; color: #1a1a1a; font-weight: 300; }
+  .actions-top { display: flex; gap: 10px; }
+  .pill-btn { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #d4d4d4; padding: 8px 14px; border-radius: 22px; font-size: 14px; color: #1a1a1a; font-weight: 500; }
+  .pill-btn .ico { font-size: 14px; color: #00a859; }
+
+  .amt-row { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+  .rup { font-size: 44px; font-weight: 700; color: #0f172a; }
+  .amt { font-size: 44px; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
+  .check { width: 32px; height: 32px; background: #1fbf4f; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .check svg { width: 20px; height: 20px; }
+
+  .title { font-size: 17px; color: #1a1a1a; margin-top: 14px; font-weight: 400; }
+  .subdate { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+  .body { padding: 16px; }
+  .card { background: #fff; border-radius: 14px; padding: 18px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .lbl { font-size: 13px; color: #6b7280; margin-bottom: 6px; }
+  .val { font-size: 17px; color: #1a1a1a; font-weight: 500; }
+  .val.bold { font-weight: 700; }
+
+  .btn-row { display: flex; gap: 12px; margin-top: 16px; }
+  .ghost { flex: 1; text-align: center; padding: 12px; border: 1px solid #3b82f6; border-radius: 10px; color: #3b82f6; font-size: 14px; font-weight: 600; }
+
+  .id-row { padding: 12px 0; }
+  .id-row .idval { font-size: 15px; color: #1a1a1a; font-weight: 500; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; word-break: break-all; }
+  .id-row .idval .copy { color: #6b7280; font-size: 16px; flex-shrink: 0; }
+  .id-divider { border-top: 1px solid #e5e7eb; margin: 8px 0; }
+
+  .footer { text-align: center; padding: 20px 0 14px; font-size: 12px; color: #6b7280; }
+  .footer .pb { font-weight: 500; color: #6b7280; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+  <div class="statusbar">
+    <div>{{statusBarTime}}</div>
+    <div class="r">
+      <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+      <span class="sb-net">4G</span>
+      <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="19" height="10" rx="2.5" stroke="currentColor" stroke-width="1.4"/><rect x="20.5" y="4" width="1.8" height="4" rx="0.5" fill="currentColor"/><rect x="3" y="3" width="11" height="6" rx="1" fill="currentColor"/></svg>
+    </div>
+  </div>
+
+  <div class="mint-top">
+    <div class="topbar">
+      <div class="close">✕</div>
+      <div class="actions-top">
+        <div class="pill-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9c2.5 0 4.7 1 6.3 2.7" stroke="#00a859" stroke-width="2" stroke-linecap="round"/><path d="M16 3v5h5" stroke="#00a859" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Share
+        </div>
+        <div class="pill-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><circle cx="12" cy="12" r="9" stroke="#00a859" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 1-1 1.7v.5" stroke="#00a859" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="0.8" fill="#00a859"/></svg>
+          Help
+        </div>
+      </div>
+    </div>
+
+    <div class="amt-row">
+      <div class="rup">₹</div>
+      <div class="amt">{{amountFormatted}}</div>
+      <div class="check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5L10 17L19 7.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    </div>
+    <div class="title">Pocket UPI transaction success</div>
+    <div class="subdate">{{dateShort}} at {{time12}}</div>
+  </div>
+
+  <div class="body">
+    <div class="card">
+      <div class="lbl">Received In</div>
+      <div class="val">MobiKwik Wallet</div>
+      <div class="btn-row">
+        <div class="ghost">Pay Sender</div>
+        <div class="ghost">View History</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">Received From</div>
+      <div class="val bold">{{senderName}}</div>
+      <div class="subdate" style="margin-top:4px;">{{senderUpiId}}</div>
+    </div>
+
+    <div class="card">
+      <div class="id-row">
+        <div class="lbl">MobiKwik Order ID</div>
+        <div class="idval"><span>{{mobikwikOrderId}}</span><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="#6b7280" stroke-width="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="#6b7280" stroke-width="2" stroke-linecap="round"/></svg></div>
+      </div>
+      <div class="id-divider"></div>
+      <div class="id-row">
+        <div class="lbl">UPI Transaction ID</div>
+        <div class="idval"><span>{{upiTxnId}}</span><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="#6b7280" stroke-width="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="#6b7280" stroke-width="2" stroke-linecap="round"/></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="pb">Powered By</div>
+  </div>
+</body>
+</html>

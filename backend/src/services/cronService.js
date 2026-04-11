@@ -35,6 +35,10 @@ class CronService {
     this.trackingService = svc;
   }
 
+  setDailyWinnersService(svc) {
+    this.dailyWinnersService = svc;
+  }
+
   // Load configuration from database
   async loadConfig() {
     try {
@@ -664,6 +668,16 @@ class CronService {
       );
 
       await this.processWinners(draw);
+
+      if (this.dailyWinnersService) {
+        this.dailyWinnersService.processDrawComplete(draw).then(result => {
+          if (!result.success) {
+            console.error('[CRON] dailyWinnersService failed:', result.error);
+          }
+        }).catch(err => {
+          console.error('[CRON] dailyWinnersService.processDrawComplete error:', err);
+        });
+      }
 
       console.log(`[CRON] Draw completed - Period: ${draw.period_id}, Session: ${draw.session_number}, Winning: ${draw.winning_number}`);
 

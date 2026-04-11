@@ -781,36 +781,51 @@ router.get('/prize-pool', async (req, res) => {
   }
 });
 
-// Get recent winners (public)
+// Get recent winners (public) — served from daily_winners display table
 router.get('/winners', async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const offset = (page - 1) * limit;
 
-    const [winners] = await db.pool.query(
-      `SELECT w.id, w.period_id, w.matching_digits, w.prize_amount, w.created_at,
-              u.username, n.number,
-              d.winning_number
-       FROM winners w
-       JOIN users u ON w.user_id = u.id
-       JOIN numbers n ON w.number_id = n.id
-       JOIN daily_draws d ON w.draw_id = d.id
-       ORDER BY w.created_at DESC
-       LIMIT ?`,
-      [parseInt(limit)]
+    const [[{ total }]] = await db.pool.query(
+      `SELECT COUNT(*) as total FROM daily_winners`
     );
 
-    const formattedWinners = winners.map(w => ({
-      id: w.id,
-      username: w.username,
-      number: w.number,
-      matchedDigits: w.matching_digits,
-      prize: parseFloat(w.prize_amount),
-      isJackpot: w.matching_digits === 7,
-      periodId: w.period_id,
-      createdAt: w.created_at
-    }));
+    const [winners] = await db.pool.query(
+      `SELECT dw.id, dw.name, dw.amount, dw.draw_id, dw.json_data, dw.created_at,
+              d.period_id, d.winning_number
+       FROM daily_winners dw
+       LEFT JOIN daily_draws d ON dw.draw_id = d.id
+       ORDER BY dw.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [parseInt(limit), parseInt(offset)]
+    );
 
-    res.json({ success: true, data: formattedWinners });
+    const formattedWinners = winners.map(w => {
+      const data = typeof w.json_data === 'string' ? JSON.parse(w.json_data) : (w.json_data || {});
+      return {
+        id: w.id,
+        name: w.name,
+        amount: parseFloat(w.amount),
+        drawId: w.draw_id,
+        periodId: w.period_id,
+        platform: data.platform || null,
+        data,
+        createdAt: w.created_at,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: formattedWinners,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     console.error('Get winners error:', error);
     res.status(500).json({ success: false, message: 'Failed to get winners' });

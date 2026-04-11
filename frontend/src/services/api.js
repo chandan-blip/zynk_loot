@@ -54,7 +54,8 @@ export const getOffers = () => api.get('/lottery/offers');
 export const respondToOffer = (offerId, accept) => api.post(`/lottery/offers/${offerId}/respond`, { accept });
 export const getDrawHistory = (limit = 30) => api.get(`/lottery/history?limit=${limit}`);
 export const getPrizePool = () => api.get('/lottery/prize-pool');
-export const getRecentWinners = (limit = 10) => api.get(`/lottery/winners?limit=${limit}`);
+export const getRecentWinners = (limit = 10, page = 1) =>
+  api.get(`/lottery/winners?limit=${limit}&page=${page}`);
 
 // Tickets (matching system)
 export const getTicketDetails = (ticketId) => api.get(`/lottery/tickets/${ticketId}`);
@@ -158,6 +159,27 @@ export const getAdminWinners = (page = 1, limit = 20, status = '') => api.get(`/
 export const approveWinner = (id) => api.post(`/admin/winners/${id}/approve`);
 export const rejectWinner = (id) => api.post(`/admin/winners/${id}/reject`);
 export const approveAllDrawWinners = (periodId) => api.post(`/admin/draws/${periodId}/approve-all`);
+
+// Admin Daily Winners (synthetic display winners + Telegram broadcast)
+export const getAdminDailyWinners = (limit = 20) => api.get(`/admin/daily-winners?limit=${limit}`);
+export const getAdminDailyWinnersByDraw = (drawId) => api.get(`/admin/daily-winners/${drawId}`);
+export const triggerDailyWinners = (drawId = null) =>
+  api.post('/admin/daily-winners/trigger', drawId ? { drawId } : {});
+export const getDailyWinnersTemplate = () => api.get('/admin/daily-winners/template');
+export const saveDailyWinnersTemplate = (template) =>
+  api.put('/admin/daily-winners/template', { template });
+export const previewDailyWinnersTemplate = (template) =>
+  api.post('/admin/daily-winners/template/preview', { template });
+
+// Payment screenshot templates (file-based HTML, edited in code, previewed in admin)
+export const listPaymentTemplates = () => api.get('/admin/daily-winners/payment-templates');
+export const previewPaymentTemplate = (platform, sampleOverride) =>
+  api.post(`/admin/daily-winners/payment-templates/${platform}/preview`, { sampleOverride });
+export const previewPaymentTemplatePng = (platform, sampleOverride) =>
+  api.post(`/admin/daily-winners/payment-templates/${platform}/preview-png`, { sampleOverride });
+export const getPaymentDetails = () => api.get('/admin/daily-winners/payment-details');
+export const savePaymentDetails = (config) =>
+  api.put('/admin/daily-winners/payment-details', { config });
 export const getAdminNumbers = (page = 1, limit = 50) => api.get(`/admin/numbers?page=${page}&limit=${limit}`);
 export const getAdminSettings = () => api.get('/admin/settings');
 export const updateSetting = (key, value) => api.put(`/admin/settings/${key}`, { value });

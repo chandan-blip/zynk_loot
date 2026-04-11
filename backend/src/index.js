@@ -36,6 +36,7 @@ const investRoutes = require('./routes/invest');
 const gameRoutes = require('./routes/games');
 const notificationRoutes = require('./routes/notifications');
 const TrackingService = require('./services/trackingService');
+const DailyWinnersService = require('./services/dailyWinnersService');
 const trackingRoutes = require('./routes/tracking');
 const prerenderMiddleware = require('./middleware/prerender');
 
@@ -68,6 +69,7 @@ const activityService = new ActivityService(io);
 const gameService = new GameService(io);
 const notificationService = new NotificationService(io);
 const trackingService = new TrackingService(io);
+const dailyWinnersService = new DailyWinnersService();
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -76,6 +78,7 @@ lotteryService.setReferralService(referralService);
 ticketService.setReferralService(referralService);
 cronService.setInvestService(investService);
 cronService.setTrackingService(trackingService);
+cronService.setDailyWinnersService(dailyWinnersService);
 
 app.set('ticketService', ticketService);
 app.set('lotteryService', lotteryService);
@@ -87,6 +90,7 @@ app.set('activityService', activityService);
 app.set('gameService', gameService);
 app.set('notificationService', notificationService);
 app.set('trackingService', trackingService);
+app.set('dailyWinnersService', dailyWinnersService);
 app.set('io', io);
 
 // Socket authentication middleware

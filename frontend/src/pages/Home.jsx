@@ -358,12 +358,12 @@ function Home() {
           participants: poolData.participants || 0,
           lastWinners: winnersData.map(w => ({
             id: w.id,
-            username: w.username,
-            number: w.number,
-            prize: w.prize,
-            matchedDigits: w.matchedDigits,
+            username: w.name || w.username || 'Winner',
+            number: w.platform ? w.platform.toUpperCase() : (w.number || ''),
+            prize: Number(w.amount ?? w.prize ?? 0),
+            matchedDigits: w.data?.utr ? `UTR ${w.data.utr}` : (w.matchedDigits ? `${w.matchedDigits} digits matched` : ''),
             time: formatTimeAgo(w.createdAt),
-            isJackpot: w.isJackpot
+            isJackpot: false
           }))
         });
 
@@ -1211,110 +1211,78 @@ function Home() {
         </div>
 
         {/* Recent Winners */}
-        <div className="lg:col-span-2 rounded-xl bg-dark-700 border border-dark-600 p-5">
-          <div className="flex items-center justify-between mb-4">
+        <div className="lg:col-span-2 rounded-xl bg-gradient-to-br from-dark-700 to-dark-800 border border-dark-600 p-5 overflow-hidden relative">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent/30 to-accent/10 border border-accent/20 flex items-center justify-center">
                 <GiPodium className="w-5 h-5 text-accent" />
               </div>
               <div>
-                <h3 className="text-white font-semibold">Recent Winners</h3>
-                <p className="text-gray-500 text-xs">Latest prize distributions</p>
+                <h3 className="text-white font-bold text-base">Recent Winners</h3>
+                <p className="text-gray-500 text-xs">Live payouts · updated daily</p>
               </div>
             </div>
-            <button className="flex items-center gap-1 text-accent text-sm hover:text-accent-400 transition-colors">
+            <Link
+              to="/winners"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 border border-accent/30 text-accent text-xs font-semibold transition-colors"
+            >
               View All <FiChevronRight className="w-4 h-4" />
-            </button>
+            </Link>
           </div>
 
-          <div className="space-y-3">
+          <div className="relative space-y-2">
             {prizePool.lastWinners.length > 0 ? (
-              prizePool.lastWinners.map((winner, index) => (
-                <motion.div
-                  key={winner.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className={`flex items-center justify-between p-3 rounded-lg ${
-                    winner.isJackpot
-                      ? 'bg-gradient-to-r from-gold/10 to-dark-800/50 border border-gold/20'
-                      : 'bg-dark-800/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      winner.isJackpot
-                        ? 'bg-gold/20'
-                        : index === 0 ? 'bg-accent/20' : 'bg-dark-600'
-                    }`}>
-                      {winner.isJackpot ? (
-                        <GiTrophy className="w-5 h-5 text-gold-light" />
-                      ) : (
-                        <span className="text-sm font-bold text-gray-400">#{index + 1}</span>
-                      )}
+              prizePool.lastWinners.slice(0, 5).map((winner, index) => {
+                const platformColors = {
+                  PHONEPE: 'from-purple-500 to-purple-700',
+                  GPAY: 'from-blue-500 to-green-500',
+                  PAYTM: 'from-sky-400 to-blue-600',
+                  FAMPAY: 'from-yellow-400 to-orange-500',
+                  MOBIKWIK: 'from-emerald-400 to-teal-600',
+                  AMAZONPAY: 'from-yellow-400 to-amber-600',
+                };
+                const gradient = platformColors[winner.number] || 'from-accent to-accent/50';
+                const initial = (winner.username?.[0] || 'W').toUpperCase();
+                return (
+                  <motion.div
+                    key={winner.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.06 }}
+                    className="group flex items-center gap-3 p-3 rounded-xl bg-dark-800/60 hover:bg-dark-800 border border-dark-600/50 hover:border-accent/30 transition-all"
+                  >
+                    <div className={`w-11 h-11 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>
+                      {initial}
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-white font-medium">{winner.username}</span>
-                        {winner.isJackpot && (
-                          <span className="px-2 py-0.5 rounded-full bg-gold/20 text-gold-light text-[10px] font-bold">
-                            JACKPOT
+                        <span className="text-white font-semibold text-sm truncate">{winner.username}</span>
+                        {winner.number && (
+                          <span className={`px-1.5 py-0.5 rounded bg-gradient-to-r ${gradient} text-white text-[9px] font-bold uppercase tracking-wide shrink-0`}>
+                            {winner.number}
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="font-mono text-gray-500">{winner.number}</span>
-                        <span className="text-gray-600">•</span>
-                        <span className="text-gray-500">{winner.matchedDigits} digits matched</span>
-                      </div>
+                      <div className="text-xs text-gray-500 truncate">{winner.time}</div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-bold ${winner.isJackpot ? 'text-gold-light text-lg' : 'text-white'}`}>
-                      +{winner.prize.toLocaleString()} Z
-                    </p>
-                    <p className="text-gray-600 text-xs">{winner.time}</p>
-                  </div>
-                </motion.div>
-              ))
+                    <div className="text-right shrink-0">
+                      <p className="font-bold text-emerald-400 text-base leading-tight">
+                        ₹{Number(winner.prize).toLocaleString('en-IN')}
+                      </p>
+                      <p className="text-[10px] text-gray-600 uppercase tracking-wide">received</p>
+                    </div>
+                  </motion.div>
+                );
+              })
             ) : (
-              <div className="text-center py-4">
+              <div className="text-center py-8">
                 <GiTrophy className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-500">No winners yet</p>
                 <p className="text-gray-600 text-sm">Be the first to win!</p>
               </div>
             )}
           </div>
-
-          {/* Jackpot Highlight - show if there's a recent jackpot winner */}
-          {prizePool.lastWinners.some(w => w.isJackpot) && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="mt-4 p-4 rounded-xl bg-gradient-to-r from-gold/20 via-gold/10 to-transparent border border-gold/30"
-            >
-              {(() => {
-                const jackpotWinner = prizePool.lastWinners.find(w => w.isJackpot);
-                return (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-gold/30 flex items-center justify-center animate-pulse">
-                        <GiTrophy className="w-6 h-6 text-gold-light" />
-                      </div>
-                      <div>
-                        <p className="text-gold-light font-bold">Jackpot Winner!</p>
-                        <p className="text-gray-400 text-sm">Congratulations to {jackpotWinner.username}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-gold-light">{jackpotWinner.prize.toLocaleString()} Z</p>
-                      <p className="text-gray-500 text-xs">7/7 digits matched</p>
-                    </div>
-                  </div>
-                );
-              })()}
-            </motion.div>
-          )}
         </div>
       </motion.div>
 

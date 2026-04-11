@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { getAdminSupportUnread } from '../services/api';
@@ -11,6 +11,8 @@ const navItems = [
   { path: '/admin', label: 'Dashboard', icon: FiHome },
   { path: '/admin/draws', label: 'Draws', icon: GiTrophy },
   { path: '/admin/winners', label: 'Winners', icon: FiAward },
+  { path: '/admin/daily-winners', label: 'Daily Winners', icon: FiSend },
+  { path: '/admin/payment-templates', label: 'Payment Templates', icon: FiSmartphone },
   { path: '/admin/users', label: 'Users', icon: FiUsers },
   { path: '/admin/packages', label: 'Packages', icon: FiPackage },
   { path: '/admin/orders', label: 'Orders', icon: FiShoppingCart },

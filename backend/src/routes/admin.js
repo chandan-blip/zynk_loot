@@ -987,6 +987,261 @@ router.post('/draws/:periodId/approve-all', async (req, res) => {
   }
 });
 
+// ============ DAILY WINNERS MODULE ============
+
+// Get caption template + available variables
+router.get('/daily-winners/template', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+
+    const template = await svc.getCaptionTemplate();
+    res.json({
+      success: true,
+      data: {
+        template,
+        defaultTemplate: svc.getDefaultCaptionTemplate(),
+        variables: svc.getCaptionVariables(),
+      },
+    });
+  } catch (error) {
+    console.error('Get caption template error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get template' });
+  }
+});
+
+// Update caption template
+router.put('/daily-winners/template', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+
+    const { template } = req.body;
+    if (typeof template !== 'string') {
+      return res.status(400).json({ success: false, message: 'template (string) is required' });
+    }
+    if (template.length > 1024) {
+      return res.status(400).json({ success: false, message: 'Template too long (max 1024 chars for Telegram caption)' });
+    }
+
+    await svc.setCaptionTemplate(template);
+    res.json({ success: true, message: 'Template saved' });
+  } catch (error) {
+    console.error('Save caption template error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save template' });
+  }
+});
+
+// ===== Payment screenshot templates (file-based editor) =====
+
+// List all available platform templates
+router.get('/daily-winners/payment-templates', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const platforms = svc.listPaymentTemplates();
+    res.json({ success: true, data: { platforms } });
+  } catch (error) {
+    console.error('List payment templates error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get/set dynamic payment details config (sender name, bank, UPI handle, etc.)
+router.get('/daily-winners/payment-details', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const config = await svc.getPaymentDetailsConfig();
+    res.json({
+      success: true,
+      data: {
+        config,
+        defaults: svc.getDefaultPaymentDetails(),
+        schema: svc.getPaymentDetailsSchema(),
+      },
+    });
+  } catch (error) {
+    console.error('Get payment details error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/daily-winners/payment-details', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const { config } = req.body || {};
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ success: false, message: 'config object required' });
+    }
+    const saved = await svc.savePaymentDetailsConfig(config);
+    res.json({ success: true, data: { config: saved } });
+  } catch (error) {
+    console.error('Save payment details error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Preview: substitute variables and return rendered HTML (reads fresh from disk)
+router.post('/daily-winners/payment-templates/:platform/preview', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const { sampleOverride } = req.body || {};
+    const html = await svc.renderPaymentPreviewHtml(req.params.platform, sampleOverride || {});
+    res.json({ success: true, data: { html } });
+  } catch (error) {
+    console.error('Preview payment template error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Preview: full puppeteer PNG render (base64) — what the Telegram channel will actually receive
+router.post('/daily-winners/payment-templates/:platform/preview-png', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const { sampleOverride } = req.body || {};
+    const png = await svc.renderPaymentPreviewPng(req.params.platform, sampleOverride || {});
+    res.json({
+      success: true,
+      data: { pngBase64: png.toString('base64') },
+    });
+  } catch (error) {
+    console.error('Preview payment PNG error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Preview rendered caption using latest draw + synthetic sample winners (no DB write, no Telegram)
+router.post('/daily-winners/template/preview', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+
+    const { template } = req.body;
+    const tpl = typeof template === 'string' && template.length
+      ? template
+      : await svc.getCaptionTemplate();
+
+    const [drawRows] = await db.pool.query(
+      `SELECT * FROM daily_draws ORDER BY created_at DESC LIMIT 1`
+    );
+    const draw = drawRows[0] || { id: 0, period_id: 'SAMPLE', winning_number: '0000000' };
+
+    const sampleWinners = [
+      { name: 'Rahul S.', amount: 45000 },
+      { name: 'Priya K.', amount: 22000 },
+      { name: 'Amit V.', amount: 15500 },
+      { name: 'Neha P.', amount: 9800 },
+      { name: 'Vikram R.', amount: 5000 },
+    ];
+
+    const caption = svc.renderCaption(tpl, draw, sampleWinners);
+    res.json({ success: true, data: { caption } });
+  } catch (error) {
+    console.error('Preview caption error:', error);
+    res.status(500).json({ success: false, message: 'Failed to preview' });
+  }
+});
+
+// List recent daily_winners runs grouped by draw
+router.get('/daily-winners', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
+    const [groups] = await db.pool.query(
+      `SELECT dw.draw_id,
+              d.period_id, d.winning_number, d.status as draw_status, d.created_at as draw_created_at,
+              COUNT(*) as winners_count,
+              SUM(dw.amount) as total_payout,
+              MIN(dw.created_at) as generated_at
+       FROM daily_winners dw
+       LEFT JOIN daily_draws d ON dw.draw_id = d.id
+       GROUP BY dw.draw_id
+       ORDER BY generated_at DESC
+       LIMIT ?`,
+      [parseInt(limit)]
+    );
+
+    res.json({ success: true, data: groups });
+  } catch (error) {
+    console.error('List daily-winners error:', error);
+    res.status(500).json({ success: false, message: 'Failed to list daily winners' });
+  }
+});
+
+// Get all rows for a given draw
+router.get('/daily-winners/:drawId', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      `SELECT dw.*, d.period_id, d.winning_number
+       FROM daily_winners dw
+       LEFT JOIN daily_draws d ON dw.draw_id = d.id
+       WHERE dw.draw_id = ?
+       ORDER BY dw.amount DESC`,
+      [req.params.drawId]
+    );
+
+    const formatted = rows.map(r => ({
+      ...r,
+      json_data: typeof r.json_data === 'string' ? JSON.parse(r.json_data) : r.json_data,
+    }));
+
+    res.json({ success: true, data: formatted });
+  } catch (error) {
+    console.error('Get daily-winners detail error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get daily winners' });
+  }
+});
+
+// Manually trigger the daily winners service.
+// Inserts 10–15 synthetic rows, renders the PNG card, pushes it to Telegram,
+// and returns full structured logs so the admin UI can display them.
+router.post('/daily-winners/trigger', async (req, res) => {
+  try {
+    const dailyWinnersService = req.app.get('dailyWinnersService');
+    if (!dailyWinnersService) {
+      return res.status(500).json({ success: false, message: 'dailyWinnersService not available' });
+    }
+
+    let draw;
+    if (req.body && req.body.drawId) {
+      const [rows] = await db.pool.query('SELECT * FROM daily_draws WHERE id = ?', [req.body.drawId]);
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Draw not found' });
+      }
+      draw = rows[0];
+    } else {
+      const [rows] = await db.pool.query(
+        `SELECT * FROM daily_draws ORDER BY created_at DESC LIMIT 1`
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'No draws found' });
+      }
+      draw = rows[0];
+    }
+
+    const result = await dailyWinnersService.processDrawComplete(draw);
+
+    res.json({
+      success: result.success,
+      message: result.success
+        ? `Daily winners processed for draw ${draw.period_id}`
+        : `Failed: ${result.error}`,
+      result,
+    });
+  } catch (error) {
+    console.error('Daily winners trigger error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to trigger daily winners',
+      result: { logs: [{ ts: new Date().toISOString(), level: 'error', msg: error.message || String(error) }] },
+    });
+  }
+});
+
 // ============ NUMBERS MANAGEMENT ============
 
 // Get all numbers (with pagination)
