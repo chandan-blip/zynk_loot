@@ -427,34 +427,35 @@ class InvestService {
   async calculateDailyReturns() {
     const today = new Date().toISOString().slice(0, 10);
 
-    // Get today's metrics
-    const [[metrics]] = await db.pool.query(
-      'SELECT base_daily_rate FROM platform_metrics WHERE metric_date = ?',
-      [today]
-    );
-
-    if (!metrics) {
-      console.log('[INVEST] No metrics for today, skipping returns calculation');
-      return { processed: 0 };
-    }
-
-    const baseRate = parseFloat(metrics.base_daily_rate);
-
-    // Get all active investments with tier info
+    // Get all active investments with tier info (including per-tier daily_rate)
     const [investments] = await db.pool.query(
-      `SELECT i.*, t.multiplier, t.lock_days
+      `SELECT i.*, t.multiplier, t.lock_days, t.daily_rate
        FROM investments i
        JOIN investment_tiers t ON i.tier_id = t.id
        WHERE i.status = 'active'`
     );
+
+    // Fallback: use growth-score base rate only if a tier has no fixed daily_rate
+    let baseRate = null;
+    const needsFallback = investments.some(inv => inv.daily_rate == null);
+    if (needsFallback) {
+      const [[metrics]] = await db.pool.query(
+        'SELECT base_daily_rate FROM platform_metrics WHERE metric_date = ?',
+        [today]
+      );
+      baseRate = metrics ? parseFloat(metrics.base_daily_rate) : 0;
+    }
 
     let processed = 0;
     let totalDistributed = 0;
 
     for (const inv of investments) {
       try {
+        // Use admin-set daily_rate if available, otherwise fall back to growth-based rate
         const tierMultiplier = parseFloat(inv.multiplier);
-        const effectiveRate = parseFloat((baseRate * tierMultiplier).toFixed(6));
+        const effectiveRate = inv.daily_rate != null
+          ? parseFloat(inv.daily_rate)
+          : parseFloat((baseRate * tierMultiplier).toFixed(6));
         const currentValue = parseFloat(inv.current_value);
         const returnAmount = parseFloat((currentValue * effectiveRate).toFixed(2));
 
@@ -467,7 +468,7 @@ class InvestService {
           `INSERT IGNORE INTO investment_returns
            (investment_id, user_id, metric_date, base_rate, tier_multiplier, effective_rate, return_amount, value_before, value_after)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [inv.id, inv.user_id, today, baseRate, tierMultiplier, effectiveRate, returnAmount, currentValue, newValue]
+          [inv.id, inv.user_id, today, inv.daily_rate != null ? effectiveRate : baseRate, tierMultiplier, effectiveRate, returnAmount, currentValue, newValue]
         );
 
         // Check if row was actually inserted (not duplicate)
@@ -633,6 +634,7 @@ class InvestService {
 
     if (data.name !== undefined) { updates.push('name = ?'); values.push(data.name); }
     if (data.multiplier !== undefined) { updates.push('multiplier = ?'); values.push(data.multiplier); }
+    if (data.daily_rate !== undefined) { updates.push('daily_rate = ?'); values.push(data.daily_rate === '' || data.daily_rate === null ? null : data.daily_rate); }
     if (data.min_amount !== undefined) { updates.push('min_amount = ?'); values.push(data.min_amount); }
     if (data.max_amount !== undefined) { updates.push('max_amount = ?'); values.push(data.max_amount); }
     if (data.lock_days !== undefined) { updates.push('lock_days = ?'); values.push(data.lock_days); }
@@ -656,9 +658,10 @@ class InvestService {
   // Admin: create tier
   async createTier(data) {
     const [result] = await db.pool.query(
-      `INSERT INTO investment_tiers (name, slug, lock_days, multiplier, min_amount, max_amount, is_active, sort_order, description)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO investment_tiers (name, slug, lock_days, multiplier, daily_rate, min_amount, max_amount, is_active, sort_order, description)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [data.name, data.slug, data.lock_days, data.multiplier,
+       data.daily_rate || null,
        data.min_amount || 100, data.max_amount || 100000,
        data.is_active !== false, data.sort_order || 0, data.description || '']
     );

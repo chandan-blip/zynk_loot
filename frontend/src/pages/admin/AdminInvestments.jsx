@@ -46,7 +46,7 @@ function AdminInvestments() {
   const [savingTier, setSavingTier] = useState(false);
   const [showNewTier, setShowNewTier] = useState(false);
   const [newTierForm, setNewTierForm] = useState({
-    name: '', slug: '', lock_days: '', multiplier: '',
+    name: '', slug: '', lock_days: '', multiplier: '', daily_rate: '',
     min_amount: '100', max_amount: '100000', description: ''
   });
 
@@ -97,6 +97,7 @@ function AdminInvestments() {
       name: tier.name,
       lock_days: tier.lock_days,
       multiplier: tier.multiplier,
+      daily_rate: tier.daily_rate != null ? tier.daily_rate : '',
       min_amount: tier.min_amount,
       max_amount: tier.max_amount,
       is_active: tier.is_active
@@ -106,7 +107,10 @@ function AdminInvestments() {
   const handleSaveTier = async (tierId) => {
     setSavingTier(true);
     try {
-      await updateInvestmentTier(tierId, tierForm);
+      await updateInvestmentTier(tierId, {
+        ...tierForm,
+        daily_rate: tierForm.daily_rate !== '' ? parseFloat(tierForm.daily_rate) : null,
+      });
       toast.success('Tier updated');
       setEditingTier(null);
       const tiersRes = await getAdminInvestmentTiers();
@@ -129,12 +133,13 @@ function AdminInvestments() {
         ...newTierForm,
         lock_days: parseInt(newTierForm.lock_days),
         multiplier: parseFloat(newTierForm.multiplier),
+        daily_rate: newTierForm.daily_rate !== '' ? parseFloat(newTierForm.daily_rate) : null,
         min_amount: parseFloat(newTierForm.min_amount),
         max_amount: parseFloat(newTierForm.max_amount)
       });
       toast.success('Tier created');
       setShowNewTier(false);
-      setNewTierForm({ name: '', slug: '', lock_days: '', multiplier: '', min_amount: '100', max_amount: '100000', description: '' });
+      setNewTierForm({ name: '', slug: '', lock_days: '', multiplier: '', daily_rate: '', min_amount: '100', max_amount: '100000', description: '' });
       const tiersRes = await getAdminInvestmentTiers();
       setTiers(tiersRes.data.data || []);
     } catch (error) {
@@ -376,7 +381,15 @@ function AdminInvestments() {
                 className="px-3 py-2 rounded-lg bg-dark-600 border border-dark-500 text-white text-sm placeholder-gray-500 focus:outline-none"
               />
               <input
-                placeholder="Multiplier"
+                placeholder="Daily Rate (e.g. 0.005)"
+                type="number"
+                step="0.0001"
+                value={newTierForm.daily_rate}
+                onChange={e => setNewTierForm(p => ({ ...p, daily_rate: e.target.value }))}
+                className="px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-accent w-full"
+              />
+              <input
+                placeholder="Multiplier (fallback)"
                 type="number"
                 step="0.1"
                 value={newTierForm.multiplier}
@@ -427,7 +440,18 @@ function AdminInvestments() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500">Multiplier</label>
+                    <label className="text-xs text-gray-500">Daily Rate</label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      placeholder="e.g. 0.005 = 0.5%/day"
+                      value={tierForm.daily_rate}
+                      onChange={e => setTierForm(p => ({ ...p, daily_rate: e.target.value }))}
+                      className="w-full px-2 py-1.5 rounded bg-dark-600 border border-dark-500 text-white text-sm focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Multiplier (fallback)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -492,7 +516,11 @@ function AdminInvestments() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-gray-400">
                     <span>{tier.lock_days}d lock</span>
-                    <span className="text-accent font-medium">{tier.multiplier}x</span>
+                    {tier.daily_rate != null ? (
+                      <span className="text-accent font-medium">{(tier.daily_rate * 100).toFixed(2)}%/day</span>
+                    ) : (
+                      <span className="text-gray-400">{tier.multiplier}x (dynamic)</span>
+                    )}
                     <span>{parseFloat(tier.min_amount).toLocaleString()} - {parseFloat(tier.max_amount).toLocaleString()} Z</span>
                     <button
                       onClick={() => handleEditTier(tier)}

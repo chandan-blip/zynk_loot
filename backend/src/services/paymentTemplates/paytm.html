@@ -40,7 +40,7 @@
 
   .dashsep { border-top: 2px dashed #cbd5e1; margin: 14px 0; }
 
-  .footline { font-size: 13px; color: #64748b; margin-top: 18px; }
+  .footline { font-size: 13px; color: #64748b; margin-top: 5px; }
   .footline strong { color: #0f172a; font-weight: 700; }
 
   .zigzag { height: 18px; background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 18'><path fill='%23fff' d='M0 0h20L10 18z'/></svg>") repeat-x; background-size: 20px 18px; margin: 0 20px; }
@@ -61,9 +61,9 @@
       <div class="rup">₹</div>
       <div class="amt">{{amountFormatted}}</div>
       <div class="check">
-        <svg viewBox="0 0 40 40" fill="none">
-          <path d="M20 2 L24 5 L29 4 L31 9 L36 11 L34 16 L36 21 L31 23 L29 28 L24 27 L20 30 L16 27 L11 28 L9 23 L4 21 L6 16 L4 11 L9 9 L11 4 L16 5 Z" fill="#22c55e"/>
-          <path d="M13 20 L18 25 L28 14" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="20" cy="20" r="18" fill="#22c55e"/>
+          <path d="M12 20.5L17.5 26L28 15" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
     </div>
@@ -78,12 +78,12 @@
   <div class="receipt">
     <div class="party">
       <div class="text"><div class="lbl">From: {{senderName}}</div><div class="sub">UPI ID: {{senderUpiId}}</div></div>
-      <div class="av">{{senderInitial}}{{senderInitial}}</div>
+      <div class="av">{{senderInitials}}</div>
     </div>
     <div class="dashsep"></div>
     <div class="party">
       <div class="text"><div class="lbl">To: Mr {{name}}</div></div>
-      <div class="av dark">{{nameUpper}}</div>
+      <div class="av dark">{{nameInitials}}</div>
     </div>
 
     <div class="footline">UPI Ref No: {{utr}}</div>
@@ -91,13 +91,13 @@
   </div>
 
   <div class="zigzag"></div>
-
+<!-- 
   <div class="pfooter">
     <span style="font-weight: 800; color: #002e6e;">Paytm</span>
     <span class="divbar">|</span>
     <span>Powered by <span class="upi-logo">UPI</span></span>
     <span class="divbar">|</span>
     <span style="color: #0070c0;">✓ YES BANK</span>
-  </div>
+  </div> -->
 </body>
 </html>

@@ -7,11 +7,9 @@ const PAYMENT_TEMPLATES_DIR = path.join(__dirname, 'paymentTemplates');
 const paymentTemplateCache = {};
 
 function loadPaymentTemplate(platform) {
-  if (paymentTemplateCache[platform]) return paymentTemplateCache[platform];
   const file = path.join(PAYMENT_TEMPLATES_DIR, `${platform}.html`);
   if (!fs.existsSync(file)) return null;
   const html = fs.readFileSync(file, 'utf8');
-  paymentTemplateCache[platform] = html;
   return html;
 }
 
@@ -73,6 +71,8 @@ function buildPaymentVars(winner, draw, details = DEFAULT_PAYMENT_DETAILS) {
   const handle = cfg.recipientUpiHandle || UPI_HANDLES[Math.floor(Math.random() * UPI_HANDLES.length)];
   const senderName = cfg.senderName || 'Sachin Kumar';
   const senderInitial = senderName.trim().charAt(0).toUpperCase();
+  const senderParts = senderName.trim().split(/\s+/);
+  const senderInitials = ((senderParts[0]?.[0] || '') + (senderParts[1]?.[0] || '')).toUpperCase();
   const senderUpiId = cfg.senderUpiId || ('6' + Math.floor(100000000 + Math.random() * 899999999) + '@ptyes');
   return {
     name,
@@ -96,6 +96,7 @@ function buildPaymentVars(winner, draw, details = DEFAULT_PAYMENT_DETAILS) {
     upiHandle: handle,
     senderName,
     senderInitial,
+    senderInitials,
     senderUpiId,
     recipientUpiId: slugifyName(name) + handle,
     brandLine: cfg.brandLine,
