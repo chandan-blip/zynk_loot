@@ -4,6 +4,8 @@ WORKDIR /app
 
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_APP_DOMAIN
+ENV VITE_APP_DOMAIN=$VITE_APP_DOMAIN
 
 COPY package.json ./
 RUN npm install --legacy-peer-deps

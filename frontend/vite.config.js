@@ -19,6 +19,12 @@ export default defineConfig({
     port: 3000,
     watch: {
       usePolling: true
+    },
+    proxy: {
+      '/sites': {
+        target: process.env.VITE_PROXY_BACKEND || 'http://backend:5000',
+        changeOrigin: true
+      }
     }
   }
 })

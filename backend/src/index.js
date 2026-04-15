@@ -39,6 +39,7 @@ const TrackingService = require('./services/trackingService');
 const DailyWinnersService = require('./services/dailyWinnersService');
 const trackingRoutes = require('./routes/tracking');
 const prerenderMiddleware = require('./middleware/prerender');
+const { subdomainMiddleware, siteByPathHandler } = require('./middleware/website');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -187,6 +188,10 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Serve published landing pages by subdomain (Host header) or /sites/:sub path
+app.use(subdomainMiddleware);
+app.get('/sites/:sub', siteByPathHandler);
 
 // Routes
 app.use('/api/auth', authLimiter, authRoutes);

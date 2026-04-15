@@ -70,6 +70,8 @@ services:
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      APP_DOMAIN: ${APP_DOMAIN}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
     expose:
       - "5000"
     depends_on:
@@ -84,6 +86,7 @@ services:
       dockerfile: Dockerfile.prod
       args:
         VITE_API_URL: /api
+        VITE_APP_DOMAIN: ${APP_DOMAIN}
     container_name: loot_frontend_prod
     restart: always
     expose:

@@ -1351,6 +1351,159 @@ router.delete('/social-links/:id', async (req, res) => {
   }
 });
 
+// ===== Websites (landing pages) =====
+const SUBDOMAIN_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+const buildContent = (html = '', css = '', js = '', title = '') => {
+  const safeTitle = String(title || 'Landing Page').replace(/</g, '&lt;');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${safeTitle}</title>
+<style>${css || ''}</style>
+</head>
+<body>
+${html || ''}
+<script>${js || ''}<\/script>
+</body>
+</html>`;
+};
+
+router.get('/websites', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      'SELECT id, title, sub_domain, domain, status, is_active, published_at, created_at, updated_at FROM websites ORDER BY id DESC'
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('List websites error:', error);
+    res.status(500).json({ success: false, message: 'Failed to list websites' });
+  }
+});
+
+router.get('/websites/:id', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query('SELECT * FROM websites WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: rows[0] });
+  } catch (error) {
+    console.error('Get website error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get website' });
+  }
+});
+
+router.post('/websites', async (req, res) => {
+  try {
+    const { title, sub_domain, domain, html, css, js, status, is_active } = req.body;
+    if (!title || !sub_domain) {
+      return res.status(400).json({ success: false, message: 'title and sub_domain are required' });
+    }
+    const sub = String(sub_domain).trim().toLowerCase();
+    if (!SUBDOMAIN_REGEX.test(sub)) {
+      return res.status(400).json({ success: false, message: 'Invalid sub_domain (lowercase letters, numbers, hyphens)' });
+    }
+    const appDomain = domain || process.env.APP_DOMAIN || req.hostname;
+    const finalStatus = status === 'published' ? 'published' : 'draft';
+    const content = buildContent(html, css, js, title);
+    const publishedAt = finalStatus === 'published' ? new Date() : null;
+
+    const [result] = await db.pool.query(
+      `INSERT INTO websites (title, sub_domain, domain, html, css, js, content, status, is_active, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, sub, appDomain, html || '', css || '', js || '', content, finalStatus, is_active === false ? 0 : 1, publishedAt]
+    );
+    res.json({ success: true, data: { id: result.insertId } });
+  } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ success: false, message: 'Sub-domain already in use' });
+    }
+    console.error('Create website error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create website' });
+  }
+});
+
+router.put('/websites/:id', async (req, res) => {
+  try {
+    const { title, sub_domain, domain, html, css, js, status, is_active } = req.body;
+    const [rows] = await db.pool.query('SELECT * FROM websites WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' });
+    const current = rows[0];
+
+    let sub = current.sub_domain;
+    if (sub_domain !== undefined && sub_domain !== null) {
+      sub = String(sub_domain).trim().toLowerCase();
+      if (!SUBDOMAIN_REGEX.test(sub)) {
+        return res.status(400).json({ success: false, message: 'Invalid sub_domain' });
+      }
+    }
+
+    const finalTitle = title ?? current.title;
+    const finalDomain = domain ?? current.domain;
+    const finalHtml = html ?? current.html;
+    const finalCss = css ?? current.css;
+    const finalJs = js ?? current.js;
+    const finalStatus = status ? (status === 'published' ? 'published' : 'draft') : current.status;
+    const finalActive = is_active == null ? current.is_active : (is_active ? 1 : 0);
+    const content = buildContent(finalHtml, finalCss, finalJs, finalTitle);
+    const publishedAt = finalStatus === 'published'
+      ? (current.published_at || new Date())
+      : null;
+
+    await db.pool.query(
+      `UPDATE websites
+       SET title = ?, sub_domain = ?, domain = ?, html = ?, css = ?, js = ?, content = ?, status = ?, is_active = ?, published_at = ?
+       WHERE id = ?`,
+      [finalTitle, sub, finalDomain, finalHtml, finalCss, finalJs, content, finalStatus, finalActive, publishedAt, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ success: false, message: 'Sub-domain already in use' });
+    }
+    console.error('Update website error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update website' });
+  }
+});
+
+router.post('/websites/:id/publish', async (req, res) => {
+  try {
+    const [result] = await db.pool.query(
+      `UPDATE websites SET status = 'published', is_active = 1, published_at = COALESCE(published_at, NOW()) WHERE id = ?`,
+      [req.params.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ success: false, message: 'Not found' });
+    const [rows] = await db.pool.query('SELECT sub_domain, domain FROM websites WHERE id = ?', [req.params.id]);
+    const site = rows[0];
+    const url = site ? `${req.protocol}://${site.sub_domain}.${site.domain || process.env.APP_DOMAIN || req.hostname}` : null;
+    res.json({ success: true, data: { url } });
+  } catch (error) {
+    console.error('Publish website error:', error);
+    res.status(500).json({ success: false, message: 'Failed to publish website' });
+  }
+});
+
+router.post('/websites/:id/unpublish', async (req, res) => {
+  try {
+    await db.pool.query(`UPDATE websites SET status = 'draft' WHERE id = ?`, [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Unpublish website error:', error);
+    res.status(500).json({ success: false, message: 'Failed to unpublish website' });
+  }
+});
+
+router.delete('/websites/:id', async (req, res) => {
+  try {
+    await db.pool.query('DELETE FROM websites WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete website error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete website' });
+  }
+});
+
 // Update setting
 router.put('/settings/:key', async (req, res) => {
   try {

@@ -291,4 +291,13 @@ export const adminCreateSocialLink = (data) => api.post('/admin/social-links', d
 export const adminUpdateSocialLink = (id, data) => api.put(`/admin/social-links/${id}`, data);
 export const adminDeleteSocialLink = (id) => api.delete(`/admin/social-links/${id}`);
 
+// Websites (landing pages)
+export const adminGetWebsites = () => api.get('/admin/websites');
+export const adminGetWebsite = (id) => api.get(`/admin/websites/${id}`);
+export const adminCreateWebsite = (data) => api.post('/admin/websites', data);
+export const adminUpdateWebsite = (id, data) => api.put(`/admin/websites/${id}`, data);
+export const adminPublishWebsite = (id) => api.post(`/admin/websites/${id}/publish`);
+export const adminUnpublishWebsite = (id) => api.post(`/admin/websites/${id}/unpublish`);
+export const adminDeleteWebsite = (id) => api.delete(`/admin/websites/${id}`);
+
 export default api;

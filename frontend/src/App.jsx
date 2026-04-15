@@ -55,6 +55,7 @@ import Notifications from './pages/Notifications';
 import AdminInvestments from './pages/admin/AdminInvestments';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
+import AdminWebsites from './pages/admin/AdminWebsites';
 import useTracking from './hooks/useTracking';
 
 function PublicRoute({ children }) {
@@ -192,6 +193,7 @@ function App() {
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
           <Route path="social-links" element={<AdminSocialLinks />} />
+          <Route path="websites" element={<AdminWebsites />} />
         </Route>
 
         {/* Main App Routes */}
