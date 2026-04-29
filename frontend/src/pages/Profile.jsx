@@ -35,6 +35,7 @@ import CountUp from "react-countup";
 import { getUserProfile, getMyNumbers, getMyVotes, cashOutTicket } from "../services/api";
 import socketService from "../services/socket";
 import { useCurrency } from "../contexts/CurrencyContext";
+import { rewriteAmounts } from "../utils/formatAmount";
 import usePageTitle from "../hooks/usePageTitle";
 
 function Profile() {
@@ -84,7 +85,7 @@ function Profile() {
       setMyTickets(prev => prev.map(t =>
         t.id === data.numberId ? { ...t, status: 'cashed_out' } : t
       ));
-      toast.success(`Cashed out ${data.number} for ${data.payout} Z!`);
+      toast.success(`Cashed out ${data.number} for ${formatCurrency(data.payout)}!`);
     });
 
     // Listen for user's numbers update (after buying)
@@ -97,7 +98,7 @@ function Profile() {
 
     // Listen for vote rewards
     const unsubVoteReward = socketService.onVoteReward?.((data) => {
-      toast.success(`You earned ${data.reward} Z for predicting ${data.number}!`);
+      toast.success(`You earned ${formatCurrency(data.reward)} for predicting ${data.number}!`);
       fetchProfile(); // Refresh balance
       fetchMyVotes(); // Refresh votes
     });
@@ -147,7 +148,7 @@ function Profile() {
     try {
       const response = await cashOutTicket(ticketId);
       if (response.data.success) {
-        toast.success(`Cashed out ${number} for ${response.data.data.payout} Z!`);
+        toast.success(`Cashed out ${number} for ${formatCurrency(response.data.data.payout)}!`);
         // Update local state
         setMyTickets(prev => prev.map(t =>
           t.id === ticketId ? { ...t, status: 'cashed_out' } : t
@@ -293,16 +294,10 @@ function Profile() {
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   {currencies.map((currency) => {
-                    // Calculate rate for display (rateFromZynk = how many units of currency per 1 Zynk)
-                    let rateDisplay = "";
-                    if (currency.code === "ZYNK") {
-                      rateDisplay = "1 Z = 1 Z";
-                    } else {
-                      const rate = currency.rateFromZynk || 0;
-                      rateDisplay = `1 Z = ${currency.symbol}${rate.toFixed(
-                        currency.precision || 2
-                      )}`;
-                    }
+                    const rate = currency.rateFromZynk || 0;
+                    const rateDisplay = `1 unit = ${currency.symbol}${rate.toFixed(
+                      currency.precision || 2
+                    )}`;
 
                     return (
                       <button
@@ -401,11 +396,6 @@ function Profile() {
                   <span className="text-3xl sm:text-4xl font-bold text-accent">
                     {formatCurrencyFull(userData.balance)}
                   </span>
-                  {selectedCurrency.code !== "ZYNK" && (
-                    <span className="text-gray-500 text-sm">
-                      ({userData.balance.toLocaleString()} Z)
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
@@ -634,7 +624,7 @@ function Profile() {
                   },
                   {
                     name: "High Roller",
-                    desc: "Earn 1000+ Zynk",
+                    desc: `Earn ${formatCurrency(1000)}+`,
                     unlocked: userData.totalEarned >= 1000,
                     icon: GiTwoCoins,
                   },
@@ -768,7 +758,7 @@ function Profile() {
                                 </span>
                               )}
                               <span className="text-gray-600">
-                                Bought for {ticket.buyAmount || ticket.price} Z
+                                Bought for {formatCurrency(ticket.buyAmount || ticket.price)}
                               </span>
                             </div>
                           </div>
@@ -784,7 +774,7 @@ function Profile() {
                                 <p className="text-gray-500 text-xs">multiplier</p>
                               </div>
                               <div className="text-center">
-                                <p className="text-gold-light font-bold">{currentReturn} Z</p>
+                                <p className="text-gold-light font-bold">{formatCurrency(currentReturn)}</p>
                                 <p className="text-gray-500 text-xs">return</p>
                               </div>
                             </div>
@@ -807,7 +797,7 @@ function Profile() {
                           ) : status === 'cashed_out' ? (
                             <div className="text-right">
                               <p className="text-emerald-400 font-medium">
-                                +{ticket.cashout_payout || currentReturn} Z
+                                +{formatCurrency(ticket.cashout_payout || currentReturn)}
                               </p>
                               <p className="text-gray-500 text-xs">cashed out</p>
                             </div>
@@ -888,7 +878,7 @@ function Profile() {
                           {vote.voteStatus === 'won' && (
                             <span className="px-2 py-1 rounded-full bg-accent/20 text-accent text-xs font-semibold">
                               <GiTrophy className="inline w-3 h-3 mr-1" />
-                              WON +{vote.reward} Z
+                              WON +{formatCurrency(vote.reward)}
                             </span>
                           )}
                           {vote.voteStatus === 'lost' && (
@@ -928,7 +918,7 @@ function Profile() {
                 <FiThumbsUp className="w-12 h-12 text-gray-600 mx-auto mb-4" />
                 <p className="text-gray-400">You haven't voted yet</p>
                 <p className="text-gray-500 text-sm">
-                  Vote on numbers to predict winners and earn 10 Z rewards!
+                  Vote on numbers to predict winners and earn {formatCurrency(10)} rewards!
                 </p>
               </div>
             )}
@@ -968,7 +958,7 @@ function Profile() {
                           {activity.type.replace("_", " ")}
                         </p>
                         <p className="text-gray-500 text-sm">
-                          {activity.description}
+                          {rewriteAmounts(activity.description, selectedCurrency)}
                         </p>
                       </div>
                     </div>

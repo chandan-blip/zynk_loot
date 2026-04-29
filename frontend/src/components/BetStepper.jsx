@@ -1,7 +1,9 @@
 import { FiMinus, FiPlus } from 'react-icons/fi';
 import { sounds } from '../utils/sounds';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 export default function BetStepper({ amount, setAmount, disabled, step = 5, min = 5, max }) {
+  const { formatCurrency } = useCurrency();
   const current = parseFloat(amount) || 0;
 
   const adjust = (delta) => {
@@ -30,7 +32,7 @@ export default function BetStepper({ amount, setAmount, disabled, step = 5, min 
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
         disabled={disabled}
-        placeholder={`Min ${min} Z`}
+        placeholder={`Min ${formatCurrency(min)}`}
         className="flex-1 h-11 px-3 rounded-lg bg-dark-700/60 border border-white/10 text-white text-center font-semibold placeholder-gray-500 focus:outline-none focus:border-accent/40 transition-colors"
       />
       <button

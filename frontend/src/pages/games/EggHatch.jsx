@@ -4,6 +4,7 @@ import { FiArrowLeft, FiGift } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import { playEggHatch, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
@@ -88,6 +89,7 @@ function EggHatch() {
   usePageTitle('Egg Hatch');
 
   const { user, checkAuth } = useStore();
+  const { formatCurrency } = useCurrency();
   const [amount, setAmount] = useState('');
   const [picking, setPicking] = useState(false);
   const [pickedEgg, setPickedEgg] = useState(null);
@@ -204,7 +206,7 @@ function EggHatch() {
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
                 <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
-                  {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit} Z
+                  {parseFloat(netProfit) >= 0 ? '+' : ''}{formatCurrency(netProfit)}
                 </p>
               </div>
             </div>
@@ -224,14 +226,14 @@ function EggHatch() {
                   </div>
                   <div>
                     <p className="text-sm text-white">
-                      Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                      Bet <span className="font-semibold">{formatCurrency(parseFloat(bet.bet_amount))}</span>
                       {bet.is_win && <span className="text-accent ml-1">({parseFloat(bet.multiplier)}x)</span>}
                     </p>
                     <p className="text-xs text-gray-500">{new Date(bet.created_at).toLocaleString()}</p>
                   </div>
                 </div>
                 <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                  {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                  {bet.is_win ? `+${formatCurrency(parseFloat(bet.win_amount))}` : `-${formatCurrency(parseFloat(bet.bet_amount))}`}
                 </span>
               </div>
             )}
@@ -273,7 +275,7 @@ function EggHatch() {
 
         {/* Bet Amount */}
         <div className="mb-4">
-          <label className="text-sm text-gray-400 mb-2 block">Bet Amount (Z)</label>
+          <label className="text-sm text-gray-400 mb-2 block">Bet Amount</label>
           <BetStepper amount={amount} setAmount={setAmount} disabled={picking} />
           <div className="flex flex-wrap gap-2 mt-2">
             {QUICK_AMOUNTS.map(qa => (
@@ -283,7 +285,7 @@ function EggHatch() {
                 disabled={picking}
                 className="px-3 py-1.5 rounded-lg bg-dark-700/60 border border-white/10 text-gray-400 text-xs hover:text-white hover:border-white/20 transition-colors"
               >
-                {qa} Z
+                {formatCurrency(qa)}
               </button>
             ))}
             <button

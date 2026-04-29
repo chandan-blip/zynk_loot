@@ -11,6 +11,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import { GiTwoCoins } from "react-icons/gi";
+import { useCurrency } from "../contexts/CurrencyContext";
 
 // Minimal arc progress indicator
 function ArcProgress({ percentage, size = 44, strokeWidth = 3 }) {
@@ -87,6 +88,7 @@ function LootCard({
   periodId = null,
 }) {
   const navigate = useNavigate();
+  const { formatCurrency } = useCurrency();
   const [showSchedulePopup, setShowSchedulePopup] = useState(false);
 
   const winChance =
@@ -207,7 +209,7 @@ function LootCard({
               </div>
               <div className="w-px h-6 bg-white/5" />
               <div className="text-center">
-                <p className="text-white/40 font-bold text-sm">{buyAmount || price} Z</p>
+                <p className="text-white/40 font-bold text-sm">{formatCurrency(buyAmount || price)}</p>
                 <p className="text-white/20 text-[10px] mt-0.5">paid</p>
               </div>
               <div className="w-px h-6 bg-white/5" />
@@ -234,7 +236,7 @@ function LootCard({
               <div className="w-px h-6 bg-white/5" />
               <div className="text-center">
                 <p className="text-emerald-400/70 font-bold text-sm">
-                  {currentReturn || (buyAmount || price) * multiplier} Z
+                  {formatCurrency(currentReturn || (buyAmount || price) * multiplier)}
                 </p>
                 <p className="text-white/20 text-[10px] mt-0.5">earned</p>
               </div>
@@ -251,7 +253,7 @@ function LootCard({
               </div>
               <div className="w-px h-6 bg-white/5" />
               <div className="text-center">
-                <p className="text-white/40 font-bold text-sm">{price} Z</p>
+                <p className="text-white/40 font-bold text-sm">{formatCurrency(price)}</p>
                 <p className="text-white/20 text-[10px] mt-0.5">price</p>
               </div>
               <div className="w-px h-6 bg-white/5" />
@@ -282,7 +284,7 @@ function LootCard({
               <div className="w-px h-6 bg-white/10" />
               <div className="text-center">
                 <p className="text-gold-light font-bold text-sm">
-                  {currentReturn || (buyAmount || price) * multiplier} Z
+                  {formatCurrency(currentReturn || (buyAmount || price) * multiplier)}
                 </p>
                 <p className="text-white/30 text-[10px] mt-0.5">return</p>
               </div>
@@ -299,7 +301,7 @@ function LootCard({
               </div>
               <div className="w-px h-6 bg-white/10" />
               <div className="text-center">
-                <p className="text-white font-bold text-sm">{price} Z</p>
+                <p className="text-white font-bold text-sm">{formatCurrency(price)}</p>
                 <p className="text-white/30 text-[10px] mt-0.5">price</p>
               </div>
               <div className="w-px h-6 bg-white/10" />
@@ -340,7 +342,7 @@ function LootCard({
                       className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-accent hover:bg-accent/90 text-dark-900 font-semibold text-sm transition-colors"
                     >
                       <GiTwoCoins className="w-4 h-4" />
-                      Buy {price} Z
+                      Buy {formatCurrency(price)}
                     </button>
                     <button
                       onClick={handleVote}

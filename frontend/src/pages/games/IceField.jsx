@@ -4,6 +4,7 @@ import { FiArrowLeft, FiGrid } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import { playIceField, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
@@ -34,6 +35,7 @@ function IceField() {
   usePageTitle('Ice Field');
 
   const { user, checkAuth } = useStore();
+  const { formatCurrency } = useCurrency();
   const [phase, setPhase] = useState('betting');
   const [amount, setAmount] = useState('');
   const [difficulty, setDifficulty] = useState(1);
@@ -188,7 +190,7 @@ function IceField() {
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
                 <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
-                  {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit} Z
+                  {parseFloat(netProfit) >= 0 ? '+' : ''}{formatCurrency(netProfit)}
                 </p>
               </div>
             </div>
@@ -211,7 +213,7 @@ function IceField() {
                     </div>
                     <div>
                       <p className="text-sm text-white">
-                        Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                        Bet <span className="font-semibold">{formatCurrency(parseFloat(bet.bet_amount))}</span>
                         <span className="text-gray-500 ml-1">{diffLabel} {'\u00B7'} {details?.targetRows}R</span>
                       </p>
                       <p className="text-xs text-gray-500">
@@ -223,7 +225,7 @@ function IceField() {
                     </div>
                   </div>
                   <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                    {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                    {bet.is_win ? `+${formatCurrency(parseFloat(bet.win_amount))}` : `-${formatCurrency(parseFloat(bet.bet_amount))}`}
                   </span>
                 </div>
               );
@@ -351,7 +353,7 @@ function IceField() {
         {phase === 'walking' && currentRow > 1 && (
           <div className="text-center text-sm text-gray-400">
             Crossed: <span className="text-cyan-400 font-bold">
-              {(parseFloat(amount) * getMultiplier(difficulty, currentRow - 1)).toFixed(2)} Z
+              {formatCurrency(parseFloat(amount) * getMultiplier(difficulty, currentRow - 1))}
             </span>
             <span className="text-gray-600 ml-1">({getMultiplier(difficulty, currentRow - 1)}x)</span>
           </div>
@@ -406,7 +408,7 @@ function IceField() {
 
             {/* Bet Amount */}
             <div className="mb-4 hidden md:block">
-              <label className="text-sm text-gray-400 mb-2 block">Bet Amount (Z)</label>
+              <label className="text-sm text-gray-400 mb-2 block">Bet Amount</label>
               <input
                 type="number"
                 value={amount}
@@ -421,7 +423,7 @@ function IceField() {
                     onClick={() => { setAmount(String(qa)); sounds.tap(); }}
                     className="px-3 py-1.5 rounded-lg bg-dark-700/60 border border-white/10 text-gray-400 text-xs hover:text-white hover:border-white/20 transition-colors"
                   >
-                    {qa} Z
+                    {formatCurrency(qa)}
                   </button>
                 ))}
                 <button
@@ -436,7 +438,7 @@ function IceField() {
             {/* Potential Win */}
             <div className="text-center text-sm text-gray-400">
               Potential win: <span className="text-accent font-bold">
-                {((parseFloat(amount) || 0) * currentMultiplier).toFixed(2)} Z
+                {formatCurrency((parseFloat(amount) || 0) * currentMultiplier)}
               </span>
               <span className="text-gray-600 ml-2">({currentMultiplier}x)</span>
             </div>

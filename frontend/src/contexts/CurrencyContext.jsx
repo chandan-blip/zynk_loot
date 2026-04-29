@@ -3,22 +3,31 @@ import { getUserExchangeRates, updateUserSettings } from '../services/api';
 
 const CurrencyContext = createContext();
 
-// Default currency is Zynk
-const DEFAULT_CURRENCY = {
-  code: 'ZYNK',
-  name: 'Zynk',
-  symbol: 'Z',
-  type: 'native',
+// Placeholder USD currency used until rates are fetched. Replaced by the live
+// USD entry from the API on first successful fetch.
+const FALLBACK_CURRENCY = {
+  code: 'USD',
+  name: 'US Dollar',
+  symbol: '$',
+  type: 'fiat',
   rateFromZynk: 1,
-  precision: 2
+  precision: 2,
+  _placeholder: true
+};
+
+const isLegacyZynk = (code) => !code || code === 'ZYNK' || code === 'Z';
+
+const readSavedCurrency = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('selectedCurrency'));
+    if (saved && !isLegacyZynk(saved.code)) return saved;
+  } catch {}
+  return FALLBACK_CURRENCY;
 };
 
 export function CurrencyProvider({ children }) {
-  const [selectedCurrency, setSelectedCurrencyState] = useState(() => {
-    const saved = localStorage.getItem('selectedCurrency');
-    return saved ? JSON.parse(saved) : DEFAULT_CURRENCY;
-  });
-  const [currencies, setCurrencies] = useState([DEFAULT_CURRENCY]);
+  const [selectedCurrency, setSelectedCurrencyState] = useState(readSavedCurrency);
+  const [currencies, setCurrencies] = useState([]);
   const [zynkToUsd, setZynkToUsd] = useState(1.0);
   const [loading, setLoading] = useState(true);
   const initializedFromUser = useRef(false);
@@ -42,15 +51,15 @@ export function CurrencyProvider({ children }) {
     });
   }, []);
 
-  // Initialize from user's backend preference
+  // Initialize from user's backend preference. Legacy 'ZYNK' values silently
+  // fall through to the USD fallback (handled by isLegacyZynk).
   const initFromUser = useCallback((preferredCurrencyCode) => {
     if (initializedFromUser.current) return;
-    if (!preferredCurrencyCode || preferredCurrencyCode === 'ZYNK') {
+    if (isLegacyZynk(preferredCurrencyCode)) {
       initializedFromUser.current = true;
       return;
     }
 
-    // Try to find the currency in the loaded list
     setSelectedCurrencyState(prev => {
       if (prev.code === preferredCurrencyCode) return prev;
       const match = currencies.find(c => c.code === preferredCurrencyCode);
@@ -58,8 +67,7 @@ export function CurrencyProvider({ children }) {
         initializedFromUser.current = true;
         return match;
       }
-      // Currency not loaded yet — store the code so fetchRates can resolve it
-      return { ...DEFAULT_CURRENCY, code: preferredCurrencyCode, _pending: true };
+      return { ...FALLBACK_CURRENCY, code: preferredCurrencyCode, _pending: true };
     });
     initializedFromUser.current = true;
   }, [currencies]);
@@ -72,26 +80,23 @@ export function CurrencyProvider({ children }) {
 
       setZynkToUsd(rate);
 
-      // Build currency list: ZYNK first, then other currencies
-      const currencyList = [
-        DEFAULT_CURRENCY,
-        ...rates.map(r => ({
-          code: r.currency_code,
-          name: r.currency_name,
-          symbol: r.currency_symbol,
-          type: r.currency_type,
-          rateFromZynk: parseFloat(r.rate_from_zynk), // How many units of this currency = 1 Zynk
-          precision: r.decimal_precision || 2
-        }))
-      ];
+      const currencyList = rates.map(r => ({
+        code: r.currency_code,
+        name: r.currency_name,
+        symbol: r.currency_symbol,
+        type: r.currency_type,
+        rateFromZynk: parseFloat(r.rate_from_zynk),
+        precision: r.decimal_precision || 2
+      }));
 
       setCurrencies(currencyList);
 
-      // Update selectedCurrency with fresh rate from server
+      // Resolve any pending / placeholder currency against the live list.
       setSelectedCurrencyState(prev => {
-        if (prev.code === 'ZYNK') return prev;
         const fresh = currencyList.find(c => c.code === prev.code);
-        return fresh || DEFAULT_CURRENCY;
+        if (fresh) return fresh;
+        // Selected currency not available — fall back to USD or first entry.
+        return currencyList.find(c => c.code === 'USD') || currencyList[0] || prev;
       });
     } catch (error) {
       console.error('Failed to fetch exchange rates:', error);
@@ -112,16 +117,10 @@ export function CurrencyProvider({ children }) {
     localStorage.setItem('selectedCurrency', JSON.stringify(selectedCurrency));
   }, [selectedCurrency]);
 
-  // Convert Zynk to selected currency
+  // Convert a stored (zynk) amount into the selected currency.
   const convertFromZynk = useCallback((zynkAmount) => {
     if (!zynkAmount || isNaN(zynkAmount)) return 0;
-
-    if (selectedCurrency.code === 'ZYNK') {
-      return zynkAmount;
-    }
-
-    // Direct conversion: zynkAmount * rateFromZynk
-    return zynkAmount * selectedCurrency.rateFromZynk;
+    return zynkAmount * (selectedCurrency.rateFromZynk || 1);
   }, [selectedCurrency]);
 
   // Format amount with currency symbol and precision
@@ -129,7 +128,6 @@ export function CurrencyProvider({ children }) {
     const converted = convertFromZynk(zynkAmount);
     const precision = selectedCurrency.precision || 2;
 
-    // Format with appropriate precision
     let formatted;
     if (selectedCurrency.type === 'crypto' && converted < 1) {
       formatted = converted.toFixed(precision);
@@ -141,14 +139,7 @@ export function CurrencyProvider({ children }) {
       formatted = converted.toFixed(Math.min(precision, 2));
     }
 
-    if (showSymbol) {
-      if (selectedCurrency.code === 'ZYNK') {
-        return `${formatted} Z`;
-      }
-      return `${selectedCurrency.symbol}${formatted}`;
-    }
-
-    return formatted;
+    return showSymbol ? `${selectedCurrency.symbol}${formatted}` : formatted;
   }, [convertFromZynk, selectedCurrency]);
 
   // Format with full precision (for detailed views)
@@ -161,9 +152,6 @@ export function CurrencyProvider({ children }) {
       maximumFractionDigits: precision
     });
 
-    if (selectedCurrency.code === 'ZYNK') {
-      return `${formatted} Z`;
-    }
     return `${selectedCurrency.symbol}${formatted}`;
   }, [convertFromZynk, selectedCurrency]);
 

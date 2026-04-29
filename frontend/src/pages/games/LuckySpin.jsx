@@ -5,6 +5,7 @@ import { GiCartwheel } from "react-icons/gi";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import useStore from "../../store/useStore";
+import { useCurrency } from "../../contexts/CurrencyContext";
 import {
   playLuckySpin,
   getGameStats,
@@ -143,6 +144,7 @@ function LuckySpin() {
   usePageTitle('Lucky Spin');
 
   const { user, checkAuth } = useStore();
+  const { formatCurrency } = useCurrency();
   const [amount, setAmount] = useState("");
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState(null);
@@ -171,7 +173,7 @@ function LuckySpin() {
   const handleSpin = async () => {
     const betAmount = parseFloat(amount);
     if (!betAmount || betAmount < 5) {
-      toast.error("Minimum bet is 5 Z");
+      toast.error(`Minimum bet is ${formatCurrency(5)}`);
       return;
     }
 
@@ -267,7 +269,7 @@ function LuckySpin() {
                   className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? "text-accent" : "text-red-400"}`}
                 >
                   {parseFloat(netProfit) >= 0 ? "+" : ""}
-                  {netProfit} Z
+                  {formatCurrency(netProfit)}
                 </p>
               </div>
             </div>
@@ -296,7 +298,7 @@ function LuckySpin() {
                     <p className="text-sm text-white">
                       Bet{" "}
                       <span className="font-semibold">
-                        {parseFloat(bet.bet_amount)} Z
+                        {formatCurrency(parseFloat(bet.bet_amount))}
                       </span>
                       {bet.is_win && (
                         <span className="text-accent ml-1">
@@ -313,9 +315,8 @@ function LuckySpin() {
                   className={`text-sm font-bold ${bet.is_win ? "text-accent" : "text-red-400"}`}
                 >
                   {bet.is_win
-                    ? `+${parseFloat(bet.win_amount)}`
-                    : `-${parseFloat(bet.bet_amount)}`}{" "}
-                  Z
+                    ? `+${formatCurrency(parseFloat(bet.win_amount))}`
+                    : `-${formatCurrency(parseFloat(bet.bet_amount))}`}
                 </span>
               </div>
             )}
@@ -362,13 +363,13 @@ function LuckySpin() {
         {/* Bet Amount */}
         <div className="mb-4 hidden md:block">
           <label className="text-sm text-gray-400 mb-2 block">
-            Bet Amount (Z)
+            Bet Amount
           </label>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="Min 5 Z..."
+            placeholder={`Min ${formatCurrency(5)}...`}
             disabled={spinning}
             className="w-full px-4 py-3 rounded-lg bg-dark-700/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-colors"
           />
@@ -385,7 +386,7 @@ function LuckySpin() {
                 disabled={spinning}
                 className="px-3 py-1.5 rounded-lg bg-dark-700/60 border border-white/10 text-gray-400 text-xs hover:text-white hover:border-white/20 transition-colors"
               >
-                {qa} Z
+                {formatCurrency(qa)}
               </button>
             ))}
             <button

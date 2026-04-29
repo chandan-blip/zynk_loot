@@ -26,6 +26,7 @@ import {
 } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { sounds } from '../utils/sounds';
 import { getUnreadCount } from '../services/api';
 import socketService from '../services/socket';
@@ -56,6 +57,7 @@ function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const { user, isAuthenticated, isLoading, logout } = useStore();
+  const { selectedCurrency, formatCurrency } = useCurrency();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -166,12 +168,12 @@ function Layout() {
                     <div className="relative flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
-                          <span className="text-accent font-bold">Z</span>
+                          <span className="text-accent font-bold">{selectedCurrency?.symbol || '$'}</span>
                         </div>
                         <div>
                           <p className="text-xs text-gray-500">Balance</p>
                           <p className="text-xl font-bold text-white">
-                            {user?.balance?.toLocaleString() || 0}
+                            {formatCurrency(user?.balance || 0, false)}
                           </p>
                         </div>
                       </div>
@@ -307,10 +309,10 @@ function Layout() {
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-700/80 border border-dark-600/50 hover:bg-dark-600/80 hover:border-accent/30 transition-all"
                   >
                     <div className="w-6 h-6 rounded-md bg-accent/20 flex items-center justify-center">
-                      <span className="text-accent font-bold text-xs">Z</span>
+                      <span className="text-accent font-bold text-xs">{selectedCurrency?.symbol || '$'}</span>
                     </div>
                     <span className="font-bold text-white text-sm">
-                      {user?.balance?.toLocaleString() || 0}
+                      {formatCurrency(user?.balance || 0, false)}
                     </span>
                   </Link>
 

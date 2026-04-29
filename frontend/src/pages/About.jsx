@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { FiInfo, FiTarget, FiUsers, FiShield, FiZap, FiGlobe, FiAward, FiHeart } from 'react-icons/fi';
 import usePageTitle from '../hooks/usePageTitle';
 import PageHeader from '../components/PageHeader';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const values = [
   {
@@ -26,10 +27,10 @@ const values = [
   },
 ];
 
-const stats = [
+const buildStats = (formatCurrency) => [
   { label: 'Active Users', value: '50K+' },
   { label: 'Draws Completed', value: '10K+' },
-  { label: 'Total Prizes Paid', value: '5M+ Z' },
+  { label: 'Total Prizes Paid', value: `${formatCurrency(5000000)}+` },
   { label: 'Uptime', value: '99.9%' },
 ];
 
@@ -37,11 +38,13 @@ const milestones = [
   { year: '2024', title: 'Platform Launch', description: 'LOOT was founded with a vision to create a fair and transparent number draw platform.' },
   { year: '2024', title: 'Instant Games', description: 'Expanded beyond draws to offer instant games including Coin Flip, Dice Roll, and more.' },
   { year: '2025', title: 'Community Growth', description: 'Reached 50,000+ active users and introduced community voting features.' },
-  { year: '2026', title: 'Investment Platform', description: 'Launched the investment system allowing users to grow their Zynk holdings.' },
+  { year: '2026', title: 'Investment Platform', description: 'Launched the investment system allowing users to grow their holdings.' },
 ];
 
 function About() {
   usePageTitle('About Us');
+  const { formatCurrency } = useCurrency();
+  const stats = buildStats(formatCurrency);
 
   return (
     <div className="max-w-4xl mx-auto">

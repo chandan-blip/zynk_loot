@@ -4,6 +4,7 @@ import { FiArrowLeft, FiLayers } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import { playDragonTower, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
@@ -25,6 +26,7 @@ function DragonTower() {
   usePageTitle('Dragon Tower');
 
   const { user, checkAuth } = useStore();
+  const { formatCurrency } = useCurrency();
   const [phase, setPhase] = useState('betting');
   const [amount, setAmount] = useState('');
   const [targetFloors, setTargetFloors] = useState(3);
@@ -207,7 +209,7 @@ function DragonTower() {
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
                 <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
-                  {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit} Z
+                  {parseFloat(netProfit) >= 0 ? '+' : ''}{formatCurrency(netProfit)}
                 </p>
               </div>
             </div>
@@ -229,7 +231,7 @@ function DragonTower() {
                     </div>
                     <div>
                       <p className="text-sm text-white">
-                        Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                        Bet <span className="font-semibold">{formatCurrency(parseFloat(bet.bet_amount))}</span>
                         <span className="text-gray-500 ml-1">
                           {'\u2192'} {details?.targetFloors}F
                         </span>
@@ -243,7 +245,7 @@ function DragonTower() {
                     </div>
                   </div>
                   <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                    {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                    {bet.is_win ? `+${formatCurrency(parseFloat(bet.win_amount))}` : `-${formatCurrency(parseFloat(bet.bet_amount))}`}
                   </span>
                 </div>
               );
@@ -320,7 +322,7 @@ function DragonTower() {
         {phase === 'climbing' && currentFloor > 1 && (
           <div className="text-center text-sm text-gray-400">
             Current value: <span className="text-accent font-bold">
-              {(parseFloat(amount) * FLOOR_MULTIPLIERS[currentFloor - 2]).toFixed(2)} Z
+              {formatCurrency(parseFloat(amount) * FLOOR_MULTIPLIERS[currentFloor - 2])}
             </span>
             <span className="text-gray-600 ml-1">({FLOOR_MULTIPLIERS[currentFloor - 2]}x)</span>
           </div>
@@ -354,7 +356,7 @@ function DragonTower() {
 
             {/* Bet Amount */}
             <div className="mb-4 hidden md:block">
-              <label className="text-sm text-gray-400 mb-2 block">Bet Amount (Z)</label>
+              <label className="text-sm text-gray-400 mb-2 block">Bet Amount</label>
               <input
                 type="number"
                 value={amount}
@@ -369,7 +371,7 @@ function DragonTower() {
                     onClick={() => { setAmount(String(qa)); sounds.tap(); }}
                     className="px-3 py-1.5 rounded-lg bg-dark-700/60 border border-white/10 text-gray-400 text-xs hover:text-white hover:border-white/20 transition-colors"
                   >
-                    {qa} Z
+                    {formatCurrency(qa)}
                   </button>
                 ))}
                 <button
@@ -384,7 +386,7 @@ function DragonTower() {
             {/* Potential Win */}
             <div className="text-center text-sm text-gray-400">
               Potential win: <span className="text-accent font-bold">
-                {((parseFloat(amount) || 0) * FLOOR_MULTIPLIERS[targetFloors - 1]).toFixed(2)} Z
+                {formatCurrency((parseFloat(amount) || 0) * FLOOR_MULTIPLIERS[targetFloors - 1])}
               </span>
               <span className="text-gray-600 ml-2">({FLOOR_MULTIPLIERS[targetFloors - 1]}x)</span>
             </div>

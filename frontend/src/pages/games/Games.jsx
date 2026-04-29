@@ -5,6 +5,7 @@ import { FiPlay, FiLock, FiStar, FiZap, FiTarget, FiLayers, FiGrid, FiCrosshair,
 import { GiTwoCoins } from "react-icons/gi";
 import usePageTitle from "../../hooks/usePageTitle";
 import PageHeader from "../../components/PageHeader";
+import { useCurrency } from "../../contexts/CurrencyContext";
 
 const games = [
   {
@@ -140,6 +141,7 @@ const randomCount = (base) => base + Math.floor(Math.random() * Math.ceil(base *
 
 function Games() {
   usePageTitle('Games');
+  const { formatCurrency } = useCurrency();
 
   const [playerCounts, setPlayerCounts] = useState(() =>
     Object.fromEntries(games.map(g => [g.id, randomCount(g.basePlayers || 10)]))
@@ -166,14 +168,14 @@ function Games() {
       <PageHeader icon={FiPlay} title="Instant Games" description="Play and win instantly" iconColor="text-accent" />
 
       {/* Games Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {games.map((game, index) => (
           <motion.div
             key={game.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
-            className={`relative rounded-xl bg-gradient-to-br ${game.color} border ${game.borderColor} p-5 overflow-hidden`}
+            className={`relative rounded-xl bg-gradient-to-br ${game.color} border ${game.borderColor} p-3 sm:p-5 overflow-hidden`}
           >
             {/* Background icon */}
             <game.icon className={`absolute -top-2 -right-2 w-24 h-24 ${game.iconColor} opacity-[0.07]`} />
@@ -189,30 +191,30 @@ function Games() {
             <div className="relative flex flex-col h-full">
               {/* Icon */}
               <div
-                className={`w-14 h-14 rounded-xl bg-dark-700/60 border border-white/10 flex items-center justify-center mb-4`}
+                className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl bg-dark-700/60 border border-white/10 flex items-center justify-center mb-3 sm:mb-4`}
               >
-                <game.icon className={`w-7 h-7 ${game.iconColor}`} />
+                <game.icon className={`w-5 h-5 sm:w-7 sm:h-7 ${game.iconColor}`} />
               </div>
 
               {/* Info */}
-              <h3 className="text-lg font-bold text-white mb-1">
+              <h3 className="text-base sm:text-lg font-bold text-white mb-1">
                 {game.name}
               </h3>
-              <p className="text-sm text-gray-400 mb-4 leading-relaxed">
+              <p className="text-xs sm:text-sm text-gray-400 mb-3 sm:mb-4 leading-relaxed line-clamp-2">
                 {game.description}
               </p>
 
               {/* Stats */}
-              <div className="flex items-center gap-3 mb-5 mt-auto">
-                <div className="px-3 py-1.5 rounded-lg bg-dark-700/40 border border-white/5">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider">Min Bet</p>
-                  <p className="text-sm font-bold text-white">
-                    {game.minBet} Z
+              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-5 mt-auto">
+                <div className="flex-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-dark-700/40 border border-white/5">
+                  <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">Min Bet</p>
+                  <p className="text-xs sm:text-sm font-bold text-white truncate">
+                    {formatCurrency(game.minBet)}
                   </p>
                 </div>
-                <div className="px-3 py-1.5 rounded-lg bg-dark-700/40 border border-white/5">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider">Max Win</p>
-                  <p className="text-sm font-bold text-accent">
+                <div className="flex-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-dark-700/40 border border-white/5">
+                  <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">Max Win</p>
+                  <p className="text-xs sm:text-sm font-bold text-accent truncate">
                     {game.maxWin}
                   </p>
                 </div>

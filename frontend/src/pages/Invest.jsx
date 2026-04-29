@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiTrendingUp,
   FiDollarSign,
-  FiClock,
-  FiCheck,
   FiAlertTriangle,
   FiChevronDown,
   FiChevronUp,
@@ -184,15 +183,15 @@ function Invest() {
 
   return (
     <div className="mx-auto space-y-4">
-      <PageHeader icon={FiTrendingUp} title="Invest" description="Grow your Zynk with daily returns" />
+      <PageHeader icon={FiTrendingUp} title="Invest" description="Grow your balance with daily returns" />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total Invested', value: `${(stats?.totalInvested || 0).toLocaleString()} Z`, icon: GiTwoCoins, color: 'text-accent' },
-          { label: 'Total Returns', value: `${(stats?.totalReturns || 0).toLocaleString()} Z`, icon: FiDollarSign, color: 'text-green-400' },
+          { label: 'Total Invested', value: formatCurrency(stats?.totalInvested || 0), icon: GiTwoCoins, color: 'text-accent' },
+          { label: 'Total Returns', value: formatCurrency(stats?.totalReturns || 0), icon: FiDollarSign, color: 'text-green-400' },
           { label: 'Active', value: stats?.activeCount || 0, icon: FiActivity, color: 'text-blue-400' },
-          { label: 'Current Value', value: `${(stats?.totalCurrentValue || 0).toLocaleString()} Z`, icon: FiTrendingUp, color: 'text-purple-400' }
+          { label: 'Current Value', value: formatCurrency(stats?.totalCurrentValue || 0), icon: FiTrendingUp, color: 'text-purple-400' }
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -271,7 +270,7 @@ function Invest() {
                   </div>
                   <div className="flex justify-between text-gray-400">
                     <span>Min / Max</span>
-                    <span className="text-white font-medium">{parseFloat(tier.min_amount).toLocaleString()} - {parseFloat(tier.max_amount).toLocaleString()} Z</span>
+                    <span className="text-white font-medium">{formatCurrency(parseFloat(tier.min_amount))} - {formatCurrency(parseFloat(tier.max_amount))}</span>
                   </div>
                 </div>
                 {tier.description && (
@@ -280,7 +279,7 @@ function Invest() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => { setSelectedTier(tier); setAmount(''); }}
+                  onClick={() => { setSelectedTier(tier); setAmount(String(parseFloat(tier.min_amount))); }}
                   className="w-full mt-4 py-2.5 rounded-lg bg-accent text-dark-900 font-bold text-sm hover:bg-accent/90 transition-colors flex items-center justify-center gap-2"
                 >
                   <FiTrendingUp className="w-4 h-4" />
@@ -292,7 +291,8 @@ function Invest() {
         </div>
       </div>
 
-      {/* Bottom Off-Canvas - Invest Form */}
+      {/* Bottom Off-Canvas - Invest Form (portaled to body so it escapes any parent stacking context) */}
+      {createPortal(
       <AnimatePresence>
         {selectedTier && (
           <>
@@ -301,7 +301,7 @@ function Invest() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
               onClick={() => setSelectedTier(null)}
             />
 
@@ -311,7 +311,7 @@ function Invest() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-dark-800 border-t border-dark-500"
+              className="fixed bottom-0 left-0 right-0 z-[101] max-h-[95vh] overflow-y-auto rounded-t-2xl bg-dark-800 border-t border-dark-500"
             >
               {/* Drag handle */}
               <div className="sticky top-0 bg-dark-800 pt-3 pb-2 px-6 z-10">
@@ -338,12 +338,12 @@ function Invest() {
               <div className="px-6 pb-8 pt-2 space-y-4">
                 {/* Amount input */}
                 <div>
-                  <label className="text-gray-400 text-sm mb-1.5 block">Amount (Z)</label>
+                  <label className="text-gray-400 text-sm mb-1.5 block">Amount</label>
                   <input
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    placeholder={`Min ${parseFloat(selectedTier.min_amount).toLocaleString()} Z`}
+                    placeholder={`Min ${formatCurrency(parseFloat(selectedTier.min_amount))}`}
                     className="w-full px-4 py-3 rounded-lg bg-dark-700 border border-dark-500 text-white placeholder-gray-500 focus:outline-none focus:border-accent text-lg"
                     autoFocus
                   />
@@ -361,7 +361,7 @@ function Invest() {
                           : 'bg-dark-700 border-dark-500 text-gray-300 hover:border-accent hover:text-white'
                       }`}
                     >
-                      {qa.toLocaleString()} Z
+                      {formatCurrency(qa)}
                     </button>
                   ))}
                 </div>
@@ -372,13 +372,13 @@ function Invest() {
                     {/* Summary message */}
                     <div className="p-3 rounded-lg bg-accent/5 border border-accent/15">
                       <p className="text-sm text-gray-300 leading-relaxed">
-                        Invest <span className="text-white font-bold">{projectedDaily.investAmount.toLocaleString()} Z</span> in
+                        Invest <span className="text-white font-bold">{formatCurrency(projectedDaily.investAmount)}</span> in
                         the <span className="text-accent font-semibold">{selectedTier.name}</span> tier.
                         Your money is locked for <span className="text-white font-semibold">{projectedDaily.lockDays} day{projectedDaily.lockDays !== 1 ? 's' : ''}</span> and
-                        earns ~<span className="text-green-400 font-bold">{projectedDaily.daily.toFixed(2)} Z</span>/day at
+                        earns ~<span className="text-green-400 font-bold">{formatCurrency(projectedDaily.daily)}</span>/day at
                         {selectedTier.daily_rate != null ? ' a ' : ' the current '}{(projectedDaily.rate * 100).toFixed(3)}% daily rate.
                         After {projectedDaily.lockDays} day{projectedDaily.lockDays !== 1 ? 's' : ''} you'll
-                        have ~<span className="text-green-400 font-bold">{projectedDaily.maturityValue.toFixed(2)} Z</span> ({projectedDaily.totalLockReturn.toFixed(2)} Z earned).
+                        have ~<span className="text-green-400 font-bold">{formatCurrency(projectedDaily.maturityValue)}</span> ({formatCurrency(projectedDaily.totalLockReturn)} earned).
                       </p>
                     </div>
 
@@ -386,17 +386,17 @@ function Invest() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-3 rounded-lg bg-dark-800/60">
                         <p className="text-[11px] text-gray-500 mb-1">Daily Earnings</p>
-                        <p className="text-green-400 font-bold text-lg">{projectedDaily.daily.toFixed(2)} Z</p>
+                        <p className="text-green-400 font-bold text-lg">{formatCurrency(projectedDaily.daily)}</p>
                         <p className="text-[10px] text-gray-600">{(projectedDaily.rate * 100).toFixed(3)}% rate</p>
                       </div>
                       <div className="p-3 rounded-lg bg-dark-800/60">
                         <p className="text-[11px] text-gray-500 mb-1">At Maturity ({projectedDaily.lockDays}d)</p>
-                        <p className="text-accent font-bold text-lg">{projectedDaily.maturityValue.toFixed(2)} Z</p>
-                        <p className="text-[10px] text-gray-600">+{projectedDaily.totalLockReturn.toFixed(2)} Z profit</p>
+                        <p className="text-accent font-bold text-lg">{formatCurrency(projectedDaily.maturityValue)}</p>
+                        <p className="text-[10px] text-gray-600">+{formatCurrency(projectedDaily.totalLockReturn)} profit</p>
                       </div>
                       <div className="p-3 rounded-lg bg-dark-800/60">
                         <p className="text-[11px] text-gray-500 mb-1">Est. 30 Days</p>
-                        <p className="text-green-400 font-bold text-lg">{projectedDaily.monthly.toFixed(2)} Z</p>
+                        <p className="text-green-400 font-bold text-lg">{formatCurrency(projectedDaily.monthly)}</p>
                         <p className="text-[10px] text-gray-600">if rate holds</p>
                       </div>
                       <div className="p-3 rounded-lg bg-dark-800/60">
@@ -418,7 +418,7 @@ function Invest() {
                   </div>
                   <div className="flex justify-between text-gray-400">
                     <span>Range</span>
-                    <span className="text-white font-medium">{parseFloat(selectedTier.min_amount).toLocaleString()} - {parseFloat(selectedTier.max_amount).toLocaleString()} Z</span>
+                    <span className="text-white font-medium">{formatCurrency(parseFloat(selectedTier.min_amount))} - {formatCurrency(parseFloat(selectedTier.max_amount))}</span>
                   </div>
                   <div className="flex justify-between text-gray-400">
                     <span>Early Withdraw</span>
@@ -446,19 +446,21 @@ function Invest() {
                   ) : (
                     <span className="flex items-center justify-center gap-2">
                       <FiTrendingUp className="w-5 h-5" />
-                      Invest {amount ? `${parseFloat(amount).toLocaleString()} Z` : 'Now'}
+                      Invest {amount ? formatCurrency(parseFloat(amount)) : 'Now'}
                     </span>
                   )}
                 </motion.button>
 
                 <p className="text-gray-500 text-xs text-center">
-                  Your balance: {parseFloat(user?.balance || 0).toLocaleString()} Z
+                  Your balance: {formatCurrency(parseFloat(user?.balance || 0))}
                 </p>
               </div>
             </motion.div>
           </>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+      )}
 
       {/* Active Investments */}
       {portfolio.filter(p => p.status === 'active' || p.status === 'matured').length > 0 && (
@@ -517,15 +519,15 @@ function Invest() {
                 <div className="grid grid-cols-3 gap-3 mb-3">
                   <div>
                     <p className="text-xs text-gray-500">Invested</p>
-                    <p className="text-white font-bold">{inv.amount.toLocaleString()} Z</p>
+                    <p className="text-white font-bold">{formatCurrency(inv.amount)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Current Value</p>
-                    <p className="text-green-400 font-bold">{inv.currentValue.toLocaleString()} Z</p>
+                    <p className="text-green-400 font-bold">{formatCurrency(inv.currentValue)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Returns</p>
-                    <p className="text-accent font-bold">+{inv.totalReturns.toLocaleString()} Z</p>
+                    <p className="text-accent font-bold">+{formatCurrency(inv.totalReturns)}</p>
                   </div>
                 </div>
 
@@ -563,10 +565,10 @@ function Invest() {
               <div key={inv.id} className="rounded-lg bg-dark-800/50 border border-dark-600 p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-500/10 text-gray-400">{inv.tierName}</span>
-                  <span className="text-white font-medium">{inv.amount.toLocaleString()} Z</span>
+                  <span className="text-white font-medium">{formatCurrency(inv.amount)}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-green-400 font-medium">+{inv.totalReturns.toLocaleString()} Z</span>
+                  <span className="text-green-400 font-medium">+{formatCurrency(inv.totalReturns)}</span>
                   <p className="text-xs text-gray-500">Withdrawn</p>
                 </div>
               </div>
@@ -607,7 +609,7 @@ function Invest() {
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="text-green-400 font-medium">+{parseFloat(ret.return_amount).toFixed(2)} Z</span>
+                        <span className="text-green-400 font-medium">+{formatCurrency(parseFloat(ret.return_amount))}</span>
                         <span className="text-gray-500 ml-2 text-xs">
                           ({(parseFloat(ret.effective_rate) * 100).toFixed(3)}%)
                         </span>

@@ -13,8 +13,10 @@ import {
 import toast from 'react-hot-toast';
 import { generateReferralCode, getReferralStats, getReferralList } from '../services/api';
 import PageHeader from '../components/PageHeader';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 function Promote() {
+  const { formatCurrency } = useCurrency();
   const [stats, setStats] = useState(null);
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -202,7 +204,7 @@ function Promote() {
           </div>
           <p className="text-gray-400 text-sm mb-1">Total Commission</p>
           <p className="text-2xl font-bold text-green-400">
-            {(stats?.totalCommission || 0).toLocaleString()} Z
+            {formatCurrency(stats?.totalCommission || 0)}
           </p>
         </motion.div>
       </div>

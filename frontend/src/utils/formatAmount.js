@@ -1,49 +1,62 @@
 /**
- * Format amount based on user's selected currency and conversion rates
- * @param {number} zynkAmount - Amount in Zynk
- * @param {object} selectedCurrency - Selected currency object from context
+ * Format a stored (zynk) amount into the user's selected display currency.
+ * @param {number} zynkAmount - Amount stored internally (zynk units)
+ * @param {object} selectedCurrency - Selected currency object from CurrencyContext
  * @returns {string} Formatted amount with currency symbol
  */
 export function formatAmount(zynkAmount, selectedCurrency) {
-  if (!zynkAmount || isNaN(zynkAmount)) return `0 Z`;
+  const symbol = selectedCurrency?.symbol || '$';
+  const rate = selectedCurrency?.rateFromZynk || 1;
+  const precision = selectedCurrency?.precision || 2;
 
-  // If ZYNK is selected, just return Zynk format
-  if (!selectedCurrency || selectedCurrency.code === 'ZYNK') {
-    return `${zynkAmount.toLocaleString()} Z`;
-  }
+  const safe = Number(zynkAmount);
+  const converted = !zynkAmount || isNaN(safe) ? 0 : safe * rate;
 
-  // Convert Zynk to target currency using rateFromZynk
-  // rateFromZynk = how many units of this currency = 1 Zynk
-  const convertedValue = zynkAmount * (selectedCurrency.rateFromZynk || 1);
-  const precision = selectedCurrency.precision || 2;
-
-  // Format based on value size
   let formatted;
-  if (selectedCurrency.type === 'crypto' && convertedValue < 1) {
-    formatted = convertedValue.toFixed(precision);
-  } else if (convertedValue >= 1000000) {
-    formatted = (convertedValue / 1000000).toFixed(2) + 'M';
+  if (selectedCurrency?.type === 'crypto' && converted < 1) {
+    formatted = converted.toFixed(precision);
+  } else if (converted >= 1000000) {
+    formatted = (converted / 1000000).toFixed(2) + 'M';
   } else {
-    formatted = convertedValue.toLocaleString(undefined, {
+    formatted = converted.toLocaleString(undefined, {
       maximumFractionDigits: Math.min(precision, 2)
     });
   }
 
-  return `${selectedCurrency.symbol}${formatted}`;
+  return `${symbol}${formatted}`;
 }
 
 /**
- * Get conversion rate string for display
+ * Rewrite legacy currency literals embedded in backend-supplied strings
+ * (e.g. "Purchased 1000 Zynk", "Deposit of 50 coins", "won 100Z on Coin Flip")
+ * into the user's selected currency. Numbers stand alone are untouched.
+ *
+ * @param {string} text - Source text from the API
  * @param {object} selectedCurrency - Selected currency object
- * @returns {string} Rate display string like "1 Z = $0.10"
+ * @returns {string} Text with amounts re-rendered in the selected currency
+ */
+export function rewriteAmounts(text, selectedCurrency) {
+  if (!text || typeof text !== 'string') return text || '';
+
+  return text.replace(
+    /(\d+(?:,\d{3})*(?:\.\d+)?)\s?(Zynk|coins|Z)\b/gi,
+    (_match, numStr) => {
+      const value = parseFloat(numStr.replace(/,/g, ''));
+      return formatAmount(value, selectedCurrency);
+    }
+  );
+}
+
+/**
+ * Get conversion rate string for display (e.g. "1 unit = $0.10").
+ * @param {object} selectedCurrency - Selected currency object
+ * @returns {string} Rate display string
  */
 export function getConversionRate(selectedCurrency) {
-  if (!selectedCurrency || selectedCurrency.code === 'ZYNK') {
-    return null;
-  }
+  if (!selectedCurrency) return null;
 
   const rate = selectedCurrency.rateFromZynk || 1;
   const precision = selectedCurrency.precision || 2;
 
-  return `1 Z = ${selectedCurrency.symbol}${rate.toFixed(precision)}`;
+  return `1 unit = ${selectedCurrency.symbol}${rate.toFixed(precision)}`;
 }

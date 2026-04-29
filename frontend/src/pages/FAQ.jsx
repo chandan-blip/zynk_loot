@@ -12,19 +12,19 @@ const faqCategories = [
     items: [
       {
         question: 'What is LOOT?',
-        answer: 'LOOT is a number-based draw platform where you purchase 7-digit numbers and win prizes when your number matches the randomly drawn winning number. We also offer instant games like Coin Flip, Dice Roll, Lucky Spin, and more. Everything runs on Zynk (Z), our platform currency.'
+        answer: 'LOOT is a number-based draw platform where you purchase 7-digit numbers and win prizes when your number matches the randomly drawn winning number. We also offer instant games like Coin Flip, Dice Roll, Lucky Spin, and more.'
       },
       {
         question: 'How do I create an account?',
         answer: 'Tap "Register" on the login screen, enter your email, username, and password. You must be at least 18 years old. Only one account per person is allowed — multiple accounts will be suspended.'
       },
       {
-        question: 'What is Zynk (Z)?',
-        answer: 'Zynk is the platform currency used for all transactions on LOOT — buying numbers, playing games, receiving prizes, and withdrawals. You can purchase Zynk through the Wallet page using supported payment methods.'
+        question: 'How does the balance work?',
+        answer: 'Your wallet balance is used for all transactions on LOOT — buying numbers, playing games, receiving prizes, and withdrawals. You can top up your balance through the Wallet page using supported payment methods, and view amounts in your preferred currency.'
       },
       {
         question: 'Is LOOT free to use?',
-        answer: 'Creating an account is free. To participate in draws or play games, you need Zynk. Number prices start from the base price and increase as digits are revealed during a draw.'
+        answer: 'Creating an account is free. To participate in draws or play games, you need a positive balance. Number prices start from the base price and increase as digits are revealed during a draw.'
       },
     ],
   },
@@ -65,12 +65,12 @@ const faqCategories = [
     category: 'Payments & Withdrawals',
     items: [
       {
-        question: 'How do I add Zynk to my account?',
-        answer: 'Go to your Wallet page and tap "Deposit". Select a package or enter a custom amount, choose your payment method, and complete the transaction. Zynk is credited to your account once payment is confirmed.'
+        question: 'How do I add funds to my account?',
+        answer: 'Go to your Wallet page and tap "Deposit". Select a package or enter a custom amount, choose your payment method, and complete the transaction. Funds are credited to your balance once payment is confirmed.'
       },
       {
         question: 'How do I withdraw my winnings?',
-        answer: 'Go to your Wallet page and tap "Withdraw". Enter the amount you want to withdraw (minimum 500Z). Withdrawals are processed within 24-48 business hours. You may be asked to verify your identity for security purposes.'
+        answer: 'Go to your Wallet page and tap "Withdraw". Enter the amount you want to withdraw (minimum 500). Withdrawals are processed within 24-48 business hours. You may be asked to verify your identity for security purposes.'
       },
       {
         question: 'Are there any fees?',
@@ -112,7 +112,7 @@ const faqCategories = [
       },
       {
         question: 'What is the referral/promote system?',
-        answer: 'Share your referral link from the Promote page. When someone signs up and makes their first purchase using your link, you earn a referral commission in Zynk. The more you promote, the more you earn.'
+        answer: 'Share your referral link from the Promote page. When someone signs up and makes their first purchase using your link, you earn a referral commission credited to your balance. The more you promote, the more you earn.'
       },
       {
         question: 'How do I contact support?',
@@ -125,7 +125,7 @@ const faqCategories = [
     items: [
       {
         question: 'What is the LOOT investment system?',
-        answer: 'The investment system allows you to invest your Zynk and earn returns over time. Different investment plans are available with varying durations and return rates. Visit the Invest page for current plans and details.'
+        answer: 'The investment system allows you to invest your balance and earn returns over time. Different investment plans are available with varying durations and return rates. Visit the Invest page for current plans and details.'
       },
       {
         question: 'Are investments guaranteed?',

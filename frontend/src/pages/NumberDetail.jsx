@@ -16,6 +16,7 @@ import {
 import { getNumberDetails, buyNumber, voteForNumber, createOffer, getNumberOffers, respondToOffer, cashOutTicket, scheduleTicketCashout, getCurrentDraw, getUpcomingSession } from '../services/api';
 import socketService from '../services/socket';
 import useStore from '../store/useStore';
+import { useCurrency } from '../contexts/CurrencyContext';
 import GameCrossPromo from '../components/GameCrossPromo';
 
 const TOTAL_DIGITS = 7;
@@ -189,6 +190,7 @@ function NumberDetail() {
   const { number } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useStore();
+  const { formatCurrency } = useCurrency();
   const [numberData, setNumberData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -341,10 +343,10 @@ function NumberDetail() {
     const activities = [
       { type: 'vote', user: 'john_lucky', amount: '+5 votes', time: '2 mins ago', icon: FiThumbsUp },
       { type: 'vote', user: 'sarah_winner', amount: '+3 votes', time: '5 mins ago', icon: FiThumbsUp },
-      { type: 'offer', user: 'mike_player', amount: '150 Z', time: '12 mins ago', icon: FiDollarSign },
+      { type: 'offer', user: 'mike_player', amount: formatCurrency(150), time: '12 mins ago', icon: FiDollarSign },
       { type: 'vote', user: 'emma_jackpot', amount: '+10 votes', time: '18 mins ago', icon: FiThumbsUp },
-      { type: 'buy', user: 'david_seven', amount: '100 Z', time: '1 hour ago', icon: GiTwoCoins },
-      { type: 'win', user: 'lisa_fortune', amount: '500 Z', time: '2 days ago', icon: GiTrophy },
+      { type: 'buy', user: 'david_seven', amount: formatCurrency(100), time: '1 hour ago', icon: GiTwoCoins },
+      { type: 'win', user: 'lisa_fortune', amount: formatCurrency(500), time: '2 days ago', icon: GiTrophy },
       { type: 'transfer', user: 'alex_numbers', amount: null, time: '5 days ago', icon: FiRepeat },
     ];
 
@@ -567,7 +569,7 @@ function NumberDetail() {
     try {
       const res = await cashOutTicket(numberData.id);
       const { payout, matchedDigits } = res.data.data;
-      toast.success(`Cashed out ${payout} Z with ${matchedDigits} matched digits!`);
+      toast.success(`Cashed out ${formatCurrency(payout)} with ${matchedDigits} matched digits!`);
       // Refresh number data
       const refreshRes = await getNumberDetails(number);
       const data = refreshRes.data.data;
@@ -812,7 +814,7 @@ function NumberDetail() {
                     </div>
                   </div>
                   <p className="text-gray-500 text-[10px] mt-2 text-center">
-                    Buy for {numberData?.price || 10} Z → Match {exampleMatch} digits = {(numberData?.price || 10) * exampleMult} Z return
+                    Buy for {formatCurrency(numberData?.price || 10)} → Match {exampleMatch} digits = {formatCurrency((numberData?.price || 10) * exampleMult)} return
                   </p>
                 </div>
               );
@@ -839,7 +841,7 @@ function NumberDetail() {
                   <YAxis hide domain={['dataMin - 1', 'dataMax + 1']} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1d2b3a', border: '1px solid #2b3f4e', borderRadius: '8px', color: '#fff' }}
-                    formatter={(value, name) => [name === 'price' ? `${value} Z` : value, name === 'price' ? 'Price' : 'Votes']}
+                    formatter={(value, name) => [name === 'price' ? formatCurrency(value) : value, name === 'price' ? 'Price' : 'Votes']}
                   />
                   <Area type="monotone" dataKey="price" stroke="#22c55e" strokeWidth={2} fill="url(#priceGradient)" dot={false} />
                   <Line type="monotone" dataKey="votes" stroke="#8b5cf6" strokeWidth={1.5} dot={false} strokeDasharray="5 5" />
@@ -877,7 +879,7 @@ function NumberDetail() {
                 className="flex-1 py-3.5 rounded-xl bg-accent text-dark-900 font-bold text-lg hover:bg-accent-400 transition-colors flex items-center justify-center gap-2"
               >
                 <GiTwoCoins className="w-5 h-5" />
-                Buy for {numberData?.price || 10} Zynk
+                Buy for {formatCurrency(numberData?.price || 10)}
               </button>
             )}
 
@@ -902,7 +904,7 @@ function NumberDetail() {
                 className="px-6 py-3 rounded-xl bg-dark-600 text-white font-semibold hover:bg-dark-500 border border-dark-500 transition-colors flex items-center gap-2"
               >
                 <FiThumbsUp className="w-5 h-5" />
-                Vote ({voteCount} Z)
+                Vote ({formatCurrency(voteCount)})
               </button>
             </div>
           </div>
@@ -964,7 +966,7 @@ function NumberDetail() {
                   <>
                     <p className="text-gray-500 text-xs mb-1">Current Return</p>
                     <p className="text-gold-light text-xl font-bold mb-2">
-                      {numberData?.currentReturn || 0} Z
+                      {formatCurrency(numberData?.currentReturn || 0)}
                     </p>
                     <button
                       onClick={handleCashOut}
@@ -979,7 +981,7 @@ function NumberDetail() {
                   <>
                     <p className="text-gray-500 text-xs mb-1">Current Return</p>
                     <p className="text-gold-light text-xl font-bold mb-2">
-                      {numberData?.currentReturn || 0} Z
+                      {formatCurrency(numberData?.currentReturn || 0)}
                     </p>
                     <p className="text-gray-400 text-xs">Matching in progress...</p>
                   </>
@@ -1080,7 +1082,7 @@ function NumberDetail() {
               {/* Stats Grid */}
               <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard icon={FiThumbsUp} label="Total Votes" value={formatVotes(numberData?.votes)} trend={numberData?.trend} color="accent" />
-                <StatCard icon={FiDollarSign} label="Current Price" value={`${numberData?.price} Z`} subValue="Market value" color="gold" />
+                <StatCard icon={FiDollarSign} label="Current Price" value={formatCurrency(numberData?.price)} subValue="Market value" color="gold" />
                 <StatCard icon={FiTarget} label="Win Chance" value={`${winChance.toFixed(2)}%`} subValue="Based on votes" color="purple" />
                 <StatCard icon={FiAward} label="Times Won" value={numberData?.timesWon} subValue={`Last: ${numberData?.lastWon}`} color="emerald" />
                 <StatCard icon={FiActivity} label="Avg Daily Votes" value={numberData?.avgDailyVotes} color="accent" />
@@ -1252,7 +1254,7 @@ function NumberDetail() {
                           <p className="text-gray-500 text-xs">{h.from} - {h.to}</p>
                           <p className="text-gray-600 text-xs">{h.duration}</p>
                         </div>
-                        <span className="text-gold-light text-sm font-medium">{h.price} Z</span>
+                        <span className="text-gold-light text-sm font-medium">{formatCurrency(h.price)}</span>
                       </div>
                     </div>
                   ))}
@@ -1320,7 +1322,7 @@ function NumberDetail() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-gold-light font-bold">{offer.amount} Z</p>
+                          <p className="text-gold-light font-bold">{formatCurrency(offer.amount)}</p>
                           {isOwner && (
                             <div className="flex gap-1 mt-1">
                               <button
@@ -1357,7 +1359,7 @@ function NumberDetail() {
                 {numberData?.owner && !isOwner ? (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Offer Amount (Zynk)</label>
+                      <label className="block text-sm text-gray-400 mb-2">Offer Amount</label>
                       <input
                         type="number"
                         value={offerAmount}
@@ -1368,11 +1370,11 @@ function NumberDetail() {
                     </div>
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Current Price</span>
-                      <span className="text-white">{numberData?.price} Z</span>
+                      <span className="text-white">{formatCurrency(numberData?.price)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Suggested Offer</span>
-                      <span className="text-accent">{Math.round((numberData?.price || 10) * 1.2)} Z (+20%)</span>
+                      <span className="text-accent">{formatCurrency(Math.round((numberData?.price || 10) * 1.2))} (+20%)</span>
                     </div>
                     <button
                       onClick={handleOffer}
@@ -1396,7 +1398,7 @@ function NumberDetail() {
                       onClick={handleBuy}
                       className="px-6 py-2.5 rounded-lg bg-accent text-dark-900 font-semibold hover:bg-accent-400 transition-colors"
                     >
-                      Buy for {numberData?.price} Z
+                      Buy for {formatCurrency(numberData?.price)}
                     </button>
                   </div>
                 )}
@@ -1428,7 +1430,7 @@ function NumberDetail() {
               Offer to buy <span className="text-white font-mono">{formatNumber(number)}</span> from {numberData?.owner}
             </p>
             <div className="mb-4">
-              <label className="block text-sm text-gray-400 mb-2">Offer Amount (Zynk)</label>
+              <label className="block text-sm text-gray-400 mb-2">Offer Amount</label>
               <input
                 type="number"
                 value={offerAmount}
@@ -1439,7 +1441,7 @@ function NumberDetail() {
             </div>
             <div className="flex items-center justify-between text-sm mb-6 p-3 rounded-lg bg-dark-800/50">
               <span className="text-gray-500">Current market price</span>
-              <span className="text-gold-light font-semibold">{numberData?.price} Z</span>
+              <span className="text-gold-light font-semibold">{formatCurrency(numberData?.price)}</span>
             </div>
             <div className="flex gap-3">
               <button

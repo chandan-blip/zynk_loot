@@ -52,7 +52,7 @@ export const getMyNumbers = () => api.get('/lottery/my-numbers');
 export const getMyVotes = () => api.get('/lottery/my-votes');
 export const getOffers = () => api.get('/lottery/offers');
 export const respondToOffer = (offerId, accept) => api.post(`/lottery/offers/${offerId}/respond`, { accept });
-export const getDrawHistory = (limit = 30) => api.get(`/lottery/history?limit=${limit}`);
+export const getDrawHistory = (page = 1, limit = 10) => api.get(`/lottery/history?page=${page}&limit=${limit}`);
 export const getPrizePool = () => api.get('/lottery/prize-pool');
 export const getRecentWinners = (limit = 10, page = 1) =>
   api.get(`/lottery/winners?limit=${limit}&page=${page}`);

@@ -37,7 +37,7 @@ import {
 } from 'recharts';
 import useStore from '../store/useStore';
 import { useCurrency } from '../contexts/CurrencyContext';
-import { formatAmount } from '../utils/formatAmount';
+import { rewriteAmounts } from '../utils/formatAmount';
 import {
   getWalletBalance,
   getPaymentMethods,
@@ -76,14 +76,14 @@ const TIER_THRESHOLDS = [
   { name: 'Diamond', min: 50000, max: Infinity, bonus: 15, color: '#B9F2FF', icon: '👑' },
 ];
 
-const ACHIEVEMENTS = [
+const buildAchievements = (formatCurrency) => [
   { id: 'first_deposit', name: 'First Steps', description: 'Make your first deposit', icon: FiArrowDownCircle, category: 'wallet' },
   { id: 'first_win', name: 'Lucky Start', description: 'Win your first lottery prize', icon: BsTrophy, category: 'lottery' },
-  { id: 'high_roller', name: 'High Roller', description: 'Spend 10,000 ZYNK total', icon: FiZap, category: 'spending', threshold: 10000 },
-  { id: 'big_spender', name: 'Big Spender', description: 'Spend 50,000 ZYNK total', icon: BsStars, category: 'spending', threshold: 50000 },
+  { id: 'high_roller', name: 'High Roller', description: `Spend ${formatCurrency(10000)} total`, icon: FiZap, category: 'spending', threshold: 10000 },
+  { id: 'big_spender', name: 'Big Spender', description: `Spend ${formatCurrency(50000)} total`, icon: BsStars, category: 'spending', threshold: 50000 },
   { id: 'lucky_streak', name: 'Lucky Streak', description: 'Win 3 times in a row', icon: BsLightning, category: 'lottery' },
   { id: 'social_butterfly', name: 'Social Butterfly', description: 'Transfer to 5 different users', icon: FiUsers, category: 'transfer', threshold: 5 },
-  { id: 'generous', name: 'Generous Soul', description: 'Transfer 1,000 ZYNK to others', icon: FiGift, category: 'transfer', threshold: 1000 },
+  { id: 'generous', name: 'Generous Soul', description: `Transfer ${formatCurrency(1000)} to others`, icon: FiGift, category: 'transfer', threshold: 1000 },
   { id: 'collector', name: 'Number Collector', description: 'Own 10 numbers at once', icon: FiTarget, category: 'lottery', threshold: 10 },
 ];
 
@@ -94,7 +94,8 @@ function Wallet() {
 
   const navigate = useNavigate();
   const { updateBalance } = useStore();
-  const { zynkToUsd, selectedCurrency } = useCurrency();
+  const { selectedCurrency, formatCurrency } = useCurrency();
+  const ACHIEVEMENTS = buildAchievements(formatCurrency);
   const [activeTab, setActiveTab] = useState('buy');
   const [loading, setLoading] = useState(true);
   const [balance, setBalance] = useState({ balance: 0, totalSpent: 0, totalEarned: 0 });
@@ -466,7 +467,7 @@ function Wallet() {
     setSubmitting(true);
     try {
       await transferZynk(selectedRecipient.id, parseFloat(transferForm.amount), transferForm.note);
-      toast.success(`Successfully transferred ${transferForm.amount} ZYNK to ${selectedRecipient.username}!`);
+      toast.success(`Successfully transferred ${formatCurrency(parseFloat(transferForm.amount))} to ${selectedRecipient.username}!`);
       setTransferForm({ recipient: '', amount: '', note: '' });
       setSelectedRecipient(null);
       setShowTransferConfirm(false);
@@ -571,17 +572,17 @@ function Wallet() {
             </span>
           </div>
           <div className="flex items-baseline gap-2 mb-4">
-            <span className="text-4xl font-bold text-white">{balance.balance.toLocaleString()}</span>
-            <span className="text-accent font-semibold">ZYNK</span>
+            <span className="text-4xl font-bold text-white">{formatCurrency(balance.balance)}</span>
+            <span className="text-accent font-semibold">{selectedCurrency.code}</span>
           </div>
           <div className="flex gap-6 text-sm">
             <div>
               <p className="text-gray-500">Total Spent</p>
-              <p className="text-white font-medium">{balance.totalSpent.toLocaleString()} Z</p>
+              <p className="text-white font-medium">{formatCurrency(balance.totalSpent)}</p>
             </div>
             <div>
               <p className="text-gray-500">Total Earned</p>
-              <p className="text-green-400 font-medium">{balance.totalEarned.toLocaleString()} Z</p>
+              <p className="text-green-400 font-medium">{formatCurrency(balance.totalEarned)}</p>
             </div>
           </div>
         </div>
@@ -590,7 +591,7 @@ function Wallet() {
             onClick={() => setActiveTab('buy')}
             className="px-4 py-2 shrink-0 rounded-lg bg-dark-600 hover:bg-dark-500 text-white text-sm transition-colors border border-dark-500"
           >
-            Buy Zynk
+            Buy Balance
           </button>
           <button
             onClick={() => setShowWithdrawModal(true)}
@@ -604,7 +605,7 @@ function Wallet() {
       {/* Tabs */}
       <div className="flex gap-2 p-1 bg-dark-700 rounded-lg overflow-x-auto snap-x scroll-smooth">
         {[
-          { id: 'buy', label: 'Buy Zynk', icon: FiPlus },
+          { id: 'buy', label: 'Buy Balance', icon: FiPlus },
           { id: 'deposits', label: 'Deposits', icon: FiDownload },
           { id: 'withdrawals', label: 'Withdrawals', icon: FiArrowUpCircle },
           { id: 'methods', label: 'Methods', icon: FiCreditCard },
@@ -656,20 +657,13 @@ function Wallet() {
                 )}
                 <h3 className="text-lg font-semibold text-white mb-1">{pkg.name}</h3>
                 <div className="flex items-baseline gap-1 mb-3">
-                  <span className="text-3xl font-bold text-accent">{pkg.zynk_amount.toLocaleString()}</span>
-                  <span className="text-gray-400 text-sm">ZYNK</span>
+                  <span className="text-3xl font-bold text-accent">{formatCurrency(pkg.zynk_amount)}</span>
                 </div>
                 {pkg.bonus_percent > 0 && (
                   <p className="text-xs text-green-400 mb-3">
-                    Get {Math.floor(pkg.zynk_amount * pkg.bonus_percent / 100)} extra Zynk!
+                    Get {formatCurrency(Math.floor(pkg.zynk_amount * pkg.bonus_percent / 100))} extra!
                   </p>
                 )}
-                <div className="text-sm mb-4">
-                  <p className="text-white font-medium">${(pkg.zynk_amount * zynkToUsd).toFixed(2)}</p>
-                  {selectedCurrency && selectedCurrency.code !== 'ZYNK' && selectedCurrency.code !== 'USD' && (
-                    <p className="text-gray-500 text-xs">{formatAmount(pkg.zynk_amount, selectedCurrency)}</p>
-                  )}
-                </div>
                 <button
                   onClick={() => handleBuyPackage(pkg)}
                   disabled={processingPackage === pkg.id}
@@ -700,7 +694,7 @@ function Wallet() {
                 <div className="text-center py-8">
                   <FiDownload className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                   <p className="text-gray-400">No deposits yet</p>
-                  <p className="text-gray-500 text-sm mt-1">Buy Zynk to see your deposit history here</p>
+                  <p className="text-gray-500 text-sm mt-1">Make a deposit to see your history here</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -725,7 +719,7 @@ function Wallet() {
                         </div>
                         <div>
                           <p className="font-semibold text-white">
-                            {(order.zynk_amount + (order.bonus_amount || 0)).toLocaleString()} ZYNK
+                            {formatCurrency(order.zynk_amount + (order.bonus_amount || 0))}
                           </p>
                           <p className="text-sm text-gray-500">
                             {order.payment_method?.replace('_', ' ').toUpperCase()} • {formattedAmount}
@@ -795,8 +789,7 @@ function Wallet() {
                             <div className="flex items-start justify-between gap-3 mb-2">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-baseline gap-2 flex-wrap">
-                                  <p className="text-xl font-bold text-white">−{parseFloat(w.amount).toLocaleString()}</p>
-                                  <span className="text-xs text-gray-400 font-medium">ZYNK</span>
+                                  <p className="text-xl font-bold text-white">−{formatCurrency(parseFloat(w.amount))}</p>
                                 </div>
                                 <p className="text-xs text-gray-500 mt-0.5 truncate">
                                   to <span className="text-gray-300 font-mono">{destination}</span>
@@ -934,7 +927,7 @@ function Wallet() {
             <div className="bg-dark-700 rounded-xl border border-dark-600 p-6">
               <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                 <FiSend className="w-5 h-5 text-accent" />
-                Send ZYNK
+                Send Funds
               </h3>
               <form onSubmit={handleTransferSubmit} className="space-y-4">
                 <div className="relative">
@@ -995,7 +988,7 @@ function Wallet() {
                     className="input-premium w-full"
                     required
                   />
-                  <p className="text-xs text-gray-500 mt-1">Available: {balance.balance.toLocaleString()} ZYNK</p>
+                  <p className="text-xs text-gray-500 mt-1">Available: {formatCurrency(balance.balance)}</p>
                 </div>
 
                 <div>
@@ -1016,7 +1009,7 @@ function Wallet() {
                   className="btn-premium w-full py-3 flex items-center justify-center"
                 >
                   <FiSend className="w-4 h-4 mr-2" />
-                  Send ZYNK
+                  Send Funds
                 </button>
               </form>
             </div>
@@ -1067,7 +1060,7 @@ function Wallet() {
                       </div>
                       <div className="text-right">
                         <p className={`font-medium ${t.direction === 'sent' ? 'text-red-400' : 'text-green-400'}`}>
-                          {t.direction === 'sent' ? '-' : '+'}{t.amount} Z
+                          {t.direction === 'sent' ? '-' : '+'}{formatCurrency(t.amount)}
                         </p>
                         <p className="text-xs text-gray-500">{new Date(t.created_at).toLocaleDateString()}</p>
                       </div>
@@ -1116,7 +1109,7 @@ function Wallet() {
               <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
                 <p className="text-gray-400 text-sm mb-1">Net Profit/Loss</p>
                 <p className={`text-2xl font-bold ${analytics.stats.netProfitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {analytics.stats.netProfitLoss >= 0 ? '+' : ''}{analytics.stats.netProfitLoss.toLocaleString()} Z
+                  {analytics.stats.netProfitLoss >= 0 ? '+' : ''}{formatCurrency(analytics.stats.netProfitLoss)}
                 </p>
               </div>
               <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
@@ -1125,7 +1118,7 @@ function Wallet() {
               </div>
               <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
                 <p className="text-gray-400 text-sm mb-1">Avg Transaction</p>
-                <p className="text-2xl font-bold text-white">{analytics.stats.avgTransaction.toFixed(0)} Z</p>
+                <p className="text-2xl font-bold text-white">{formatCurrency(analytics.stats.avgTransaction)}</p>
               </div>
               <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
                 <p className="text-gray-400 text-sm mb-1">Total Transactions</p>
@@ -1178,7 +1171,7 @@ function Wallet() {
                       </Pie>
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
-                        formatter={(value) => `${value.toLocaleString()} Z`}
+                        formatter={(value) => formatCurrency(value)}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -1231,7 +1224,7 @@ function Wallet() {
                 {nextTier && (
                   <div className="text-right">
                     <p className="text-gray-400 text-sm">Next: {nextTier.name}</p>
-                    <p className="text-white font-medium">{(nextTier.min - balance.totalSpent).toLocaleString()} Z to go</p>
+                    <p className="text-white font-medium">{formatCurrency(nextTier.min - balance.totalSpent)} to go</p>
                   </div>
                 )}
               </div>
@@ -1239,7 +1232,7 @@ function Wallet() {
               {nextTier && (
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">{balance.totalSpent.toLocaleString()} / {nextTier.min.toLocaleString()} Z spent</span>
+                    <span className="text-gray-400">{formatCurrency(balance.totalSpent)} / {formatCurrency(nextTier.min)} spent</span>
                     <span className="text-accent">{tierProgress.toFixed(0)}%</span>
                   </div>
                   <div className="h-3 bg-dark-600 rounded-full overflow-hidden">
@@ -1276,7 +1269,7 @@ function Wallet() {
                       <p className="text-xs text-gray-400">
                         {tier.bonus > 0 ? `+${tier.bonus}% bonus` : 'No bonus'}
                       </p>
-                      <p className="text-xs text-gray-500">{tier.min.toLocaleString()}+ Z</p>
+                      <p className="text-xs text-gray-500">{formatCurrency(tier.min)}+</p>
                     </div>
                   ))}
                 </div>
@@ -1440,13 +1433,13 @@ function Wallet() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-white max-w-xs truncate">
-                            {t.description || '-'}
+                            {t.description ? rewriteAmounts(t.description, selectedCurrency) : '-'}
                           </td>
                           <td className={`px-4 py-3 text-sm text-right font-medium ${
                             ['deposit', 'prize', 'sale', 'refund'].includes(t.type) ? 'text-green-400' : 'text-red-400'
                           }`}>
                             {['deposit', 'prize', 'sale', 'refund'].includes(t.type) ? '+' : '-'}
-                            {parseFloat(t.amount).toLocaleString()} Z
+                            {formatCurrency(parseFloat(t.amount))}
                           </td>
                         </tr>
                       ))
@@ -1702,7 +1695,7 @@ function Wallet() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-white">Withdraw Zynk</h3>
+                <h3 className="text-xl font-semibold text-white">Withdraw</h3>
                 <button
                   onClick={() => setShowWithdrawModal(false)}
                   className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-dark-700"
@@ -1728,7 +1721,7 @@ function Wallet() {
               ) : (
                 <form onSubmit={handleWithdraw} className="space-y-4">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1">Amount (min 10 ZYNK)</label>
+                    <label className="block text-sm text-gray-400 mb-1">Amount (min {formatCurrency(10)})</label>
                     <input
                       type="number"
                       value={withdrawForm.amount}
@@ -1739,7 +1732,7 @@ function Wallet() {
                       className="input-premium w-full"
                       required
                     />
-                    <p className="text-xs text-gray-500 mt-1">Available: {balance.balance.toLocaleString()} ZYNK</p>
+                    <p className="text-xs text-gray-500 mt-1">Available: {formatCurrency(balance.balance)}</p>
                   </div>
                   <div>
                     <label className="block text-sm text-gray-400 mb-1">Payment Method</label>
@@ -1799,7 +1792,7 @@ function Wallet() {
                 </div>
                 <h3 className="text-xl font-semibold text-white mb-2">Confirm Transfer</h3>
                 <p className="text-gray-400 mb-6">
-                  Send <span className="text-accent font-bold">{transferForm.amount} ZYNK</span> to <span className="text-white font-medium">{selectedRecipient.username}</span>?
+                  Send <span className="text-accent font-bold">{formatCurrency(parseFloat(transferForm.amount) || 0)}</span> to <span className="text-white font-medium">{selectedRecipient.username}</span>?
                 </p>
                 {transferForm.note && (
                   <p className="text-sm text-gray-500 mb-4 bg-dark-700 rounded-lg p-2">
@@ -1871,7 +1864,7 @@ function Wallet() {
                       ? 'text-green-400' : 'text-red-400'
                   }`}>
                     {['deposit', 'prize', 'sale', 'refund'].includes(showTransactionDetail.type) ? '+' : '-'}
-                    {parseFloat(showTransactionDetail.amount).toLocaleString()} Z
+                    {formatCurrency(parseFloat(showTransactionDetail.amount))}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1881,13 +1874,13 @@ function Wallet() {
                 {showTransactionDetail.description && (
                   <div className="flex justify-between">
                     <span className="text-gray-400">Description</span>
-                    <span className="text-white text-right max-w-[200px]">{showTransactionDetail.description}</span>
+                    <span className="text-white text-right max-w-[200px]">{rewriteAmounts(showTransactionDetail.description, selectedCurrency)}</span>
                   </div>
                 )}
                 {showTransactionDetail.balance_after && (
                   <div className="flex justify-between">
                     <span className="text-gray-400">Balance After</span>
-                    <span className="text-white">{parseFloat(showTransactionDetail.balance_after).toLocaleString()} Z</span>
+                    <span className="text-white">{formatCurrency(parseFloat(showTransactionDetail.balance_after))}</span>
                   </div>
                 )}
                 {showTransactionDetail.reference && (

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { FiChevronRight, FiTrendingUp, FiPlay, FiZap, FiStar, FiTarget, FiLayers, FiGrid, FiCrosshair, FiGift, FiAlertTriangle } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import { getNumbers } from '../services/api';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const ALL_GAMES = [
   { name: 'Coin Flip', key: 'coin-flip', icon: GiTwoCoins, maxWin: '1.95x', color: 'from-yellow-500/20 to-amber-500/20', border: 'border-yellow-500/30', iconColor: 'text-yellow-400' },
@@ -18,6 +19,7 @@ const ALL_GAMES = [
 ];
 
 function GameCrossPromo({ currentGame }) {
+  const { formatCurrency } = useCurrency();
   const [hotNumbers, setHotNumbers] = useState([]);
 
   // Filter out current game and pick 4 random others
@@ -64,7 +66,7 @@ function GameCrossPromo({ currentGame }) {
               >
                 <p className="text-white font-mono font-bold text-sm tracking-wider">{num.number}</p>
                 <div className="flex items-center justify-between mt-1.5">
-                  <span className="text-accent text-xs font-semibold">{num.price} Z</span>
+                  <span className="text-accent text-xs font-semibold">{formatCurrency(num.price)}</span>
                   {num.votes > 0 && (
                     <span className="text-gray-500 text-[10px]">{num.votes} votes</span>
                   )}

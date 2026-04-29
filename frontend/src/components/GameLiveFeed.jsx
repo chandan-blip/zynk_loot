@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import socketService from '../services/socket';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const WIN_TYPES = ['win', 'game_win'];
 
 function GameLiveFeed() {
+  const { formatCurrency } = useCurrency();
   const [items, setItems] = useState([]);
 
   useEffect(() => {
@@ -39,7 +41,7 @@ function GameLiveFeed() {
             className="absolute right-0 flex whitespace-nowrap"
           >
             <span className="text-[9px] font-medium opacity-70">
-              {item.username} {item.isWin ? 'won' : 'lost'} <span className={`text-[12px] font-bold ${item.isWin ? 'text-green-500' : 'text-red-500'}`}>{item.isWin ? '+' : '-'} {item.amount}Z</span>
+              {item.username} {item.isWin ? 'won' : 'lost'} <span className={`text-[12px] font-bold ${item.isWin ? 'text-green-500' : 'text-red-500'}`}>{item.isWin ? '+' : '-'} {formatCurrency(item.amount)}</span>
             </span>
           </motion.div>
         ))}

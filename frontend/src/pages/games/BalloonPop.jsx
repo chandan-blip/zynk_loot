@@ -4,6 +4,7 @@ import { FiArrowLeft, FiTarget } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import { playBalloonPop, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
@@ -74,6 +75,7 @@ function BalloonPop() {
   usePageTitle('Balloon Pop');
 
   const { user, checkAuth } = useStore();
+  const { formatCurrency } = useCurrency();
   const [amount, setAmount] = useState('');
   const [targetMultiplier, setTargetMultiplier] = useState('');
   const [inflating, setInflating] = useState(false);
@@ -249,7 +251,7 @@ function BalloonPop() {
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
                 <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
-                  {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit} Z
+                  {parseFloat(netProfit) >= 0 ? '+' : ''}{formatCurrency(netProfit)}
                 </p>
               </div>
             </div>
@@ -271,7 +273,7 @@ function BalloonPop() {
                     </div>
                     <div>
                       <p className="text-sm text-white">
-                        Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span>
+                        Bet <span className="font-semibold">{formatCurrency(parseFloat(bet.bet_amount))}</span>
                         <span className="text-gray-500 ml-1">{'\u2192'} {details?.cashoutMultiplier}x</span>
                       </p>
                       <p className="text-xs text-gray-500">
@@ -281,7 +283,7 @@ function BalloonPop() {
                     </div>
                   </div>
                   <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                    {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                    {bet.is_win ? `+${formatCurrency(parseFloat(bet.win_amount))}` : `-${formatCurrency(parseFloat(bet.bet_amount))}`}
                   </span>
                 </div>
               );
@@ -361,7 +363,7 @@ function BalloonPop() {
 
         {/* Bet Amount */}
         <div className="mb-4 hidden md:block">
-          <label className="text-sm text-gray-400 mb-2 block">Bet Amount (Z)</label>
+          <label className="text-sm text-gray-400 mb-2 block">Bet Amount</label>
           <input
             type="number"
             value={amount}
@@ -378,7 +380,7 @@ function BalloonPop() {
                 disabled={inflating}
                 className="px-3 py-1.5 rounded-lg bg-dark-700/60 border border-white/10 text-gray-400 text-xs hover:text-white hover:border-white/20 transition-colors"
               >
-                {qa} Z
+                {formatCurrency(qa)}
               </button>
             ))}
             <button
@@ -393,7 +395,7 @@ function BalloonPop() {
 
         {/* Potential Win */}
         <div className="text-center text-sm text-gray-400">
-          Potential win: <span className="text-accent font-bold">{((parseFloat(amount) || 0) * (parseFloat(targetMultiplier) || 0)).toFixed(2)} Z</span>
+          Potential win: <span className="text-accent font-bold">{formatCurrency((parseFloat(amount) || 0) * (parseFloat(targetMultiplier) || 0))}</span>
           {targetMultiplier && parseFloat(targetMultiplier) >= 1.1 && <span className="text-gray-600 ml-2">({parseFloat(targetMultiplier)}x)</span>}
         </div>
 

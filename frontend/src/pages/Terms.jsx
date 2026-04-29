@@ -48,8 +48,8 @@ All services are provided on an "as is" and "as available" basis. We reserve the
   },
   {
     title: '5. Payments & Withdrawals',
-    content: `\u2022 All purchases are made using Zynk (Z), the platform currency
-\u2022 Zynk can be purchased through approved payment methods
+    content: `\u2022 All purchases are made using your wallet balance
+\u2022 Balance can be topped up through approved payment methods
 \u2022 Minimum withdrawal amounts apply as displayed on the platform
 \u2022 Withdrawals are processed within 24-48 business hours
 \u2022 We reserve the right to request identity verification before processing withdrawals

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FiX } from 'react-icons/fi';
 import { sounds } from '../utils/sounds';
 import useStore from '../store/useStore';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 // Reusable win/loss overlay for any game
 // Props:
@@ -16,6 +17,7 @@ import useStore from '../store/useStore';
 function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4000 }) {
   const navigate = useNavigate();
   const { user } = useStore();
+  const { formatCurrency, selectedCurrency } = useCurrency();
   const isWin = result?.isWin;
   const isDemo = result?.isDemo;
   const isLoggedIn = !!user;
@@ -65,7 +67,7 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4000 })
               transition={{ duration: 1.5 + Math.random(), delay: 0.2 + Math.random() * 0.3 }}
               className="absolute text-accent text-2xl"
             >
-              {['Z', '+', '*'][i % 3]}
+              {[selectedCurrency?.symbol || '$', '+', '*'][i % 3]}
             </motion.div>
           ))}
 
@@ -115,7 +117,7 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4000 })
                 transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
                 className={`text-5xl font-black mb-3 ${isWin ? 'text-white' : 'text-red-300'}`}
               >
-                {isWin ? `+${result.winAmount}` : `-${result.betAmount}`} Z
+                {isWin ? `+${formatCurrency(result.winAmount)}` : `-${formatCurrency(result.betAmount)}`}
               </motion.p>
 
               {isWin && result.multiplier && (

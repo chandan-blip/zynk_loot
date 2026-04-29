@@ -3,8 +3,9 @@ import { FiFileText, FiCheck, FiAlertTriangle, FiAward, FiUsers, FiDollarSign, F
 import { GiTwoCoins } from 'react-icons/gi';
 import usePageTitle from '../hooks/usePageTitle';
 import PageHeader from '../components/PageHeader';
+import { useCurrency } from '../contexts/CurrencyContext';
 
-const rules = [
+const buildRules = (formatCurrency) => [
   {
     icon: FiUsers,
     title: 'Eligibility',
@@ -80,7 +81,7 @@ const rules = [
     title: 'Payments & Withdrawals',
     items: [
       'Winnings and cash-outs are credited to your balance instantly',
-      'Minimum withdrawal amount: 500 Zynk',
+      `Minimum withdrawal amount: ${formatCurrency(500)}`,
       'Withdrawals are processed within 24–48 business hours',
       'Identity verification may be required for withdrawals',
       'You are responsible for any taxes applicable to your winnings',
@@ -115,6 +116,8 @@ const prohibitedActions = [
 
 function Rules() {
   usePageTitle('Rules');
+  const { formatCurrency } = useCurrency();
+  const rules = buildRules(formatCurrency);
 
   return (
     <div className="max-w-4xl mx-auto">

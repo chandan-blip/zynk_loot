@@ -35,7 +35,7 @@ const PAYMENT_METHODS = [
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { zynkToUsd, currencies } = useCurrency();
+  const { zynkToUsd, currencies, formatCurrency } = useCurrency();
 
   // Map payment method to currency
   const getPaymentCurrency = (method) => {
@@ -396,7 +396,7 @@ export default function Checkout() {
             </motion.div>
             <h2 className="text-2xl font-bold text-white mb-2">Order Submitted!</h2>
             <p className="text-gray-400">
-              Your payment is being verified. You'll receive your Zynk shortly.
+              Your payment is being verified. Your balance will be credited shortly.
             </p>
           </div>
 
@@ -408,14 +408,13 @@ export default function Checkout() {
                 </div>
                 <div>
                   <p className="text-white font-semibold">{selectedPackage.name}</p>
-                  <p className="text-gray-500 text-sm">Zynk Package</p>
+                  <p className="text-gray-500 text-sm">Package</p>
                 </div>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-accent">
-                  {(selectedPackage.zynk_amount + Math.floor(selectedPackage.zynk_amount * selectedPackage.bonus_percent / 100)).toLocaleString()}
+                  {formatCurrency(selectedPackage.zynk_amount + Math.floor(selectedPackage.zynk_amount * selectedPackage.bonus_percent / 100))}
                 </p>
-                <p className="text-gray-500 text-sm">ZYNK</p>
               </div>
             </div>
 
@@ -688,7 +687,7 @@ export default function Checkout() {
                   <div className="bg-dark-800 rounded-lg p-4 flex items-start gap-3">
                     <FiLock className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-gray-400">
-                      By submitting, you confirm that you have sent the payment. Your Zynk will be credited once the payment is verified by our team.
+                      By submitting, you confirm that you have sent the payment. Your balance will be credited once the payment is verified by our team.
                     </p>
                   </div>
 
@@ -732,7 +731,7 @@ export default function Checkout() {
                     </div>
                     <div className="flex-1">
                       <p className="text-white font-semibold">{selectedPackage.name}</p>
-                      <p className="text-gray-500 text-sm">Zynk Package</p>
+                      <p className="text-gray-500 text-sm">Package</p>
                     </div>
                   </div>
 
@@ -740,7 +739,7 @@ export default function Checkout() {
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Base Amount</span>
-                      <span className="text-white font-medium">{selectedPackage.zynk_amount.toLocaleString()} Z</span>
+                      <span className="text-white font-medium">{formatCurrency(selectedPackage.zynk_amount)}</span>
                     </div>
                     {bonusAmount > 0 && (
                       <div className="flex justify-between text-sm">
@@ -748,13 +747,13 @@ export default function Checkout() {
                           <FiGift className="text-green-400" />
                           Bonus ({selectedPackage.bonus_percent}%)
                         </span>
-                        <span className="text-green-400 font-medium">+{bonusAmount.toLocaleString()} Z</span>
+                        <span className="text-green-400 font-medium">+{formatCurrency(bonusAmount)}</span>
                       </div>
                     )}
                     <div className="h-px bg-dark-600" />
                     <div className="flex justify-between">
                       <span className="text-gray-300 font-medium">You'll Receive</span>
-                      <span className="text-xl font-bold text-accent">{totalZynk.toLocaleString()} Z</span>
+                      <span className="text-xl font-bold text-accent">{formatCurrency(totalZynk)}</span>
                     </div>
                   </div>
 
@@ -763,7 +762,10 @@ export default function Checkout() {
                     <div className="flex justify-between items-center">
                       <span className="text-gray-300">Total Price</span>
                       <div className="text-right">
-                        <p className="text-xl font-bold text-white">{formatPaymentAmount(selectedPackage.zynk_amount, selectedMethod)}</p>
+                        <p className="text-xl font-bold text-white">{formatCurrency(selectedPackage.zynk_amount)}</p>
+                        {selectedMethod && (
+                          <p className="text-xs text-gray-500 mt-1">Pay {formatPaymentAmount(selectedPackage.zynk_amount, selectedMethod)}</p>
+                        )}
                       </div>
                     </div>
                   </div>

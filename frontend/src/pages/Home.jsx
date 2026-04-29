@@ -119,10 +119,19 @@ const PRIZE_TIERS = [
 function Home() {
   usePageTitle('Home');
   const { user } = useStore();
-  const { selectedCurrency } = useCurrency();
+  const { selectedCurrency, formatCurrency } = useCurrency();
 
   // Helper to format amounts using utility function
   const fmtAmount = (amount) => formatAmount(amount, selectedCurrency);
+
+  // Backend embeds amounts as "${n}Z" literals in activity.description.
+  // Swap the Z-suffixed amount for the user's selected currency, leaving the
+  // rest of the sentence intact.
+  const formatActivityDescription = (activity) => {
+    if (!activity?.description) return '';
+    if (!activity?.amount) return activity.description;
+    return activity.description.replace(`${activity.amount}Z`, formatCurrency(activity.amount));
+  };
   const [numbers, setNumbers] = useState([]);
   const [draw, setDraw] = useState(null);
   const [search, setSearch] = useState("");
@@ -447,7 +456,7 @@ function Home() {
     try {
       const response = await cashOutTicket(ticketId);
       if (response.data.success) {
-        toast.success(`Cashed out ${number} for ${response.data.data.payout} Z!`);
+        toast.success(`Cashed out ${number} for ${fmtAmount(response.data.data.payout)}!`);
         // Update local state
         setMyTickets(prev => ({
           ...prev,
@@ -696,7 +705,7 @@ function Home() {
         ...prev,
         [data.number]: { ...prev[data.number], status: 'cashed_out', canCashOut: false }
       }));
-      toast.success(`Cashed out ${data.number} for ${data.payout} Z!`);
+      toast.success(`Cashed out ${data.number} for ${fmtAmount(data.payout)}!`);
     });
 
     // Listen for prize pool updates
@@ -1123,7 +1132,7 @@ function Home() {
                         {activity.username}
                       </span>
                       <span className="text-accent-500 text-[10px] whitespace-nowrap">
-                        {activity.description}
+                        {formatActivityDescription(activity)}
                       </span>
                     </div>
                     </div>
@@ -1205,13 +1214,7 @@ function Home() {
             </div>
             <div>
               <p className="text-gray-400 text-sm">Current Prize Pool</p>
-              <p className="text-3xl font-[900] text-gold-light">{prizePool.total.toLocaleString()} Z</p>
-              {/* Show in user's local currency */}
-              {selectedCurrency.code !== 'ZYNK' && (
-                <p className="text-gray-400 text-sm">
-                  {fmtAmount(prizePool.total)}
-                </p>
-              )}
+              <p className="text-3xl font-[900] text-gold-light">{fmtAmount(prizePool.total)}</p>
             </div>
           </div>
 
@@ -1228,7 +1231,7 @@ function Home() {
                 <FiDollarSign className="w-4 h-4 text-emerald-light" />
                 <span className="text-gray-500 text-xs">Avg Prize</span>
               </div>
-              <p className="text-white font-bold text-lg">{Math.round(prizePool.total / 10)} Z</p>
+              <p className="text-white font-bold text-lg">{fmtAmount(Math.round(prizePool.total / 10))}</p>
             </div>
           </div>
 
@@ -1254,23 +1257,23 @@ function Home() {
         </div>
 
         {/* Recent Winners */}
-        <div className="lg:col-span-2 rounded-xl bg-gradient-to-br from-dark-700 to-dark-800 border border-dark-600 p-5 overflow-hidden relative">
+        <div className="lg:col-span-2 rounded-xl bg-gradient-to-br from-dark-700 to-dark-800 border border-dark-600 p-3 sm:p-5 overflow-hidden relative">
           <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent/30 to-accent/10 border border-accent/20 flex items-center justify-center">
-                <GiPodium className="w-5 h-5 text-accent" />
+          <div className="relative flex items-center justify-between gap-2 mb-4 sm:mb-5">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-accent/30 to-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+                <GiPodium className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
               </div>
-              <div>
-                <h3 className="text-white font-bold text-base">Recent Winners</h3>
-                <p className="text-gray-500 text-xs">Live payouts · updated daily</p>
+              <div className="min-w-0">
+                <h3 className="text-white font-bold text-sm sm:text-base truncate">Recent Winners</h3>
+                <p className="text-gray-500 text-[11px] sm:text-xs truncate">Live payouts · updated daily</p>
               </div>
             </div>
             <Link
               to="/winners"
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 border border-accent/30 text-accent text-xs font-semibold transition-colors"
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 border border-accent/30 text-accent text-xs font-semibold transition-colors shrink-0"
             >
-              View All <FiChevronRight className="w-4 h-4" />
+              <span className="hidden xs:inline">View All</span><span className="xs:hidden">All</span> <FiChevronRight className="w-4 h-4" />
             </Link>
           </div>
 
@@ -1293,27 +1296,27 @@ function Home() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.06 }}
-                    className="group flex items-center gap-3 p-3 rounded-xl bg-dark-800/60 hover:bg-dark-800 border border-dark-600/50 hover:border-accent/30 transition-all"
+                    className="group flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-xl bg-dark-800/60 hover:bg-dark-800 border border-dark-600/50 hover:border-accent/30 transition-all"
                   >
-                    <div className={`w-11 h-11 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0`}>
+                    <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-lg shrink-0`}>
                       {initial}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-semibold text-sm truncate">{winner.username}</span>
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <span className="text-white font-semibold text-xs sm:text-sm truncate">{winner.username}</span>
                         {winner.number && (
                           <span className={`px-1.5 py-0.5 rounded bg-gradient-to-r ${gradient} text-white text-[9px] font-bold uppercase tracking-wide shrink-0`}>
                             {winner.number}
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500 truncate">{winner.time}</div>
+                      <div className="text-[11px] sm:text-xs text-gray-500 truncate">{winner.time}</div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-bold text-emerald-400 text-base leading-tight">
+                      <p className="font-bold text-emerald-400 text-sm sm:text-base leading-tight whitespace-nowrap">
                         ₹{Number(winner.prize).toLocaleString('en-IN')}
                       </p>
-                      <p className="text-[10px] text-gray-600 uppercase tracking-wide">received</p>
+                      <p className="text-[9px] sm:text-[10px] text-gray-600 uppercase tracking-wide">received</p>
                     </div>
                   </motion.div>
                 );

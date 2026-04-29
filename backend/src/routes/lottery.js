@@ -848,18 +848,33 @@ router.get('/winners', async (req, res) => {
 // Get draw history
 router.get('/history', async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const offset = (page - 1) * limit;
+
+    const [[{ total }]] = await db.pool.query(
+      `SELECT COUNT(*) as total FROM daily_draws WHERE status = 'completed'`
+    );
 
     const [draws] = await db.pool.query(
       `SELECT id, period_id, draw_date, winning_number, total_pool, status, completed_at
        FROM daily_draws
        WHERE status = 'completed'
        ORDER BY created_at DESC
-       LIMIT ?`,
-      [parseInt(limit)]
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
 
-    res.json({ success: true, data: draws });
+    res.json({
+      success: true,
+      data: draws,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit))
+      }
+    });
   } catch (error) {
     console.error('Get history error:', error);
     res.status(500).json({ success: false, message: 'Failed to get history' });

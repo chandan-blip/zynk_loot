@@ -5,6 +5,7 @@ import { GiTwoCoins } from 'react-icons/gi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import { playCoinFlip, getGameStats } from '../../services/api';
 import { sounds } from '../../utils/sounds';
 import GameResultOverlay from '../../components/GameResultOverlay';
@@ -21,6 +22,7 @@ function CoinFlip() {
   usePageTitle('Coin Flip');
 
   const { user, checkAuth } = useStore();
+  const { formatCurrency } = useCurrency();
   const [amount, setAmount] = useState('');
   const [prediction, setPrediction] = useState(null);
   const [flipping, setFlipping] = useState(false);
@@ -118,7 +120,7 @@ function CoinFlip() {
               <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
                 <p className="text-xs text-gray-500">Net Profit</p>
                 <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-accent' : 'text-red-400'}`}>
-                  {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit} Z
+                  {parseFloat(netProfit) >= 0 ? '+' : ''}{formatCurrency(netProfit)}
                 </p>
               </div>
             </div>
@@ -138,7 +140,7 @@ function CoinFlip() {
                   </div>
                   <div>
                     <p className="text-sm text-white">
-                      Bet <span className="font-semibold">{parseFloat(bet.bet_amount)} Z</span> on{' '}
+                      Bet <span className="font-semibold">{formatCurrency(parseFloat(bet.bet_amount))}</span> on{' '}
                       <span className="capitalize">{(typeof bet.details === 'string' ? JSON.parse(bet.details) : bet.details)?.prediction}</span>
                     </p>
                     <p className="text-xs text-gray-500">
@@ -147,7 +149,7 @@ function CoinFlip() {
                   </div>
                 </div>
                 <span className={`text-sm font-bold ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                  {bet.is_win ? `+${parseFloat(bet.win_amount)}` : `-${parseFloat(bet.bet_amount)}`} Z
+                  {bet.is_win ? `+${formatCurrency(parseFloat(bet.win_amount))}` : `-${formatCurrency(parseFloat(bet.bet_amount))}`}
                 </span>
               </div>
             )}
@@ -221,7 +223,7 @@ function CoinFlip() {
             </div>
 
             <div className="mb-4 hidden md:block">
-              <label className="text-sm text-gray-400 mb-2 block">Bet Amount (Z)</label>
+              <label className="text-sm text-gray-400 mb-2 block">Bet Amount</label>
               <input
                 type="number"
                 value={amount}
@@ -238,7 +240,7 @@ function CoinFlip() {
                     disabled={flipping}
                     className="px-3 py-1.5 rounded-lg bg-dark-700/60 border border-white/10 text-gray-400 text-xs hover:text-white hover:border-white/20 transition-colors"
                   >
-                    {qa} Z
+                    {formatCurrency(qa)}
                   </button>
                 ))}
                 <button
@@ -252,7 +254,7 @@ function CoinFlip() {
             </div>
 
             <div className="text-center text-sm text-gray-400">
-              Potential win: <span className="text-accent font-bold">{((parseFloat(amount) || 0) * 1.95).toFixed(2)} Z</span>
+              Potential win: <span className="text-accent font-bold">{formatCurrency((parseFloat(amount) || 0) * 1.95)}</span>
             </div>
 
             <div className="fixed bottom-0 left-0 right-0 z-30 p-3 pb-4 bg-dark-500/95 backdrop-blur-sm border-t border-white/5 md:static md:p-0 md:bg-transparent md:backdrop-blur-none md:border-0">
