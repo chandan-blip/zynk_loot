@@ -42,6 +42,9 @@ import Checkout from './pages/Checkout';
 import Promote from './pages/Promote';
 import Invest from './pages/Invest';
 import Games from './pages/games/Games';
+import Lottery from './pages/games/Lottery';
+import MutkaKing from './pages/games/MutkaKing';
+import UnoKing from './pages/games/UnoKing';
 import CoinFlip from './pages/games/CoinFlip';
 import DiceRoll from './pages/games/DiceRoll';
 import LuckySpin from './pages/games/LuckySpin';
@@ -56,6 +59,7 @@ import AdminInvestments from './pages/admin/AdminInvestments';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminWebsites from './pages/admin/AdminWebsites';
+import AdminBanners from './pages/admin/AdminBanners';
 import useTracking from './hooks/useTracking';
 
 function PublicRoute({ children }) {
@@ -194,6 +198,7 @@ function App() {
           <Route path="settings" element={<AdminSettings />} />
           <Route path="social-links" element={<AdminSocialLinks />} />
           <Route path="websites" element={<AdminWebsites />} />
+          <Route path="banners" element={<AdminBanners />} />
         </Route>
 
         {/* Main App Routes */}
@@ -207,6 +212,9 @@ function App() {
           <Route path="invest" element={<Invest />} />
           <Route path="notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="games" element={<Games />} />
+          <Route path="games/lottery" element={<Lottery />} />
+          <Route path="games/mutka-king" element={<MutkaKing />} />
+          <Route path="games/uno-king" element={<UnoKing />} />
           <Route path="games/coin-flip" element={<CoinFlip />} />
           <Route path="games/dice-roll" element={<DiceRoll />} />
           <Route path="games/lucky-spin" element={<LuckySpin />} />

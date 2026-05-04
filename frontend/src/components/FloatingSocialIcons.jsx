@@ -47,8 +47,10 @@ export default function FloatingSocialIcons() {
   if (!links.length) return null;
 
   return (
-    <>
-      <div ref={constraintsRef} className="fixed inset-0 pointer-events-none z-40" />
+    <div
+      ref={constraintsRef}
+      className="fixed top-16 bottom-24 lg:bottom-4 left-0 right-0 max-w-[1400px] mx-auto pointer-events-none z-40"
+    >
       <motion.div
         drag
         dragConstraints={constraintsRef}
@@ -62,7 +64,7 @@ export default function FloatingSocialIcons() {
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
         }}
         whileDrag={{ scale: 1.05 }}
-        className="fixed bottom-24 right-4 z-40 flex flex-col gap-2 cursor-grab active:cursor-grabbing touch-none"
+        className="absolute bottom-2 right-4 flex flex-col gap-2 cursor-grab active:cursor-grabbing touch-none pointer-events-auto"
       >
         {links.map((link) => {
           const meta = ICON_MAP[link.icon] || ICON_MAP.website;
@@ -91,6 +93,6 @@ export default function FloatingSocialIcons() {
           );
         })}
       </motion.div>
-    </>
+    </div>
   );
 }

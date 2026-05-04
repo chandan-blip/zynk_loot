@@ -253,6 +253,8 @@ export const playIceField = (amount, difficulty, targetRows) => api.post('/games
 export const playArrowRoulette = (amount) => api.post('/games/arrow-roulette', { amount });
 export const playEggHatch = (amount) => api.post('/games/egg-hatch', { amount });
 export const playFuse = (amount, cashoutMultiplier) => api.post('/games/fuse', { amount, cashoutMultiplier });
+export const playMutkaKing = (bets) => api.post('/games/mutka-king', { bets });
+export const playUnoKing = (bets) => api.post('/games/uno-king', { bets });
 export const getGameHistory = (page = 1, limit = 20, game_type = '') =>
   api.get(`/games/history?page=${page}&limit=${limit}${game_type ? `&game_type=${game_type}` : ''}`);
 export const getGameStats = () => api.get('/games/stats');
@@ -290,6 +292,13 @@ export const adminGetSocialLinks = () => api.get('/admin/social-links');
 export const adminCreateSocialLink = (data) => api.post('/admin/social-links', data);
 export const adminUpdateSocialLink = (id, data) => api.put(`/admin/social-links/${id}`, data);
 export const adminDeleteSocialLink = (id) => api.delete(`/admin/social-links/${id}`);
+
+// Banners (home page carousel)
+export const getBanners = () => api.get('/lottery/banners');
+export const adminGetBanners = () => api.get('/admin/banners');
+export const adminCreateBanner = (data) => api.post('/admin/banners', data);
+export const adminUpdateBanner = (id, data) => api.put(`/admin/banners/${id}`, data);
+export const adminDeleteBanner = (id) => api.delete(`/admin/banners/${id}`);
 
 // Websites (landing pages)
 export const adminGetWebsites = () => api.get('/admin/websites');

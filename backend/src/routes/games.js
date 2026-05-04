@@ -298,6 +298,64 @@ router.post('/fuse', async (req, res) => {
   }
 });
 
+// Play mutka king (52-card multi-slip betting)
+router.post('/mutka-king', async (req, res) => {
+  try {
+    const { bets } = req.body;
+
+    if (!Array.isArray(bets) || bets.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one bet is required' });
+    }
+
+    const gameService = req.app.get('gameService');
+    const result = await gameService.playMutkaKing(req.user.id, bets);
+
+    res.json({
+      success: true,
+      message: result.isWin ? `You won ${result.totalWin} Z!` : 'No matches this round.',
+      data: {
+        ...result,
+        game_type: 'mutka_king',
+        bet_amount: result.totalWager,
+        win_amount: result.totalWin,
+        is_win: result.isWin,
+      },
+    });
+  } catch (error) {
+    console.error('Mutka King error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Play UNO king (54-card UNO multi-slip betting)
+router.post('/uno-king', async (req, res) => {
+  try {
+    const { bets } = req.body;
+
+    if (!Array.isArray(bets) || bets.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one bet is required' });
+    }
+
+    const gameService = req.app.get('gameService');
+    const result = await gameService.playUnoKing(req.user.id, bets);
+
+    res.json({
+      success: true,
+      message: result.isWin ? `You won ${result.totalWin} Z!` : 'No matches this round.',
+      data: {
+        ...result,
+        game_type: 'uno_king',
+        bet_amount: result.totalWager,
+        win_amount: result.totalWin,
+        is_win: result.isWin,
+      },
+    });
+  } catch (error) {
+    console.error('UNO King error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 // Get game history
 router.get('/history', async (req, res) => {
   try {

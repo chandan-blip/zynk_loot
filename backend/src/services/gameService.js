@@ -1,7 +1,80 @@
 const db = require('../config/database');
+const crypto = require('crypto');
 
 // House takes 10% from winnings — players receive 90% of gross win amount
 const WIN_PAYOUT_RATIO = 0.9;
+
+// Mutka King: 4 cards drawn face-down from a 52-card deck. Players can place
+// several kinds of side bets per round.
+//
+//   cards  — pick 1-4 specific cards; all picked must appear in the dealt 4.
+//   rank   — pick any rank A,2-10,J,Q,K (rank index 0-12); any dealt card matches.
+//   suit   — pick a suit 0-3; any dealt card matches.
+//   color  — pick 'red' or 'black'; any dealt card matches that color.
+//
+// Winnings are paid at WIN_PAYOUT_RATIO (90 %) — house keeps a 10 % cut on
+// every Mutka King win, matching the rest of the instant-game ledger.
+const MUTKA_KING_MULTIPLIERS = {
+  cards: { 1: 2, 2: 9, 3: 100, 4: 500 },
+  rank: 3,
+  suit: 1.3,
+  color: 1.1,
+};
+const MUTKA_KING_MAX_BETS = 20;
+const MUTKA_KING_MIN_BET = 1;
+const MUTKA_KING_MAX_BET = 10000;
+
+// Suit index: 0=♣ clubs, 1=♦ diamonds, 2=♥ hearts, 3=♠ spades.
+// Diamonds & hearts are red.
+const isRedCard = (id) => {
+  const suit = Math.floor(id / 13);
+  return suit === 1 || suit === 2;
+};
+const cardRank = (id) => id % 13;   // 0=A, 1=2, …, 9=10, 10=J, 11=Q, 12=K
+const cardSuit = (id) => Math.floor(id / 13);
+
+// UNO King: 4 cards drawn face-down from a 54-card UNO deck.
+//   ids 0-51 = colored cards (4 colors × 13 ranks each)
+//     color = floor(id/13)  0=Red, 1=Yellow, 2=Green, 3=Blue
+//     rank  = id % 13       0..9 = numbers,  10=Skip, 11=Reverse, 12=Draw Two
+//   id 52 = Wild,  id 53 = Wild Draw Four
+//
+// Bet kinds:
+//   cards   — pick 1-4 ids (0-53); all picked must appear in dealt 4
+//   color   — 'red'|'yellow'|'green'|'blue'; any dealt card has that color
+//   number  — 0..9; any dealt card has that rank-number
+//   action  — 'skip'|'reverse'|'draw_two'; any dealt card is that action
+//   wild    — any dealt card is a wild (no target)
+//
+// Winnings paid at WIN_PAYOUT_RATIO (90%) — 10% house cut on every win.
+const UNO_KING_MULTIPLIERS = {
+  cards: { 1: 2, 2: 9, 3: 100, 4: 500 },
+  color:  1.3,
+  number: 3,
+  action: 3,
+  wild:   6,
+};
+const UNO_KING_MAX_BETS = 20;
+const UNO_KING_MIN_BET = 1;
+const UNO_KING_MAX_BET = 10000;
+const UNO_DECK_SIZE = 54;
+
+const UNO_COLOR_INDEX = { red: 0, yellow: 1, green: 2, blue: 3 };
+const UNO_ACTION_RANK = { skip: 10, reverse: 11, draw_two: 12 };
+
+const isUnoWild  = (id) => id >= 52;
+const unoColorOf = (id) => (isUnoWild(id) ? null : Math.floor(id / 13));
+const unoRankOf  = (id) => (isUnoWild(id) ? null : id % 13);
+
+// Cryptographically secure sample without replacement of `count` integers in [0, range).
+function secureSample(range, count) {
+  if (count > range) throw new Error('Sample size exceeds range');
+  const picked = new Set();
+  while (picked.size < count) {
+    picked.add(crypto.randomInt(0, range));
+  }
+  return [...picked];
+}
 
 class GameService {
   constructor(io) {
@@ -848,6 +921,431 @@ class GameService {
         multiplier: cashoutMultiplier,
         boomPoint,
         newBalance: finalBalance
+      };
+
+      if (this.io) {
+        this.io.to(`user:${userId}`).emit('balance:update', { balance: finalBalance });
+      }
+
+      return responseData;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async playMutkaKing(userId, bets) {
+    // Validate bets shape & content before opening a DB transaction.
+    if (!Array.isArray(bets) || bets.length === 0) {
+      throw new Error('At least one bet is required');
+    }
+    if (bets.length > MUTKA_KING_MAX_BETS) {
+      throw new Error(`Maximum ${MUTKA_KING_MAX_BETS} bets per round`);
+    }
+
+    const cleanBets = bets.map((bet, idx) => {
+      if (!bet || typeof bet !== 'object') {
+        throw new Error(`Bet #${idx + 1} is malformed`);
+      }
+      const amount = Math.floor(parseFloat(bet.amount) * 100) / 100;
+      if (!Number.isFinite(amount) || amount < MUTKA_KING_MIN_BET) {
+        throw new Error(`Bet #${idx + 1}: minimum bet is ${MUTKA_KING_MIN_BET} Z`);
+      }
+      if (amount > MUTKA_KING_MAX_BET) {
+        throw new Error(`Bet #${idx + 1}: maximum bet is ${MUTKA_KING_MAX_BET} Z`);
+      }
+
+      const kind = bet.kind || 'cards';
+
+      if (kind === 'cards') {
+        if (!Array.isArray(bet.cards) || bet.cards.length < 1 || bet.cards.length > 4) {
+          throw new Error(`Bet #${idx + 1}: pick 1-4 cards`);
+        }
+        const cards = bet.cards.map((c) => {
+          const n = parseInt(c, 10);
+          if (!Number.isInteger(n) || n < 0 || n > 51) {
+            throw new Error(`Bet #${idx + 1}: invalid card`);
+          }
+          return n;
+        });
+        if (new Set(cards).size !== cards.length) {
+          throw new Error(`Bet #${idx + 1}: duplicate cards`);
+        }
+        const multiplier = MUTKA_KING_MULTIPLIERS.cards[cards.length];
+        if (!multiplier) throw new Error(`Bet #${idx + 1}: unsupported pick count`);
+        return { kind, cards, amount, multiplier };
+      }
+
+      if (kind === 'rank') {
+        const rank = parseInt(bet.rank, 10);
+        if (!Number.isInteger(rank) || rank < 0 || rank > 12) {
+          throw new Error(`Bet #${idx + 1}: invalid rank`);
+        }
+        return { kind, rank, amount, multiplier: MUTKA_KING_MULTIPLIERS.rank };
+      }
+
+      if (kind === 'suit') {
+        const suit = parseInt(bet.suit, 10);
+        if (!Number.isInteger(suit) || suit < 0 || suit > 3) {
+          throw new Error(`Bet #${idx + 1}: invalid suit`);
+        }
+        return { kind, suit, amount, multiplier: MUTKA_KING_MULTIPLIERS.suit };
+      }
+
+      if (kind === 'color') {
+        if (bet.color !== 'red' && bet.color !== 'black') {
+          throw new Error(`Bet #${idx + 1}: color must be red or black`);
+        }
+        return { kind, color: bet.color, amount, multiplier: MUTKA_KING_MULTIPLIERS.color };
+      }
+
+      throw new Error(`Bet #${idx + 1}: unknown bet kind "${kind}"`);
+    });
+
+    const totalWager = Math.floor(cleanBets.reduce((s, b) => s + b.amount, 0) * 100) / 100;
+    if (totalWager <= 0) throw new Error('Invalid total wager');
+
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [users] = await connection.execute(
+        'SELECT id, balance FROM users WHERE id = ? FOR UPDATE',
+        [userId]
+      );
+      if (users.length === 0) throw new Error('User not found');
+
+      const currentBalance = parseFloat(users[0].balance);
+      if (currentBalance < totalWager) throw new Error('Insufficient balance');
+
+      // Server-side draw — cryptographically secure, never client-influenced.
+      const revealedCards = secureSample(52, 4);
+      const revealedSet = new Set(revealedCards);
+      const revealedRanks = revealedCards.map(cardRank);
+      const revealedSuits = revealedCards.map(cardSuit);
+      const revealedRedCount = revealedCards.filter(isRedCard).length;
+
+      // Evaluate every bet
+      const betResults = cleanBets.map((bet) => {
+        let isWin = false;
+        if (bet.kind === 'cards') {
+          isWin = bet.cards.every((c) => revealedSet.has(c));
+        } else if (bet.kind === 'rank') {
+          isWin = revealedRanks.includes(bet.rank);
+        } else if (bet.kind === 'suit') {
+          isWin = revealedSuits.includes(bet.suit);
+        } else if (bet.kind === 'color') {
+          // Any dealt card of the chosen color (single match).
+          isWin = bet.color === 'red'
+            ? revealedRedCount >= 1
+            : revealedRedCount < 4;
+        }
+        const winAmount = isWin
+          ? Math.floor(bet.amount * bet.multiplier * WIN_PAYOUT_RATIO * 100) / 100
+          : 0;
+        return { ...bet, isWin, winAmount };
+      });
+
+      const totalWin = Math.floor(
+        betResults.reduce((s, b) => s + b.winAmount, 0) * 100
+      ) / 100;
+
+      const balanceAfterBet = Math.floor((currentBalance - totalWager) * 100) / 100;
+      const finalBalance = Math.floor((balanceAfterBet + totalWin) * 100) / 100;
+
+      await connection.execute('UPDATE users SET balance = ? WHERE id = ?', [
+        finalBalance,
+        userId,
+      ]);
+
+      const overallWin = totalWin > 0;
+      // Effective single-row multiplier: total return / total wager (for stats)
+      const effectiveMultiplier = totalWager > 0
+        ? Math.floor((totalWin / totalWager) * 100) / 100
+        : 0;
+      const resultLabel = revealedCards.join(',');
+
+      const detailsBets = betResults.map((b) => {
+        const base = {
+          kind: b.kind,
+          amount: b.amount,
+          multiplier: b.multiplier,
+          isWin: b.isWin,
+          winAmount: b.winAmount,
+        };
+        if (b.kind === 'cards') return { ...base, cards: b.cards };
+        if (b.kind === 'rank')  return { ...base, rank: b.rank };
+        if (b.kind === 'suit')  return { ...base, suit: b.suit };
+        if (b.kind === 'color') return { ...base, color: b.color };
+        return base;
+      });
+
+      const [betResult] = await connection.execute(
+        `INSERT INTO game_bets (user_id, game_type, bet_amount, win_amount, multiplier, result, is_win, details)
+         VALUES (?, 'mutka_king', ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          totalWager,
+          totalWin,
+          effectiveMultiplier,
+          resultLabel,
+          overallWin,
+          JSON.stringify({ revealedCards, bets: detailsBets }),
+        ]
+      );
+
+      await connection.execute(
+        `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
+         VALUES (?, 'game_bet', ?, ?, ?, 'game_bet', ?, ?)`,
+        [
+          userId,
+          totalWager,
+          currentBalance,
+          balanceAfterBet,
+          betResult.insertId,
+          `Mutka King bet: ${totalWager} Z across ${betResults.length} slip(s)`,
+        ]
+      );
+
+      if (overallWin) {
+        await connection.execute(
+          `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
+           VALUES (?, 'game_win', ?, ?, ?, 'game_bet', ?, ?)`,
+          [
+            userId,
+            totalWin,
+            balanceAfterBet,
+            finalBalance,
+            betResult.insertId,
+            `Mutka King win: ${totalWin} Z`,
+          ]
+        );
+      }
+
+      await connection.commit();
+
+      const responseData = {
+        betId: betResult.insertId,
+        revealedCards,
+        bets: detailsBets,
+        totalWager,
+        totalWin,
+        isWin: overallWin,
+        newBalance: finalBalance,
+      };
+
+      if (this.io) {
+        this.io.to(`user:${userId}`).emit('balance:update', { balance: finalBalance });
+      }
+
+      return responseData;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async playUnoKing(userId, bets) {
+    if (!Array.isArray(bets) || bets.length === 0) {
+      throw new Error('At least one bet is required');
+    }
+    if (bets.length > UNO_KING_MAX_BETS) {
+      throw new Error(`Maximum ${UNO_KING_MAX_BETS} bets per round`);
+    }
+
+    const cleanBets = bets.map((bet, idx) => {
+      if (!bet || typeof bet !== 'object') {
+        throw new Error(`Bet #${idx + 1} is malformed`);
+      }
+      const amount = Math.floor(parseFloat(bet.amount) * 100) / 100;
+      if (!Number.isFinite(amount) || amount < UNO_KING_MIN_BET) {
+        throw new Error(`Bet #${idx + 1}: minimum bet is ${UNO_KING_MIN_BET} Z`);
+      }
+      if (amount > UNO_KING_MAX_BET) {
+        throw new Error(`Bet #${idx + 1}: maximum bet is ${UNO_KING_MAX_BET} Z`);
+      }
+
+      const kind = bet.kind || 'cards';
+
+      if (kind === 'cards') {
+        if (!Array.isArray(bet.cards) || bet.cards.length < 1 || bet.cards.length > 4) {
+          throw new Error(`Bet #${idx + 1}: pick 1-4 cards`);
+        }
+        const cards = bet.cards.map((c) => {
+          const n = parseInt(c, 10);
+          if (!Number.isInteger(n) || n < 0 || n >= UNO_DECK_SIZE) {
+            throw new Error(`Bet #${idx + 1}: invalid card`);
+          }
+          return n;
+        });
+        if (new Set(cards).size !== cards.length) {
+          throw new Error(`Bet #${idx + 1}: duplicate cards`);
+        }
+        const multiplier = UNO_KING_MULTIPLIERS.cards[cards.length];
+        if (!multiplier) throw new Error(`Bet #${idx + 1}: unsupported pick count`);
+        return { kind, cards, amount, multiplier };
+      }
+
+      if (kind === 'color') {
+        if (!Object.prototype.hasOwnProperty.call(UNO_COLOR_INDEX, bet.color)) {
+          throw new Error(`Bet #${idx + 1}: color must be red, yellow, green, or blue`);
+        }
+        return { kind, color: bet.color, amount, multiplier: UNO_KING_MULTIPLIERS.color };
+      }
+
+      if (kind === 'number') {
+        const number = parseInt(bet.number, 10);
+        if (!Number.isInteger(number) || number < 0 || number > 9) {
+          throw new Error(`Bet #${idx + 1}: number must be 0-9`);
+        }
+        return { kind, number, amount, multiplier: UNO_KING_MULTIPLIERS.number };
+      }
+
+      if (kind === 'action') {
+        if (!Object.prototype.hasOwnProperty.call(UNO_ACTION_RANK, bet.action)) {
+          throw new Error(`Bet #${idx + 1}: action must be skip, reverse, or draw_two`);
+        }
+        return { kind, action: bet.action, amount, multiplier: UNO_KING_MULTIPLIERS.action };
+      }
+
+      if (kind === 'wild') {
+        return { kind, amount, multiplier: UNO_KING_MULTIPLIERS.wild };
+      }
+
+      throw new Error(`Bet #${idx + 1}: unknown bet kind "${kind}"`);
+    });
+
+    const totalWager = Math.floor(cleanBets.reduce((s, b) => s + b.amount, 0) * 100) / 100;
+    if (totalWager <= 0) throw new Error('Invalid total wager');
+
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [users] = await connection.execute(
+        'SELECT id, balance FROM users WHERE id = ? FOR UPDATE',
+        [userId]
+      );
+      if (users.length === 0) throw new Error('User not found');
+
+      const currentBalance = parseFloat(users[0].balance);
+      if (currentBalance < totalWager) throw new Error('Insufficient balance');
+
+      // Server-side draw — cryptographically secure, never client-influenced.
+      const revealedCards = secureSample(UNO_DECK_SIZE, 4);
+      const revealedSet = new Set(revealedCards);
+      const revealedColors = revealedCards.map(unoColorOf); // null for wilds
+      const revealedRanks = revealedCards.map(unoRankOf);   // null for wilds
+      const hasAnyWild = revealedCards.some(isUnoWild);
+
+      const betResults = cleanBets.map((bet) => {
+        let isWin = false;
+        if (bet.kind === 'cards') {
+          isWin = bet.cards.every((c) => revealedSet.has(c));
+        } else if (bet.kind === 'color') {
+          isWin = revealedColors.includes(UNO_COLOR_INDEX[bet.color]);
+        } else if (bet.kind === 'number') {
+          isWin = revealedRanks.includes(bet.number);
+        } else if (bet.kind === 'action') {
+          isWin = revealedRanks.includes(UNO_ACTION_RANK[bet.action]);
+        } else if (bet.kind === 'wild') {
+          isWin = hasAnyWild;
+        }
+        const winAmount = isWin
+          ? Math.floor(bet.amount * bet.multiplier * WIN_PAYOUT_RATIO * 100) / 100
+          : 0;
+        return { ...bet, isWin, winAmount };
+      });
+
+      const totalWin = Math.floor(
+        betResults.reduce((s, b) => s + b.winAmount, 0) * 100
+      ) / 100;
+
+      const balanceAfterBet = Math.floor((currentBalance - totalWager) * 100) / 100;
+      const finalBalance = Math.floor((balanceAfterBet + totalWin) * 100) / 100;
+
+      await connection.execute('UPDATE users SET balance = ? WHERE id = ?', [
+        finalBalance,
+        userId,
+      ]);
+
+      const overallWin = totalWin > 0;
+      const effectiveMultiplier = totalWager > 0
+        ? Math.floor((totalWin / totalWager) * 100) / 100
+        : 0;
+      const resultLabel = revealedCards.join(',');
+
+      const detailsBets = betResults.map((b) => {
+        const base = {
+          kind: b.kind,
+          amount: b.amount,
+          multiplier: b.multiplier,
+          isWin: b.isWin,
+          winAmount: b.winAmount,
+        };
+        if (b.kind === 'cards')  return { ...base, cards: b.cards };
+        if (b.kind === 'color')  return { ...base, color: b.color };
+        if (b.kind === 'number') return { ...base, number: b.number };
+        if (b.kind === 'action') return { ...base, action: b.action };
+        return base; // wild has no extra target
+      });
+
+      const [betResult] = await connection.execute(
+        `INSERT INTO game_bets (user_id, game_type, bet_amount, win_amount, multiplier, result, is_win, details)
+         VALUES (?, 'uno_king', ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          totalWager,
+          totalWin,
+          effectiveMultiplier,
+          resultLabel,
+          overallWin,
+          JSON.stringify({ revealedCards, bets: detailsBets }),
+        ]
+      );
+
+      await connection.execute(
+        `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
+         VALUES (?, 'game_bet', ?, ?, ?, 'game_bet', ?, ?)`,
+        [
+          userId,
+          totalWager,
+          currentBalance,
+          balanceAfterBet,
+          betResult.insertId,
+          `UNO King bet: ${totalWager} Z across ${betResults.length} slip(s)`,
+        ]
+      );
+
+      if (overallWin) {
+        await connection.execute(
+          `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
+           VALUES (?, 'game_win', ?, ?, ?, 'game_bet', ?, ?)`,
+          [
+            userId,
+            totalWin,
+            balanceAfterBet,
+            finalBalance,
+            betResult.insertId,
+            `UNO King win: ${totalWin} Z`,
+          ]
+        );
+      }
+
+      await connection.commit();
+
+      const responseData = {
+        betId: betResult.insertId,
+        revealedCards,
+        bets: detailsBets,
+        totalWager,
+        totalWin,
+        isWin: overallWin,
+        newBalance: finalBalance,
       };
 
       if (this.io) {

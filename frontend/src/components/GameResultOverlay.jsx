@@ -90,15 +90,38 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4000 })
               initial={{ rotateY: 0 }}
               animate={{ rotateY: [0, 360] }}
               transition={{ duration: 0.6, ease: 'easeOut' }}
-              className={`w-32 h-32 mx-auto rounded-full flex items-center justify-center border-4 mb-6 ${
+              className={`w-32 h-32 mx-auto rounded-full flex items-center justify-center border-4 mb-6 px-3 py-3 overflow-hidden ${
                 isWin
                   ? 'bg-gradient-to-br from-accent/40 to-green-500/40 border-accent/60 shadow-[0_0_60px_rgba(0,212,170,0.4)]'
                   : 'bg-gradient-to-br from-red-500/40 to-red-700/40 border-red-500/60 shadow-[0_0_60px_rgba(239,68,68,0.4)]'
               }`}
             >
-              <span className={`uppercase text-2xl font-black ${isWin ? 'text-accent' : 'text-red-400'}`}>
-                {result.result}
-              </span>
+              {(() => {
+                const str = String(result.result ?? '').trim();
+                const len = str.length;
+                // Length-aware sizing so a single digit renders huge while a
+                // multi-segment result (e.g. "A♠ K♥ Q♦ J♣") shrinks and wraps.
+                const fontSize =
+                  len <= 2  ? 40 :
+                  len <= 5  ? 30 :
+                  len <= 8  ? 24 :
+                  len <= 12 ? 20 :
+                  len <= 18 ? 17 :
+                              14;
+                return (
+                  <span
+                    className={`uppercase font-black text-center w-full ${isWin ? 'text-accent' : 'text-red-400'}`}
+                    style={{
+                      fontSize: `${fontSize}px`,
+                      lineHeight: 1.05,
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
+                    }}
+                  >
+                    {str}
+                  </span>
+                );
+              })()}
             </motion.div>
 
             {/* Win/Loss text */}

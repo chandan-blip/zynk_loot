@@ -18,6 +18,19 @@ router.get('/social-links', async (req, res) => {
   }
 });
 
+// Get active banners for the home page carousel (public)
+router.get('/banners', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      'SELECT id, title, image_url, link_url FROM banners WHERE is_active = 1 ORDER BY sort_order ASC, id ASC'
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get banners error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get banners' });
+  }
+});
+
 // Get current draw status
 router.get('/draw', async (req, res) => {
   try {

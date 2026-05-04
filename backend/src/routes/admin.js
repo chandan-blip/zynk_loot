@@ -1351,6 +1351,73 @@ router.delete('/social-links/:id', async (req, res) => {
   }
 });
 
+// ===== Banners (home page carousel) =====
+router.get('/banners', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      'SELECT id, title, image_url, link_url, sort_order, is_active, created_at, updated_at FROM banners ORDER BY sort_order ASC, id ASC'
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get banners error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get banners' });
+  }
+});
+
+router.post('/banners', async (req, res) => {
+  try {
+    const { title, image_url, link_url, sort_order, is_active } = req.body;
+    if (!image_url) {
+      return res.status(400).json({ success: false, message: 'image_url is required' });
+    }
+    const [result] = await db.pool.query(
+      'INSERT INTO banners (title, image_url, link_url, sort_order, is_active) VALUES (?, ?, ?, ?, ?)',
+      [title || null, image_url, link_url || null, sort_order || 0, is_active !== false ? 1 : 0]
+    );
+    res.json({ success: true, data: { id: result.insertId } });
+  } catch (error) {
+    console.error('Create banner error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create banner' });
+  }
+});
+
+router.put('/banners/:id', async (req, res) => {
+  try {
+    const { title, image_url, link_url, sort_order, is_active } = req.body;
+    await db.pool.query(
+      `UPDATE banners
+       SET title = ?,
+           image_url = COALESCE(?, image_url),
+           link_url = ?,
+           sort_order = COALESCE(?, sort_order),
+           is_active = COALESCE(?, is_active)
+       WHERE id = ?`,
+      [
+        title || null,
+        image_url || null,
+        link_url || null,
+        sort_order,
+        is_active == null ? null : (is_active ? 1 : 0),
+        req.params.id,
+      ]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update banner error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update banner' });
+  }
+});
+
+router.delete('/banners/:id', async (req, res) => {
+  try {
+    await db.pool.query('DELETE FROM banners WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete banner error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete banner' });
+  }
+});
+
 // ===== Websites (landing pages) =====
 const SUBDOMAIN_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
