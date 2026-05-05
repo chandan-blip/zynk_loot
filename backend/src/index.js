@@ -30,6 +30,7 @@ const ReferralService = require('./services/referralService');
 const InvestService = require('./services/investService');
 const ActivityService = require('./services/activityService');
 const GameService = require('./services/gameService');
+const ShuffleCardService = require('./services/shuffleCardService');
 const NotificationService = require('./services/notificationService');
 const referralRoutes = require('./routes/referral');
 const investRoutes = require('./routes/invest');
@@ -68,6 +69,7 @@ const referralService = new ReferralService();
 const investService = new InvestService(io);
 const activityService = new ActivityService(io);
 const gameService = new GameService(io);
+const shuffleCardService = new ShuffleCardService(io);
 const notificationService = new NotificationService(io);
 const trackingService = new TrackingService(io);
 const dailyWinnersService = new DailyWinnersService();
@@ -89,6 +91,7 @@ app.set('referralService', referralService);
 app.set('investService', investService);
 app.set('activityService', activityService);
 app.set('gameService', gameService);
+app.set('shuffleCardService', shuffleCardService);
 app.set('notificationService', notificationService);
 app.set('trackingService', trackingService);
 app.set('dailyWinnersService', dailyWinnersService);
@@ -117,6 +120,12 @@ io.on('connection', (socket) => {
   cronService.getCurrentDraw().then(draw => {
     socket.emit('draw:status', draw);
   });
+
+  // Send current shuffle card round state on connect
+  const shuffleState = shuffleCardService.getCurrentRoundState();
+  if (shuffleState) {
+    socket.emit('shuffle:round:state', shuffleState);
+  }
 
   // Join number room for live updates
   socket.on('number:subscribe', (number) => {
@@ -253,6 +262,9 @@ const startServer = async () => {
 
     // Start live activity feed
     await activityService.start();
+
+    // Start Shuffle Card 60-second round loop
+    await shuffleCardService.start();
 
     // Check if there's an active draw, if not create one (for dev/testing)
     const currentDraw = await cronService.getCurrentDraw();

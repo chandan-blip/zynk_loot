@@ -1,47 +1,57 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiClock, FiChevronDown, FiChevronLeft, FiChevronRight, FiCheckCircle, FiFilter } from 'react-icons/fi';
-import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
-import { getDrawHistory } from '../services/api';
+import { FiClock, FiChevronDown, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { GiTwoCoins, GiTrophy, GiCardRandom } from 'react-icons/gi';
+import { getDrawHistory, getShuffleCardHistory } from '../services/api';
 import PageHeader from '../components/PageHeader';
+import { decodeCard } from '../components/PlayingCard';
 
 const PAGE_SIZE = 10;
 
+const GAME_OPTIONS = [
+  { value: 'lottery', label: '7-Digit Lottery', icon: GiTrophy },
+  { value: 'shuffle', label: 'Shuffle Card',    icon: GiCardRandom },
+];
+
 function History() {
+  const [game, setGame] = useState('lottery');
   const [draws, setDraws] = useState([]);
+  const [shuffleRounds, setShuffleRounds] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('All');
   const [showFilter, setShowFilter] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  const filterOptions = ['All', 'Completed'];
+  // Reset to page 1 when switching games so we don't request a non-existent page
+  useEffect(() => { setPage(1); }, [game]);
 
   useEffect(() => {
     const fetchHistory = async () => {
       setLoading(true);
       try {
-        const response = await getDrawHistory(page, PAGE_SIZE);
-        setDraws(response.data.data || []);
-        const p = response.data.pagination || {};
-        setTotalPages(p.totalPages || 1);
+        if (game === 'shuffle') {
+          const response = await getShuffleCardHistory(page, PAGE_SIZE);
+          const data = response.data?.data || {};
+          setShuffleRounds(Array.isArray(data) ? data : (data.items || []));
+          setTotalPages(data.totalPages || 1);
+        } else {
+          const response = await getDrawHistory(page, PAGE_SIZE);
+          setDraws(response.data.data || []);
+          const p = response.data.pagination || {};
+          setTotalPages(p.totalPages || 1);
+        }
       } catch (error) {
-        console.error('Failed to fetch draw history:', error);
+        console.error('Failed to fetch history:', error);
       } finally {
         setLoading(false);
       }
     };
 
     fetchHistory();
-  }, [page]);
-
-  // The backend already returns only completed draws, so the filter is purely
-  // a UX affordance; both options resolve to the same dataset for now.
-  const filteredDraws = filter === 'Completed'
-    ? draws.filter((item) => item.status === 'completed')
-    : draws;
+  }, [page, game]);
 
   const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', {
       month: 'short',
@@ -49,6 +59,9 @@ function History() {
       year: 'numeric',
     });
   };
+
+  const activeOption = GAME_OPTIONS.find((o) => o.value === game) || GAME_OPTIONS[0];
+  const ActiveIcon = activeOption.icon;
 
   if (loading) {
     return (
@@ -60,34 +73,38 @@ function History() {
 
   return (
     <div className="w-full mx-auto space-y-3">
-      <PageHeader icon={FiClock} title="Draw History" description="Past draws and results">
-        {/* Filter Dropdown */}
+      <PageHeader icon={FiClock} title="Game History" description="Past results across games">
+        {/* Game switcher */}
         <div className="relative">
           <button
             onClick={() => setShowFilter(!showFilter)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-dark-700/50 border border-dark-400/50 text-white hover:bg-dark-700 transition-colors w-full sm:w-auto justify-between sm:justify-start"
           >
-            <FiFilter className="w-4 h-4" />
-            <span className="text-sm font-medium">{filter}</span>
+            <ActiveIcon className="w-4 h-4 text-accent" />
+            <span className="text-[10px] font-medium">{activeOption.label}</span>
             <FiChevronDown className={`w-4 h-4 transition-transform ${showFilter ? 'rotate-180' : ''}`} />
           </button>
           {showFilter && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="absolute right-0 mt-2 w-full sm:w-40 rounded-lg bg-dark-800 border border-dark-400/50 shadow-xl z-10 overflow-hidden"
+              className="absolute right-0 mt-2 w-full sm:w-56 rounded-lg bg-dark-800 border border-dark-400/50 shadow-xl z-10 overflow-hidden"
             >
-              {filterOptions.map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => { setFilter(opt); setShowFilter(false); }}
-                  className={`w-full px-4 py-3 text-left text-sm hover:bg-dark-700 transition-colors ${
-                    filter === opt ? 'text-accent bg-accent/10' : 'text-gray-300'
-                  }`}
-                >
-                  {opt}
-                </button>
-              ))}
+              {GAME_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setGame(opt.value); setShowFilter(false); }}
+                    className={`w-full px-4 py-3 text-left text-[10px] hover:bg-dark-700 transition-colors flex items-center gap-2 ${
+                      game === opt.value ? 'text-accent bg-accent/10' : 'text-gray-300'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {opt.label}
+                  </button>
+                );
+              })}
             </motion.div>
           )}
         </div>
@@ -95,86 +112,170 @@ function History() {
 
       {/* History List */}
       <div className="bg-dark-800/50 rounded-lg border border-dark-400/30 overflow-hidden">
-        {/* Table Header */}
-        <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-dark-700/30 border-b border-dark-400/30 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          <div className="col-span-3">Period</div>
-          <div className="col-span-3">Date</div>
-          <div className="col-span-3 text-center">Winning Number</div>
-          <div className="col-span-3 text-right">Pool</div>
-        </div>
-
-        {/* List */}
-        <AnimatePresence>
-          {filteredDraws.length === 0 ? (
-            <div className="p-12 text-center">
-              <FiClock className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-400">No draw history found</p>
+        {game === 'lottery' ? (
+          <>
+            {/* Lottery table header */}
+            <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-dark-700/30 border-b border-dark-400/30 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <div className="col-span-3">Period</div>
+              <div className="col-span-3">Date</div>
+              <div className="col-span-3 text-center">Winning Number</div>
+              <div className="col-span-3 text-right">Pool</div>
             </div>
-          ) : (
-            <div className="divide-y divide-dark-400/20">
-              {filteredDraws.map((item, i) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: i * 0.02 }}
-                  className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 px-3 sm:px-6 py-4 hover:bg-dark-700/30 transition-colors md:items-center"
-                >
-                  {/* Top row (mobile): Period + Date */}
-                  <div className="flex items-center justify-between md:contents">
-                    {/* Period */}
-                    <div className="md:col-span-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-dark-700/50 flex items-center justify-center border border-dark-400/30">
-                          <GiTrophy className="w-4 h-4 text-accent" />
+
+            <AnimatePresence>
+              {draws.length === 0 ? (
+                <div className="p-12 text-center">
+                  <FiClock className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400">No draw history found</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-dark-400/20">
+                  {draws.map((item, i) => (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      transition={{ delay: i * 0.02 }}
+                      className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 px-3 sm:px-6 py-4 hover:bg-dark-700/30 transition-colors md:items-center"
+                    >
+                      <div className="flex items-center justify-between md:contents">
+                        <div className="md:col-span-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-dark-700/50 flex items-center justify-center border border-dark-400/30">
+                              <GiTrophy className="w-4 h-4 text-accent" />
+                            </div>
+                            <p className="text-xs sm:text-sm font-bold text-white">
+                              #{item.period_id || item.id}
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-xs sm:text-sm font-bold text-white">
-                          #{item.period_id || item.id}
-                        </p>
+                        <div className="md:col-span-3">
+                          <p className="text-white text-xs sm:text-sm">{formatDate(item.draw_date)}</p>
+                          <p className="text-xs text-gray-500 text-right md:text-left">
+                            {item.status === 'completed' ? 'Completed' : item.status}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Date */}
-                    <div className="md:col-span-3">
-                      <p className="text-white text-xs sm:text-sm">{formatDate(item.draw_date)}</p>
-                      <p className="text-xs text-gray-500 text-right md:text-left">
-                        {item.status === 'completed' ? 'Completed' : item.status}
-                      </p>
-                    </div>
-                  </div>
+                      <div className="flex items-center justify-between md:contents">
+                        <div className="md:col-span-3 md:text-center">
+                          <div className="inline-flex items-center gap-1">
+                            {item.winning_number.split('').map((digit, idx) => (
+                              <span
+                                key={idx}
+                                className="w-6 h-7 sm:w-7 sm:h-8 rounded bg-accent/20 text-accent font-mono font-bold text-sm sm:text-base flex items-center justify-center"
+                              >
+                                {digit}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
 
-                  {/* Bottom row (mobile): Winning Number + Pool */}
-                  <div className="flex items-center justify-between md:contents">
-                    {/* Winning Number */}
-                    <div className="md:col-span-3 md:text-center">
-                      <div className="inline-flex items-center gap-1">
-                        {item.winning_number.split('').map((digit, idx) => (
-                          <span
-                            key={idx}
-                            className="w-6 h-7 sm:w-7 sm:h-8 rounded bg-accent/20 text-accent font-mono font-bold text-sm sm:text-base flex items-center justify-center"
-                          >
-                            {digit}
-                          </span>
-                        ))}
+                        <div className="md:col-span-3 md:text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <GiTwoCoins className="w-4 h-4 text-accent shrink-0" />
+                            <span className="text-accent font-bold text-sm sm:text-base">
+                              {parseFloat(item.total_pool || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Pool */}
-                    <div className="md:col-span-3 md:text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <GiTwoCoins className="w-4 h-4 text-accent shrink-0" />
-                        <span className="text-accent font-bold text-sm sm:text-base">
-                          {parseFloat(item.total_pool || 0).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </AnimatePresence>
+          </>
+        ) : (
+          <>
+            {/* Shuffle Card table header */}
+            <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-dark-700/30 border-b border-dark-400/30 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <div className="col-span-4">Period</div>
+              <div className="col-span-3">Date</div>
+              <div className="col-span-3 text-center">Cards</div>
+              <div className="col-span-2 text-right">Color</div>
             </div>
-          )}
-        </AnimatePresence>
+
+            <AnimatePresence>
+              {shuffleRounds.length === 0 ? (
+                <div className="p-12 text-center">
+                  <GiCardRandom className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400">No shuffle rounds found</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-dark-400/20">
+                  {shuffleRounds.map((r, i) => {
+                    const cards = r.cards || [];
+                    const reds = cards.filter((c) => {
+                      const s = Math.floor(c / 13);
+                      return s === 1 || s === 2;
+                    }).length;
+                    const dom = reds > cards.length - reds ? 'red' : 'black';
+                    return (
+                      <motion.div
+                        key={r.roundId}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        transition={{ delay: i * 0.02 }}
+                        className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 px-3 sm:px-6 py-4 hover:bg-dark-700/30 transition-colors md:items-center"
+                      >
+                        <div className="flex items-center justify-between md:contents">
+                          <div className="md:col-span-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-dark-700/50 flex items-center justify-center border border-dark-400/30">
+                                <GiCardRandom className="w-4 h-4 text-emerald-300" />
+                              </div>
+                              <p className="text-xs sm:text-sm font-bold text-white font-mono">
+                                #{r.periodId}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="md:col-span-3">
+                            <p className="text-white text-xs sm:text-sm">{formatDate(r.completedAt)}</p>
+                            <p className="text-xs text-gray-500 text-right md:text-left">Completed</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between md:contents">
+                          <div className="md:col-span-3 md:text-center">
+                            <div className="inline-flex items-center gap-1">
+                              {cards.map((cid, idx) => {
+                                const { rank, suit } = decodeCard(cid);
+                                return (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex flex-col items-center justify-center w-7 h-9 sm:w-8 sm:h-10 rounded bg-white border border-gray-200 font-black text-[11px] sm:text-xs leading-none"
+                                    style={{ color: suit.color }}
+                                    title={`${rank}${suit.symbol}`}
+                                  >
+                                    <span>{rank}</span>
+                                    <span className="text-[10px] sm:text-[11px]">{suit.symbol}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="md:col-span-2 md:text-right">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                                dom === 'red' ? 'bg-red-500/20 text-red-300' : 'bg-gray-700/60 text-gray-200'
+                              }`}
+                            >
+                              {dom}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
 
         {/* Pagination */}
         {totalPages > 1 && (

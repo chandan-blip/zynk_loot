@@ -499,4 +499,170 @@ export const sounds = {
       });
     });
   },
+
+  // Countdown beep — short rising "tick" with a tiny noise burst on top of a
+  // sine pulse. Pitch and volume scale with `step` (1 = farthest from zero,
+  // higher = closer) so the urgency builds tick-by-tick toward the drop.
+  countdownTick(step = 1) {
+    play(() => {
+      const ctx = getCtx();
+      const t = ctx.currentTime;
+      const intensity = Math.min(1, Math.max(0.2, step / 5));
+
+      // 1) Body — pitched sine pulse that rises slightly per tick
+      const body = ctx.createOscillator();
+      const bodyGain = ctx.createGain();
+      body.connect(bodyGain);
+      bodyGain.connect(ctx.destination);
+      body.type = 'sine';
+      const baseFreq = 720 + step * 80;          // 800, 880, 960, 1040, 1120
+      body.frequency.setValueAtTime(baseFreq, t);
+      body.frequency.exponentialRampToValueAtTime(baseFreq * 1.6, t + 0.06);
+      bodyGain.gain.setValueAtTime(0.0001, t);
+      bodyGain.gain.exponentialRampToValueAtTime(0.16 * intensity, t + 0.005);
+      bodyGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.12);
+      body.start(t);
+      body.stop(t + 0.13);
+
+      // 2) Snap — short noise burst gives the tick its "click" attack
+      const noiseLen = Math.floor(ctx.sampleRate * 0.04);
+      const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < noiseLen; i++) {
+        // Decaying white noise
+        data[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen);
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuf;
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = 'highpass';
+      noiseFilter.frequency.value = 2800;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.08 * intensity, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.04);
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noise.start(t);
+      noise.stop(t + 0.05);
+    });
+  },
+
+  // Final "drop" tone at 0 — cinematic reveal cue. Stacks a sub-bass slam,
+  // a descending whoosh, a sustained chime fifth with feedback delay, and a
+  // shimmering cymbal-style noise wash so it feels like the end of something.
+  countdownGo() {
+    play(() => {
+      const ctx = getCtx();
+      const t = ctx.currentTime;
+
+      // Master limiter so the layered stack doesn't clip when summed
+      const master = ctx.createGain();
+      master.gain.value = 0.85;
+      master.connect(ctx.destination);
+
+      // 1) Sub-bass slam — a hard "thoom" that sweeps down to a low rumble
+      const sub = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(180, t);
+      sub.frequency.exponentialRampToValueAtTime(45, t + 0.7);
+      subGain.gain.setValueAtTime(0.0001, t);
+      subGain.gain.exponentialRampToValueAtTime(0.55, t + 0.012);
+      subGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.95);
+      sub.connect(subGain).connect(master);
+      sub.start(t);
+      sub.stop(t + 1.0);
+
+      // 2) Descending whoosh — sawtooth ramp adds tension and "drop" feel
+      const woosh = ctx.createOscillator();
+      const wooshGain = ctx.createGain();
+      const wooshFilter = ctx.createBiquadFilter();
+      woosh.type = 'sawtooth';
+      woosh.frequency.setValueAtTime(800, t);
+      woosh.frequency.exponentialRampToValueAtTime(120, t + 0.45);
+      wooshFilter.type = 'lowpass';
+      wooshFilter.frequency.setValueAtTime(2200, t);
+      wooshFilter.frequency.exponentialRampToValueAtTime(500, t + 0.45);
+      wooshFilter.Q.value = 1.2;
+      wooshGain.gain.setValueAtTime(0.0001, t);
+      wooshGain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+      wooshGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.5);
+      woosh.connect(wooshFilter).connect(wooshGain).connect(master);
+      woosh.start(t);
+      woosh.stop(t + 0.55);
+
+      // 3) Chime fifth — two triangle oscillators pitched a perfect fifth
+      // apart, fed through a feedback delay to fake a long reverb tail.
+      const delay = ctx.createDelay(1.0);
+      delay.delayTime.value = 0.18;
+      const feedback = ctx.createGain();
+      feedback.gain.value = 0.42;          // tail length
+      const wet = ctx.createGain();
+      wet.gain.value = 0.6;
+      delay.connect(feedback).connect(delay);
+      delay.connect(wet).connect(master);
+
+      const chimeFreqs = [880, 1320];      // A5 + E6 — open, bell-like
+      chimeFreqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.9, t + 0.7);
+        const start = t + i * 0.03;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.22, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0008, start + 0.85);
+        osc.connect(gain);
+        gain.connect(master);
+        gain.connect(delay);              // feed reverb
+        osc.start(start);
+        osc.stop(start + 0.9);
+      });
+
+      // 4) Cymbal-style shimmer — long band-passed noise that decays slowly
+      const noiseLen = Math.floor(ctx.sampleRate * 1.0);
+      const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < noiseLen; i++) {
+        // Steeper decay on the front, softer tail
+        const decay = Math.pow(1 - i / noiseLen, 1.6);
+        data[i] = (Math.random() * 2 - 1) * decay;
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuf;
+      const hiPass = ctx.createBiquadFilter();
+      hiPass.type = 'highpass';
+      hiPass.frequency.value = 4200;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.0001, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.22, t + 0.008);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.95);
+      noise.connect(hiPass).connect(noiseGain).connect(master);
+      noise.start(t);
+      noise.stop(t + 1.0);
+
+      // 5) Quick noise impact — adds the initial "smack" so the slam reads
+      // even on tiny phone speakers
+      const impactLen = Math.floor(ctx.sampleRate * 0.05);
+      const impactBuf = ctx.createBuffer(1, impactLen, ctx.sampleRate);
+      const idata = impactBuf.getChannelData(0);
+      for (let i = 0; i < impactLen; i++) {
+        idata[i] = (Math.random() * 2 - 1) * (1 - i / impactLen);
+      }
+      const impact = ctx.createBufferSource();
+      impact.buffer = impactBuf;
+      const impactFilter = ctx.createBiquadFilter();
+      impactFilter.type = 'bandpass';
+      impactFilter.frequency.value = 1600;
+      impactFilter.Q.value = 0.7;
+      const impactGain = ctx.createGain();
+      impactGain.gain.setValueAtTime(0.32, t);
+      impactGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.06);
+      impact.connect(impactFilter).connect(impactGain).connect(master);
+      impact.start(t);
+      impact.stop(t + 0.07);
+    });
+  },
 };

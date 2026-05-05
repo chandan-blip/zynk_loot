@@ -255,6 +255,11 @@ export const playEggHatch = (amount) => api.post('/games/egg-hatch', { amount })
 export const playFuse = (amount, cashoutMultiplier) => api.post('/games/fuse', { amount, cashoutMultiplier });
 export const playMutkaKing = (bets) => api.post('/games/mutka-king', { bets });
 export const playUnoKing = (bets) => api.post('/games/uno-king', { bets });
+export const getShuffleCardState = () => api.get('/games/shuffle-card/state');
+export const placeShuffleCardBet = (bet) => api.post('/games/shuffle-card/bet', bet);
+export const getShuffleCardHistory = (page = 1, limit = 20) =>
+  api.get(`/games/shuffle-card/history?page=${page}&limit=${limit}`);
+export const getShuffleCardMyBets = (limit = 20) => api.get(`/games/shuffle-card/my-bets?limit=${limit}`);
 export const getGameHistory = (page = 1, limit = 20, game_type = '') =>
   api.get(`/games/history?page=${page}&limit=${limit}${game_type ? `&game_type=${game_type}` : ''}`);
 export const getGameStats = () => api.get('/games/stats');

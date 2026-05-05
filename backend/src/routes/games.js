@@ -356,6 +356,67 @@ router.post('/uno-king', async (req, res) => {
   }
 });
 
+// ── Shuffle Card (server-authoritative 60s round-based 52-card lottery) ──
+
+router.get('/shuffle-card/state', async (req, res) => {
+  try {
+    const svc = req.app.get('shuffleCardService');
+    res.json({
+      success: true,
+      data: {
+        round: svc?.getCurrentRoundState() || null,
+        multipliers: svc?.getMultipliers() || null,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/shuffle-card/bet', async (req, res) => {
+  try {
+    const svc = req.app.get('shuffleCardService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Shuffle Card not running' });
+    const result = await svc.placeBet(req.user.id, req.body || {});
+    res.json({
+      success: true,
+      message: 'Bet placed',
+      data: {
+        ...result,
+        game_type: 'shuffle_card',
+        bet_amount: result.amount,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/shuffle-card/history', async (req, res) => {
+  try {
+    const svc = req.app.get('shuffleCardService');
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const data = svc
+      ? await svc.getRoundHistory({ page, limit })
+      : { items: [], page, limit, total: 0, totalPages: 1 };
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/shuffle-card/my-bets', async (req, res) => {
+  try {
+    const svc = req.app.get('shuffleCardService');
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const data = svc ? await svc.getMyBets(req.user.id, limit) : [];
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 // Get game history
 router.get('/history', async (req, res) => {
   try {

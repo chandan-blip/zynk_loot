@@ -45,6 +45,7 @@ import Games from './pages/games/Games';
 import Lottery from './pages/games/Lottery';
 import MutkaKing from './pages/games/MutkaKing';
 import UnoKing from './pages/games/UnoKing';
+import ShuffleCard from './pages/games/ShuffleCard';
 import CoinFlip from './pages/games/CoinFlip';
 import DiceRoll from './pages/games/DiceRoll';
 import LuckySpin from './pages/games/LuckySpin';
@@ -215,6 +216,7 @@ function App() {
           <Route path="games/lottery" element={<Lottery />} />
           <Route path="games/mutka-king" element={<MutkaKing />} />
           <Route path="games/uno-king" element={<UnoKing />} />
+          <Route path="games/shuffle-card" element={<ShuffleCard />} />
           <Route path="games/coin-flip" element={<CoinFlip />} />
           <Route path="games/dice-roll" element={<DiceRoll />} />
           <Route path="games/lucky-spin" element={<LuckySpin />} />

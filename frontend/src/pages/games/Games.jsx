@@ -1,14 +1,36 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiPlay, FiLock, FiStar, FiZap, FiTarget, FiLayers, FiGrid, FiCrosshair, FiGift, FiAlertTriangle, FiUsers, FiClock, FiAward, FiChevronRight } from "react-icons/fi";
-import { GiTwoCoins, GiTrophy, GiCardJackHearts, GiCardJoker } from "react-icons/gi";
+import {
+  FiPlay,
+  FiLock,
+  FiStar,
+  FiZap,
+  FiTarget,
+  FiLayers,
+  FiGrid,
+  FiCrosshair,
+  FiGift,
+  FiAlertTriangle,
+  FiUsers,
+  FiClock,
+  FiAward,
+  FiChevronRight,
+} from "react-icons/fi";
+import {
+  GiTwoCoins,
+  GiTrophy,
+  GiCardJackHearts,
+  GiCardJoker,
+  GiCardRandom,
+} from "react-icons/gi";
 import usePageTitle from "../../hooks/usePageTitle";
 import PageHeader from "../../components/PageHeader";
 import { useCurrency } from "../../contexts/CurrencyContext";
 import {
   MutkaPreview,
   UnoPreview,
+  ShuffleCardPreview,
   SevenDigitPreview,
 } from "../../components/GamePreviews";
 
@@ -143,29 +165,31 @@ const games = [
 
 const lotteryGames = [
   {
-    id: "seven-digit",
-    name: "7-Digit Lottery",
-    description: "Pick a 7-digit number, watch digits reveal hourly across 3 daily sessions, and win up to 80% of the prize pool.",
-    icon: GiTrophy,
+    id: "shuffle-card",
+    name: "Shuffle Card",
+    description:
+      "60-second live rounds. 3 cards drawn from a 52-card deck. Place bets in 50s, lock at 10s, watch results live and study the pattern history.",
+    icon: GiCardRandom,
     stats: [
-      { icon: FiClock, label: "Sessions", value: "3 per day" },
-      { icon: FiAward, label: "Digits",   value: "7 digits", accent: true },
+      { icon: FiClock, label: "Round", value: "60 sec" },
+      { icon: FiAward, label: "Max Win", value: "500x", accent: true },
     ],
-    color: "from-gold/20 via-accent/10 to-purple/20",
-    borderColor: "border-gold/30",
-    iconColor: "text-gold-light",
-    path: "/games/lottery",
+    color: "from-emerald-500/20 via-amber-500/10 to-purple/20",
+    borderColor: "border-emerald-500/30",
+    iconColor: "text-emerald-300",
+    path: "/games/shuffle-card",
     comingSoon: false,
-    basePlayers: 142,
-    Preview: SevenDigitPreview,
+    basePlayers: 72,
+    Preview: ShuffleCardPreview,
   },
   {
     id: "mutka-king",
     name: "Mutka King",
-    description: "4 cards drawn from a 52-card deck. Pick 1 to 4 cards across multiple slips — match all and win up to 500x.",
+    description:
+      "4 cards drawn from a 52-card deck. Pick 1 to 4 cards across multiple slips — match all and win up to 500x.",
     icon: GiCardJackHearts,
     stats: [
-      { icon: FiZap,  label: "Cards",   value: "4 dealt" },
+      { icon: FiZap, label: "Cards", value: "4 dealt" },
       { icon: FiAward, label: "Max Win", value: "500x", accent: true },
     ],
     color: "from-amber-500/20 via-red-500/10 to-purple/20",
@@ -179,10 +203,11 @@ const lotteryGames = [
   {
     id: "uno-king",
     name: "UNO King",
-    description: "4 UNO cards drawn from a 54-card deck. Pick cards or bet on color, number, action, or wild — win up to 500x.",
+    description:
+      "4 UNO cards drawn from a 54-card deck. Pick cards or bet on color, number, action, or wild — win up to 500x.",
     icon: GiCardJoker,
     stats: [
-      { icon: FiZap,  label: "Cards",   value: "4 dealt" },
+      { icon: FiZap, label: "Cards", value: "4 dealt" },
       { icon: FiAward, label: "Max Win", value: "500x", accent: true },
     ],
     color: "from-red-500/20 via-yellow-500/10 to-blue-500/20",
@@ -193,30 +218,55 @@ const lotteryGames = [
     basePlayers: 56,
     Preview: UnoPreview,
   },
+
+  {
+    id: "seven-digit",
+    name: "7-Digit Lottery",
+    description:
+      "Pick a 7-digit number, watch digits reveal hourly across 3 daily sessions, and win up to 80% of the prize pool.",
+    icon: GiTrophy,
+    stats: [
+      { icon: FiClock, label: "Sessions", value: "3 per day" },
+      { icon: FiAward, label: "Digits", value: "7 digits", accent: true },
+    ],
+    color: "from-gold/20 via-accent/10 to-purple/20",
+    borderColor: "border-gold/30",
+    iconColor: "text-gold-light",
+    path: "/games/lottery",
+    comingSoon: false,
+    basePlayers: 142,
+    Preview: SevenDigitPreview,
+  },
 ];
 
-const randomCount = (base) => base + Math.floor(Math.random() * Math.ceil(base * 0.4));
+const randomCount = (base) =>
+  base + Math.floor(Math.random() * Math.ceil(base * 0.4));
 
 function Games() {
-  usePageTitle('Lottery Games');
+  usePageTitle("Lottery Games");
   const { formatCurrency } = useCurrency();
-  const [activeTab, setActiveTab] = useState('lottery');
+  const [activeTab, setActiveTab] = useState("lottery");
 
   const [playerCounts, setPlayerCounts] = useState(() => {
     const all = [...games, ...lotteryGames];
-    return Object.fromEntries(all.map(g => [g.id, randomCount(g.basePlayers || 10)]));
+    return Object.fromEntries(
+      all.map((g) => [g.id, randomCount(g.basePlayers || 10)]),
+    );
   });
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setPlayerCounts(prev => {
+      setPlayerCounts((prev) => {
         const next = {};
         const all = [...games, ...lotteryGames];
-        all.forEach(g => {
+        all.forEach((g) => {
           const current = prev[g.id] || 10;
           const drift = Math.floor(Math.random() * 5) - 2;
           const base = g.basePlayers || 10;
-          next[g.id] = Math.max(base - 3, Math.min(base + Math.ceil(base * 0.5), current + drift));
+          next[g.id] = Math.max(
+            base - 3,
+            Math.min(base + Math.ceil(base * 0.5), current + drift),
+          );
         });
         return next;
       });
@@ -225,13 +275,18 @@ function Games() {
   }, []);
 
   const tabs = [
-    { id: 'lottery', label: 'Lottery', icon: GiTrophy },
-    { id: 'instant', label: 'Instant', icon: FiZap },
+    { id: "lottery", label: "Lottery", icon: GiTrophy },
+    { id: "instant", label: "Instant", icon: FiZap },
   ];
 
   return (
     <div className="mx-auto">
-      <PageHeader icon={FiPlay} title="Lottery Games" description="Pick your game and play to win" iconColor="text-accent" />
+      <PageHeader
+        icon={FiPlay}
+        title="Lottery Games"
+        description="Pick your game and play to win"
+        iconColor="text-accent"
+      />
 
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-5 border-b border-dark-600">
@@ -243,7 +298,7 @@ function Games() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-                isActive ? 'text-accent' : 'text-gray-400 hover:text-white'
+                isActive ? "text-accent" : "text-gray-400 hover:text-white"
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -252,7 +307,7 @@ function Games() {
                 <motion.div
                   layoutId="games-tab-underline"
                   className="absolute -bottom-px left-0 right-0 h-0.5 bg-accent rounded-full"
-                  transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
                 />
               )}
             </button>
@@ -261,7 +316,7 @@ function Games() {
       </div>
 
       <AnimatePresence mode="wait">
-        {activeTab === 'lottery' ? (
+        {activeTab === "lottery" ? (
           <motion.div
             key="lottery"
             initial={{ opacity: 0, y: 10 }}
@@ -279,18 +334,24 @@ function Games() {
                 className={`relative rounded-xl bg-gradient-to-br ${game.color} border ${game.borderColor} p-4 sm:p-6 overflow-hidden`}
               >
                 {/* Faint background watermark */}
-                <game.icon className={`absolute -top-4 -right-4 w-28 h-28 sm:w-40 sm:h-40 ${game.iconColor} opacity-[0.07]`} />
+                <game.icon
+                  className={`absolute -top-4 -right-4 w-28 h-28 sm:w-40 sm:h-40 ${game.iconColor} opacity-[0.07]`}
+                />
 
                 <div className="absolute top-2.5 right-2.5 sm:top-4 sm:right-4 flex items-center gap-1 px-2 py-0.5 rounded-full bg-dark-700/70 border border-white/10 z-10">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-[10px] text-gray-400 font-medium">{playerCounts[game.id] || 0}</span>
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    {playerCounts[game.id] || 0}
+                  </span>
                   <FiUsers className="w-2.5 h-2.5 text-gray-500" />
                 </div>
 
                 <div className="relative flex flex-col h-full">
                   <div className="flex items-start gap-2 sm:gap-3 mb-2 sm:mb-4 pr-16 sm:pr-20">
                     <div className="w-10 h-10 sm:w-14 sm:h-14 shrink-0 rounded-lg sm:rounded-xl bg-dark-700/60 border border-white/10 flex items-center justify-center">
-                      <game.icon className={`w-5 h-5 sm:w-7 sm:h-7 ${game.iconColor}`} />
+                      <game.icon
+                        className={`w-5 h-5 sm:w-7 sm:h-7 ${game.iconColor}`}
+                      />
                     </div>
                     {game.Preview && (
                       <div className="relative flex-1 h-10 sm:h-14">
@@ -310,11 +371,17 @@ function Games() {
                     {(game.stats || []).map((stat, i) => {
                       const StatIcon = stat.icon;
                       return (
-                        <div key={i} className="flex-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-md sm:rounded-lg bg-dark-700/40 border border-white/5">
+                        <div
+                          key={i}
+                          className="flex-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-md sm:rounded-lg bg-dark-700/40 border border-white/5"
+                        >
                           <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                            {StatIcon && <StatIcon className="w-3 h-3" />} {stat.label}
+                            {StatIcon && <StatIcon className="w-3 h-3" />}{" "}
+                            {stat.label}
                           </p>
-                          <p className={`text-xs sm:text-sm font-bold ${stat.accent ? 'text-accent' : 'text-white'}`}>
+                          <p
+                            className={`text-xs sm:text-sm font-bold ${stat.accent ? "text-accent" : "text-white"}`}
+                          >
                             {stat.value}
                           </p>
                         </div>
@@ -325,7 +392,9 @@ function Games() {
                   {game.comingSoon ? (
                     <div className="flex items-center justify-center gap-2 px-4 py-2 sm:py-2.5 rounded-lg bg-dark-700/60 border border-white/10 text-gray-500">
                       <FiLock className="w-4 h-4" />
-                      <span className="text-xs sm:text-sm font-medium">Coming Soon</span>
+                      <span className="text-xs sm:text-sm font-medium">
+                        Coming Soon
+                      </span>
                     </div>
                   ) : (
                     <Link to={game.path}>
@@ -363,11 +432,15 @@ function Games() {
                 transition={{ delay: index * 0.05 }}
                 className={`relative rounded-xl bg-gradient-to-br ${game.color} border ${game.borderColor} p-3 sm:p-5 overflow-hidden`}
               >
-                <game.icon className={`absolute -top-2 -right-2 w-24 h-24 ${game.iconColor} opacity-[0.07]`} />
+                <game.icon
+                  className={`absolute -top-2 -right-2 w-24 h-24 ${game.iconColor} opacity-[0.07]`}
+                />
 
                 <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-dark-700/70 border border-white/10 z-10">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-[10px] text-gray-400 font-medium">{playerCounts[game.id] || 0}</span>
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    {playerCounts[game.id] || 0}
+                  </span>
                   <FiUsers className="w-2.5 h-2.5 text-gray-500" />
                 </div>
 
@@ -375,7 +448,9 @@ function Games() {
                   <div
                     className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl bg-dark-700/60 border border-white/10 flex items-center justify-center mb-3 sm:mb-4`}
                   >
-                    <game.icon className={`w-5 h-5 sm:w-7 sm:h-7 ${game.iconColor}`} />
+                    <game.icon
+                      className={`w-5 h-5 sm:w-7 sm:h-7 ${game.iconColor}`}
+                    />
                   </div>
 
                   <h3 className="text-base sm:text-lg font-bold text-white mb-1">
@@ -387,13 +462,17 @@ function Games() {
 
                   <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-5 mt-auto">
                     <div className="flex-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-dark-700/40 border border-white/5">
-                      <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">Min Bet</p>
+                      <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">
+                        Min Bet
+                      </p>
                       <p className="text-xs sm:text-sm font-bold text-white truncate">
                         {formatCurrency(game.minBet)}
                       </p>
                     </div>
                     <div className="flex-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-dark-700/40 border border-white/5">
-                      <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">Max Win</p>
+                      <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">
+                        Max Win
+                      </p>
                       <p className="text-xs sm:text-sm font-bold text-accent truncate">
                         {game.maxWin}
                       </p>

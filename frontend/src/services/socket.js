@@ -195,6 +195,43 @@ class SocketService {
     return () => this.socket.off('notification:new', callback);
   }
 
+  // Shuffle Card events
+  onShuffleRoundState(callback) {
+    if (!this.socket) return;
+    this.socket.on('shuffle:round:state', callback);
+    return () => this.socket.off('shuffle:round:state', callback);
+  }
+
+  onShuffleRoundOpen(callback) {
+    if (!this.socket) return;
+    this.socket.on('shuffle:round:open', callback);
+    return () => this.socket.off('shuffle:round:open', callback);
+  }
+
+  onShuffleRoundLock(callback) {
+    if (!this.socket) return;
+    this.socket.on('shuffle:round:lock', callback);
+    return () => this.socket.off('shuffle:round:lock', callback);
+  }
+
+  onShuffleRoundResult(callback) {
+    if (!this.socket) return;
+    this.socket.on('shuffle:round:result', callback);
+    return () => this.socket.off('shuffle:round:result', callback);
+  }
+
+  onShuffleRoundSettled(callback) {
+    if (!this.socket) return;
+    this.socket.on('shuffle:round:settled', callback);
+    return () => this.socket.off('shuffle:round:settled', callback);
+  }
+
+  onBalanceUpdate(callback) {
+    if (!this.socket) return;
+    this.socket.on('balance:update', callback);
+    return () => this.socket.off('balance:update', callback);
+  }
+
   getSocket() {
     return this.socket;
   }

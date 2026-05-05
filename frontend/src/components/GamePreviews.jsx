@@ -56,6 +56,48 @@ export function MutkaPreview() {
   );
 }
 
+// ── Lottery: Shuffle Card — 3 mini cards shuffle / flip on a tighter cadence
+// to match the live 60-second round vibe.
+export function ShuffleCardPreview() {
+  const [cards, setCards] = useState(() => pickRandom(3));
+  const [faceUp, setFaceUp] = useState(true);
+  useEffect(() => {
+    let flipTimer;
+    const cycle = setInterval(() => {
+      setFaceUp(false);
+      flipTimer = setTimeout(() => {
+        setCards(pickRandom(3));
+        setFaceUp(true);
+      }, 700);
+    }, 5000);
+    return () => { clearInterval(cycle); if (flipTimer) clearTimeout(flipTimer); };
+  }, []);
+  return (
+    <div className="absolute right-2 bottom-2 flex items-end pointer-events-none">
+      {cards.map((id, idx) => {
+        const rot = (idx - 1) * 8;
+        const overlap = idx === 0 ? '' : '-ml-4 sm:-ml-5 md:-ml-6 lg:-ml-[28px]';
+        return (
+          <motion.div
+            key={idx}
+            initial={{ y: 0, rotate: rot, scale: 1 }}
+            animate={{
+              y: [0, -3, 0, 2, 0],
+              rotate: [rot, rot + 4, rot - 2, rot],
+              scale: [1, 1.04, 1],
+            }}
+            transition={{ duration: 3.6 + idx * 0.3, repeat: Infinity, ease: 'easeInOut' }}
+            className={overlap}
+            style={{ willChange: 'transform', zIndex: idx }}
+          >
+            <PlayingCard id={id} faceUp={faceUp} size="xs" delay={idx * 0.1} />
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Lottery: UNO King — 3 fanned UNO mini cards re-deal & flip
 export function UnoPreview() {
   const [cards, setCards] = useState(() => pickRandom(3, 54));

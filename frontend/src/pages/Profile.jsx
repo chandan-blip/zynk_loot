@@ -27,6 +27,10 @@ import {
   FiStar,
   FiThumbsUp,
   FiLogOut,
+  FiPlay,
+  FiAward,
+  FiUsers,
+  FiRefreshCw,
 } from "react-icons/fi";
 import { GiTwoCoins, GiTrophy, GiPodium } from "react-icons/gi";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
@@ -195,39 +199,35 @@ function Profile() {
     return formatDate(dateStr);
   };
 
-  const getActivityIcon = (type) => {
-    switch (type) {
-      case "deposit":
-        return <FiDownload className="w-4 h-4 text-green-400" />;
-      case "withdrawal":
-        return <FiArrowUpRight className="w-4 h-4 text-red-400" />;
-      case "transfer_out":
-        return <FiSend className="w-4 h-4 text-orange-400" />;
-      case "transfer_in":
-        return <FiArrowDownRight className="w-4 h-4 text-blue-400" />;
-      case "purchase":
-        return <FiHash className="w-4 h-4 text-purple-400" />;
-      case "prize":
-        return <GiTrophy className="w-4 h-4 text-gold-light" />;
-      default:
-        return <FiActivity className="w-4 h-4 text-gray-400" />;
-    }
+  // Transaction → visual metadata. Centralised so icon, badge background,
+  // amount color, label and credit/debit sign all stay in sync.
+  const ACTIVITY_META = {
+    deposit:             { Icon: FiDownload,       fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Deposit",            credit: true  },
+    withdrawal:          { Icon: FiArrowUpRight,   fg: "text-red-400",     bg: "bg-red-500/15",     label: "Withdrawal",         credit: false },
+    purchase:            { Icon: FiHash,           fg: "text-purple-400",  bg: "bg-purple-500/15",  label: "Purchase",           credit: false },
+    sale:                { Icon: FiTrendingUp,     fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Sale",               credit: true  },
+    vote:                { Icon: FiThumbsUp,       fg: "text-pink-400",    bg: "bg-pink-500/15",    label: "Vote",               credit: false },
+    prize:               { Icon: GiTrophy,         fg: "text-gold-light",  bg: "bg-gold/15",        label: "Prize",              credit: true  },
+    refund:              { Icon: FiRefreshCw,      fg: "text-blue-400",    bg: "bg-blue-500/15",    label: "Refund",             credit: true  },
+    transfer_out:        { Icon: FiSend,           fg: "text-orange-400",  bg: "bg-orange-500/15",  label: "Transfer Out",       credit: false },
+    transfer_in:         { Icon: FiArrowDownRight, fg: "text-blue-400",    bg: "bg-blue-500/15",    label: "Transfer In",        credit: true  },
+    cashout:             { Icon: FiDollarSign,     fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Cashout",            credit: true  },
+    referral_commission: { Icon: FiUsers,          fg: "text-gold-light",  bg: "bg-gold/15",        label: "Referral",           credit: true  },
+    invest:              { Icon: FiTrendingUp,     fg: "text-purple-400",  bg: "bg-purple-500/15",  label: "Invest",             credit: false },
+    invest_return:       { Icon: FiTrendingUp,     fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Invest Return",      credit: true  },
+    invest_withdraw:     { Icon: FiTrendingDown,   fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Invest Withdraw",    credit: true  },
+    game_bet:            { Icon: FiPlay,           fg: "text-purple-light",bg: "bg-purple/15",      label: "Game Bet",           credit: false },
+    game_win:            { Icon: FiAward,          fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Game Win",           credit: true  },
   };
 
-  const getActivityColor = (type) => {
-    switch (type) {
-      case "deposit":
-      case "transfer_in":
-      case "prize":
-        return "text-green-400";
-      case "withdrawal":
-      case "transfer_out":
-      case "purchase":
-        return "text-red-400";
-      default:
-        return "text-gray-400";
-    }
-  };
+  const getActivityMeta = (type) =>
+    ACTIVITY_META[type] || {
+      Icon: FiActivity,
+      fg: "text-gray-400",
+      bg: "bg-gray-500/15",
+      label: (type || "Activity").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      credit: false,
+    };
 
   if (loading) {
     return (
@@ -941,46 +941,45 @@ function Profile() {
             </div>
             {recentActivity && recentActivity.length > 0 ? (
               <div className="divide-y divide-dark-600">
-                {recentActivity.map((activity, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="p-4 flex items-center justify-between hover:bg-dark-700 transition-colors"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-dark-600 flex items-center justify-center">
-                        {getActivityIcon(activity.type)}
+                {recentActivity.map((activity, i) => {
+                  const meta = getActivityMeta(activity.type);
+                  const Icon = meta.Icon;
+                  const amount = Math.abs(parseFloat(activity.amount) || 0);
+                  return (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-dark-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-10 h-10 rounded-xl ${meta.bg} flex items-center justify-center shrink-0`}>
+                          <Icon className={`w-4 h-4 ${meta.fg}`} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-white font-medium text-sm truncate">
+                            {meta.label}
+                          </p>
+                          {activity.description && (
+                            <p className="text-gray-500 text-xs truncate">
+                              {rewriteAmounts(activity.description, selectedCurrency)}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-white font-medium capitalize">
-                          {activity.type.replace("_", " ")}
+                      <div className="text-right shrink-0">
+                        <p className={`font-bold text-sm whitespace-nowrap ${meta.credit ? "text-emerald-400" : "text-red-400"}`}>
+                          {meta.credit ? "+" : "-"}
+                          {formatCurrency(amount)}
                         </p>
-                        <p className="text-gray-500 text-sm">
-                          {rewriteAmounts(activity.description, selectedCurrency)}
+                        <p className="text-gray-500 text-[11px] whitespace-nowrap">
+                          {formatTimeAgo(activity.created_at)}
                         </p>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p
-                        className={`font-bold ${getActivityColor(
-                          activity.type
-                        )}`}
-                      >
-                        {["deposit", "transfer_in", "prize"].includes(
-                          activity.type
-                        )
-                          ? "+"
-                          : "-"}
-                        {formatCurrency(parseFloat(activity.amount))}
-                      </p>
-                      <p className="text-gray-500 text-xs">
-                        {formatTimeAgo(activity.created_at)}
-                      </p>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </div>
             ) : (
               <div className="p-12 text-center">

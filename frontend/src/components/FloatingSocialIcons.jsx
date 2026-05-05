@@ -4,7 +4,9 @@ import {
   FaTelegram, FaInstagram, FaFacebook, FaWhatsapp, FaYoutube,
   FaTwitter, FaDiscord, FaTiktok, FaLinkedin, FaGlobe, FaEnvelope, FaGithub,
 } from 'react-icons/fa';
+import { FiMessageCircle } from 'react-icons/fi';
 import { getSocialLinks } from '../services/api';
+import SupportChat from './SupportChat';
 
 export const ICON_OPTIONS = [
   { value: 'telegram',  label: 'Telegram',  Icon: FaTelegram,  color: '#229ED9' },
@@ -27,6 +29,7 @@ const STORAGE_KEY = 'floating_social_pos_v1';
 
 export default function FloatingSocialIcons() {
   const [links, setLinks] = useState([]);
+  const [chatOpen, setChatOpen] = useState(false);
   const [position, setPosition] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -44,55 +47,68 @@ export default function FloatingSocialIcons() {
     return () => { cancelled = true; };
   }, []);
 
-  if (!links.length) return null;
-
   return (
-    <div
-      ref={constraintsRef}
-      className="fixed top-16 bottom-24 lg:bottom-4 left-0 right-0 max-w-[1400px] mx-auto pointer-events-none z-40"
-    >
-      <motion.div
-        drag
-        dragConstraints={constraintsRef}
-        dragMomentum={false}
-        dragElastic={0.1}
-        initial={false}
-        animate={{ x: position.x, y: position.y }}
-        onDragEnd={(_, info) => {
-          const next = { x: position.x + info.offset.x, y: position.y + info.offset.y };
-          setPosition(next);
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
-        }}
-        whileDrag={{ scale: 1.05 }}
-        className="absolute bottom-2 right-4 flex flex-col gap-2 cursor-grab active:cursor-grabbing touch-none pointer-events-auto"
+    <>
+      <div
+        ref={constraintsRef}
+        className="fixed top-16 bottom-24 lg:bottom-4 left-0 right-0 max-w-[1400px] mx-auto pointer-events-none z-40"
       >
-        {links.map((link) => {
-          const meta = ICON_MAP[link.icon] || ICON_MAP.website;
-          const Icon = meta.Icon;
-          const bg = link.color || meta.color;
-          return (
-            <a
-              key={link.id}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                // Prevent click after drag
-                if (Math.abs(position.x) > 5 || Math.abs(position.y) > 5) {
-                  // still allow click — drag persisted, but if it was dragged just now framer-motion handles it
-                }
-                e.stopPropagation();
-              }}
-              draggable={false}
-              title={link.name}
-              className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-transform border border-white/10 backdrop-blur-sm"
-              style={{ backgroundColor: bg }}
-            >
-              <Icon className="w-5 h-5 pointer-events-none" />
-            </a>
-          );
-        })}
-      </motion.div>
-    </div>
+        <motion.div
+          drag
+          dragConstraints={constraintsRef}
+          dragMomentum={false}
+          dragElastic={0.1}
+          initial={false}
+          animate={{ x: position.x, y: position.y }}
+          onDragEnd={(_, info) => {
+            const next = { x: position.x + info.offset.x, y: position.y + info.offset.y };
+            setPosition(next);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+          }}
+          whileDrag={{ scale: 1.05 }}
+          className="absolute bottom-2 right-4 flex flex-col gap-2 cursor-grab active:cursor-grabbing touch-none pointer-events-auto"
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setChatOpen(true);
+            }}
+            draggable={false}
+            title="Support Chat"
+            className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-transform border border-white/10 backdrop-blur-sm bg-accent"
+          >
+            <FiMessageCircle className="w-5 h-5 pointer-events-none" />
+          </button>
+          {links.map((link) => {
+            const meta = ICON_MAP[link.icon] || ICON_MAP.website;
+            const Icon = meta.Icon;
+            const bg = link.color || meta.color;
+            return (
+              <a
+                key={link.id}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  // Prevent click after drag
+                  if (Math.abs(position.x) > 5 || Math.abs(position.y) > 5) {
+                    // still allow click — drag persisted, but if it was dragged just now framer-motion handles it
+                  }
+                  e.stopPropagation();
+                }}
+                draggable={false}
+                title={link.name}
+                className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-transform border border-white/10 backdrop-blur-sm"
+                style={{ backgroundColor: bg }}
+              >
+                <Icon className="w-5 h-5 pointer-events-none" />
+              </a>
+            );
+          })}
+        </motion.div>
+      </div>
+      <SupportChat isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+    </>
   );
 }
