@@ -1765,6 +1765,12 @@ router.post('/deposits/:id/approve', async (req, res) => {
       }).catch(() => {});
     }
 
+    // Credit first-deposit bonus (idempotent — only fires the first time).
+    const bonusService = req.app.get('bonusService');
+    if (bonusService) {
+      bonusService.creditFirstDepositBonus(order.user_id, order.zynk_amount).catch(() => {});
+    }
+
     res.json({
       success: true,
       message: 'Deposit approved and Zynk added to user balance',

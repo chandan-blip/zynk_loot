@@ -165,6 +165,45 @@ router.get('/me/profile', async (req, res) => {
   }
 });
 
+// Paginated transaction activity for the current user.
+// Used by the Profile → Activity tab so the user can scroll back through
+// every transaction, not just the latest 5 returned by /profile.
+router.get('/activity', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const offset = (page - 1) * limit;
+
+    const [[{ total }]] = await db.pool.query(
+      'SELECT COUNT(*) AS total FROM transactions WHERE user_id = ?',
+      [req.user.id]
+    );
+
+    const [items] = await db.pool.query(
+      `SELECT type, amount, description, created_at
+         FROM transactions
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?`,
+      [req.user.id, limit, offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        items,
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (error) {
+    console.error('Get user activity error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load activity' });
+  }
+});
+
 // Get user profile by ID (limited info for transfers)
 router.get('/:id/profile', async (req, res) => {
   try {

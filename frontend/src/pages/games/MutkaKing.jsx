@@ -17,7 +17,7 @@ import usePageTitle from '../../hooks/usePageTitle';
 
 const CARD_MULTIPLIERS = { 1: 2, 2: 9, 3: 100, 4: 500 };
 const PICK_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple', 4: 'Four' };
-const KIND_MULTIPLIERS = { rank: 3, suit: 1.3, color: 1.1 };
+const KIND_MULTIPLIERS = { rank: 3, suit: 2, color: 2 };
 
 const BET_KINDS = [
   { id: 'cards', label: 'Cards' },
@@ -34,9 +34,79 @@ const QUICK_AMOUNTS = [10, 50, 100, 500];
 const PHASES = {
   IDLE: 'idle',          // deck stacked, "Play" button
   CONFIG: 'config',      // 4 cards spread face-down, bet section visible
+  SHUFFLING: 'shuffling',// 3-second face-down shuffle animation after Show
   REVEAL: 'reveal',      // server replied, cards flipping over
   DONE: 'done',          // result overlay shown, allow another round
 };
+
+const SHUFFLE_DURATION_MS = 3000;
+
+// Per-card riffle motion: each card cycles through a small loop of x/y/rotate
+// keyframes so the deck looks like a real shuffle. Patterns are intentionally
+// asymmetric so cards visibly cross over and swap z-order rather than orbiting
+// in unison.
+const SHUFFLE_PATTERNS = [
+  { x: [0, -56, 38, -22, 0], y: [0, -12, 16, -8, 0],  rotate: [0, -14, 10, -6, 0],  duration: 0.85, delay: 0.00 },
+  { x: [0,  48, -30, 22, 0], y: [0,  14, -10, 12, 0], rotate: [0,  12, -16, 8, 0],  duration: 0.78, delay: 0.10 },
+  { x: [0, -32, 50, -18, 0], y: [0,  10,  14, -8, 0], rotate: [0,  -8,  14, -10, 0], duration: 0.82, delay: 0.05 },
+  { x: [0,  30, -42, 16, 0], y: [0, -14, -6,  10, 0], rotate: [0,  16,  -8,  12, 0], duration: 0.74, delay: 0.15 },
+];
+
+const SHUFFLE_PLACEHOLDER_IDS = [0, 13, 26, 39];
+
+function ShuffleStage() {
+  return (
+    <div className="relative h-[200px] sm:h-[240px] flex items-center justify-center">
+      <motion.div
+        animate={{ scale: [1, 1.25, 1], opacity: [0.35, 0.75, 0.35] }}
+        transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute h-40 w-40 rounded-full pointer-events-none blur-3xl"
+        style={{
+          background:
+            'radial-gradient(closest-side, rgba(245,210,122,0.55), rgba(0,212,170,0.25) 55%, transparent 75%)',
+        }}
+      />
+
+      <div className="relative w-[180px] h-[160px] flex items-center justify-center">
+        {SHUFFLE_PLACEHOLDER_IDS.map((pid, i) => {
+          const p = SHUFFLE_PATTERNS[i];
+          return (
+            <motion.div
+              key={i}
+              className="absolute"
+              animate={{ x: p.x, y: p.y, rotate: p.rotate }}
+              transition={{
+                duration: p.duration,
+                delay: p.delay,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              style={{ willChange: 'transform' }}
+            >
+              <PlayingCard id={pid} faceUp={false} size="md" />
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <div className="absolute bottom-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em]">
+        <motion.span
+          className="w-1.5 h-1.5 rounded-full bg-amber-400"
+          animate={{ opacity: [0.3, 1, 0.3] }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <span className="text-amber-300 font-semibold">Shuffling</span>
+        <motion.span
+          className="text-amber-300 font-semibold"
+          animate={{ opacity: [0, 1, 0] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          …
+        </motion.span>
+      </div>
+    </div>
+  );
+}
 
 function pickRandomFour() {
   const set = new Set();
@@ -88,7 +158,7 @@ function DemoShowcase() {
         transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-40 sm:h-56 blur-3xl rounded-full pointer-events-none"
         style={{
-          background:
+          background: 
             'radial-gradient(closest-side, rgba(245,210,122,0.55), rgba(0,212,170,0.28) 55%, transparent 75%)',
         }}
       />
@@ -494,7 +564,7 @@ export default function MutkaKing() {
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= 4) {
-        toast.error('Max 4 cards per slip');
+        toast.error('Max 4 cards per bet');
         return prev;
       }
       sounds.tap?.();
@@ -519,7 +589,7 @@ export default function MutkaKing() {
     }
     if (currentAmount < 1) { toast.error('Min bet is 1'); return; }
     if (currentAmount > 10000) { toast.error('Max bet is 10,000'); return; }
-    if (slips.length >= 20) { toast.error('Max 20 slips per round'); return; }
+    if (slips.length >= 20) { toast.error('Max 20 bets per round'); return; }
 
     const slip = {
       id: Date.now() + Math.random(),
@@ -563,8 +633,15 @@ export default function MutkaKing() {
 
     setSubmitting(true);
     sounds.click?.();
+    setPhase(PHASES.SHUFFLING);
+    sounds.cardShuffle?.(SHUFFLE_DURATION_MS / 1000);
+
+    // Run the shuffle animation in parallel with the API call so the player
+    // always sees the full 3s of shuffle, even if the server responds instantly.
+    const shuffleDelay = new Promise((r) => setTimeout(r, SHUFFLE_DURATION_MS));
+
     try {
-      const res = await playMutkaKing(slips.map((s) => {
+      const apiCall = playMutkaKing(slips.map((s) => {
         const base = { kind: s.kind, amount: s.amount };
         if (s.kind === 'cards') return { ...base, cards: s.cards };
         if (s.kind === 'rank')  return { ...base, rank: s.rank };
@@ -572,22 +649,25 @@ export default function MutkaKing() {
         if (s.kind === 'color') return { ...base, color: s.color };
         return base;
       }));
+      const [res] = await Promise.all([apiCall, shuffleDelay]);
       const data = res.data.data;
 
       setRevealed(data.revealedCards);
       setRevealResults(data);
       setPhase(PHASES.REVEAL);
+      sounds.flip?.();
 
-      // Wait for flip animation to feel weighty before showing the overlay
+      // Wait for the spread + flip animation to land before showing the overlay
       setTimeout(() => {
         setShowResult(true);
         setPhase(PHASES.DONE);
         checkAuth();
         loadStats();
         setHistoryKey((k) => k + 1);
-      }, 1700);
+      }, 1400);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
+      setPhase(PHASES.CONFIG);
     } finally {
       setSubmitting(false);
     }
@@ -886,7 +966,7 @@ export default function MutkaKing() {
                     className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent/15 border border-accent/30 text-accent font-semibold hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <FiPlus className="w-4 h-4" />
-                    Add slip {isPickValid && `(${currentPickLabel} · ${currentMultiplier}x)`}
+                    Add bet {isPickValid && `(${currentPickLabel} · ${currentMultiplier}x)`}
                   </button>
                 </div>
 
@@ -942,6 +1022,8 @@ export default function MutkaKing() {
               </motion.div>
             )}
 
+            {phase === PHASES.SHUFFLING && <ShuffleStage />}
+
             {(phase === PHASES.REVEAL || phase === PHASES.DONE) && (
               <div className="relative h-[200px] sm:h-[240px] flex items-center justify-center">
                 <div className="flex items-center justify-center gap-2 sm:gap-4">
@@ -996,6 +1078,15 @@ export default function MutkaKing() {
                   <FiEye className="w-4 h-4" />
                   {submitting ? 'Showing…' : `Show — ${formatCurrency(totalWager)}`}
                 </motion.button>
+              )}
+              {phase === PHASES.SHUFFLING && (
+                <button
+                  type="button"
+                  disabled
+                  className="btn-premium px-6 py-2.5 text-sm flex items-center gap-2 opacity-60 cursor-not-allowed"
+                >
+                  <FiEye className="w-4 h-4" /> Shuffling…
+                </button>
               )}
               {(phase === PHASES.REVEAL || phase === PHASES.DONE) && (
                 <motion.button

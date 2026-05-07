@@ -22,7 +22,8 @@ import {
   FiMail,
   FiInfo,
   FiHeart,
-  FiLock
+  FiLock,
+  FiGift
 } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
@@ -37,6 +38,7 @@ const navItems = [
   // { path: '/profile', label: 'Profile', icon: FiUser, authRequired: true },
   { path: '/invest', label: 'Invest', icon: FiTrendingUp },
   { path: '/games', label: 'Games', icon: FiPlay, special: true },
+  { path: '/bonus', label: 'Bonus', icon: FiGift, authRequired: true },
   { path: '/promote', label: 'Promote', icon: FiShare2, authRequired: true },
   // { path: '/leaderboard', label: 'Leaderboard', icon: GiTrophy },
   { path: '/history', label: 'History', icon: FiClock },

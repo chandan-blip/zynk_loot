@@ -31,12 +31,13 @@ import {
   FiAward,
   FiUsers,
   FiRefreshCw,
+  FiGift,
 } from "react-icons/fi";
 import { GiTwoCoins, GiTrophy, GiPodium } from "react-icons/gi";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import toast from "react-hot-toast";
 import CountUp from "react-countup";
-import { getUserProfile, getMyNumbers, getMyVotes, cashOutTicket } from "../services/api";
+import { getUserProfile, getUserActivity, getMyNumbers, getMyVotes, cashOutTicket } from "../services/api";
 import socketService from "../services/socket";
 import { useCurrency } from "../contexts/CurrencyContext";
 import { rewriteAmounts } from "../utils/formatAmount";
@@ -59,10 +60,18 @@ function Profile() {
   const [loading, setLoading] = useState(true);
   const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("profile");
   const [myTickets, setMyTickets] = useState([]);
   const [myVotes, setMyVotes] = useState([]);
   const [cashingOut, setCashingOut] = useState(null);
+
+  // Paginated activity feed (Profile → Activity tab). Server returns
+  // 20 transactions per page; we lazy-load the first page when the tab
+  // becomes active to avoid hitting the API for users who never open it.
+  const [activityItems, setActivityItems] = useState([]);
+  const [activityPage, setActivityPage] = useState(1);
+  const [activityTotalPages, setActivityTotalPages] = useState(1);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -126,6 +135,30 @@ function Profile() {
       setLoading(false);
     }
   };
+
+  const fetchActivity = async (page) => {
+    setActivityLoading(true);
+    try {
+      const res = await getUserActivity(page, 10);
+      const d = res.data.data || {};
+      setActivityItems(d.items || []);
+      setActivityTotalPages(d.totalPages || 1);
+      setActivityPage(d.page || page);
+    } catch (error) {
+      console.error("Failed to fetch activity:", error);
+      toast.error("Failed to load activity");
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  // Lazy-load the first page when the user opens the Activity tab.
+  useEffect(() => {
+    if (activeTab === "activity" && activityItems.length === 0 && !activityLoading) {
+      fetchActivity(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const fetchMyTickets = async () => {
     try {
@@ -218,6 +251,7 @@ function Profile() {
     invest_withdraw:     { Icon: FiTrendingDown,   fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Invest Withdraw",    credit: true  },
     game_bet:            { Icon: FiPlay,           fg: "text-purple-light",bg: "bg-purple/15",      label: "Game Bet",           credit: false },
     game_win:            { Icon: FiAward,          fg: "text-emerald-400", bg: "bg-emerald-500/15", label: "Game Win",           credit: true  },
+    bonus:               { Icon: FiGift,           fg: "text-amber-300",   bg: "bg-amber-500/15",   label: "Bonus",              credit: true  },
   };
 
   const getActivityMeta = (type) =>
@@ -247,7 +281,7 @@ function Profile() {
     );
   }
 
-  const { user: userData, stats, recentActivity } = profile;
+  const { user: userData, stats } = profile;
 
   // Chart data for balance breakdown
   const balanceData = [
@@ -336,135 +370,10 @@ function Profile() {
         </div>
       </PageHeader>
 
-      {/* User Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-700 via-dark-800 to-dark-700 border border-dark-500"
-      >
-        {/* Background pattern */}
-        <div className="absolute inset-0 bg-grid opacity-20" />
-        <div className="absolute -top-20 -right-20 w-60 h-60 bg-accent/10 rounded-full blur-3xl" />
-
-        <div className="relative p-6 sm:p-8">
-          <div className="flex flex-col sm:flex-row gap-6">
-            {/* Avatar */}
-            <div className="flex-shrink-0">
-              <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center">
-                <FiUser className="w-10 h-10 sm:w-14 sm:h-14 text-dark-900" />
-              </div>
-            </div>
-
-            {/* User Info */}
-            <div className="flex-1 space-y-4">
-              <div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-white">
-                    {userData.username}
-                  </h2>
-                  <span className="px-3 py-1 rounded-full bg-accent/20 text-accent text-xs font-semibold">
-                    <FiShield className="inline w-3 h-3 mr-1" />
-                    Verified
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 mt-2 text-gray-400">
-                  {userData.phone ? (
-                    <>
-                      <FiPhone className="w-4 h-4" />
-                      <span>{userData.phone}</span>
-                    </>
-                  ) : userData.email ? (
-                    <>
-                      <FiMail className="w-4 h-4" />
-                      <span>{userData.email}</span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center gap-2 text-gray-400">
-                  <FiCalendar className="w-4 h-4" />
-                  <span>Joined {formatDate(userData.joinedAt)}</span>
-                </div>
-              </div>
-
-              {/* Balance Display */}
-              <div className="pt-4 border-t border-dark-500">
-                <p className="text-gray-400 text-sm mb-1">Current Balance</p>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-3xl sm:text-4xl font-bold text-accent">
-                    {formatCurrencyFull(userData.balance)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          {
-            label: "Total Earned",
-            value: userData.totalEarned,
-            icon: FiTrendingUp,
-            color: "text-green-400",
-            bg: "bg-green-500/10",
-          },
-          {
-            label: "Total Spent",
-            value: userData.totalSpent,
-            icon: FiTrendingDown,
-            color: "text-red-400",
-            bg: "bg-red-500/10",
-          },
-          {
-            label: "Numbers Owned",
-            value: stats.numbersOwned,
-            icon: FiHash,
-            color: "text-purple-400",
-            bg: "bg-purple-500/10",
-            isCount: true,
-          },
-          {
-            label: "Total Wins",
-            value: stats.wins,
-            icon: GiTrophy,
-            color: "text-gold-light",
-            bg: "bg-gold/10",
-            isCount: true,
-          },
-        ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="p-5 rounded-xl bg-dark-800 border border-dark-600"
-          >
-            <div
-              className={`w-12 h-12 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}
-            >
-              <stat.icon className={`w-6 h-6 ${stat.color}`} />
-            </div>
-            <p className="text-gray-400 text-sm mb-1">{stat.label}</p>
-            <p className={`text-2xl font-bold ${stat.color}`}>
-              {stat.isCount ? (
-                <CountUp end={stat.value} duration={1.5} />
-              ) : (
-                formatCurrency(stat.value)
-              )}
-            </p>
-          </motion.div>
-        ))}
-      </div>
-
       {/* Tabs */}
       <div className="flex gap-2 p-1 rounded-xl bg-dark-800 border border-dark-600">
         {[
-          { id: "overview", label: "Overview", icon: FiActivity },
+          { id: "profile", label: "Profile", icon: FiUser },
           { id: "numbers", label: "My Numbers", icon: FiHash },
           { id: "votes", label: "My Votes", icon: FiThumbsUp },
           { id: "activity", label: "Activity", icon: FiClock },
@@ -486,15 +395,96 @@ function Profile() {
 
       {/* Tab Content */}
       <AnimatePresence mode="wait">
-        {activeTab === "overview" && (
+        {activeTab === "profile" && (
           <motion.div
-            key="overview"
+            key="profile"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="grid lg:grid-cols-2 gap-6"
+            className="space-y-4"
           >
-            {/* Balance Breakdown Chart */}
+            {/* User Card */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-700 via-dark-800 to-dark-700 border border-dark-500">
+              <div className="absolute inset-0 bg-grid opacity-20" />
+              <div className="absolute -top-20 -right-20 w-60 h-60 bg-accent/10 rounded-full blur-3xl" />
+
+              <div className="relative p-6 sm:p-8">
+                <div className="flex flex-col sm:flex-row gap-6">
+                  <div className="flex-shrink-0">
+                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center">
+                      <FiUser className="w-10 h-10 sm:w-14 sm:h-14 text-dark-900" />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h2 className="text-2xl sm:text-3xl font-bold text-white">
+                          {userData.username}
+                        </h2>
+                        <span className="px-3 py-1 rounded-full bg-accent/20 text-accent text-xs font-semibold">
+                          <FiShield className="inline w-3 h-3 mr-1" />
+                          Verified
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2 text-gray-400">
+                        {userData.phone ? (
+                          <>
+                            <FiPhone className="w-4 h-4" />
+                            <span>{userData.phone}</span>
+                          </>
+                        ) : userData.email ? (
+                          <>
+                            <FiMail className="w-4 h-4" />
+                            <span>{userData.email}</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      <div className="flex items-center gap-2 text-gray-400">
+                        <FiCalendar className="w-4 h-4" />
+                        <span>Joined {formatDate(userData.joinedAt)}</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-dark-500">
+                      <p className="text-gray-400 text-sm mb-1">Current Balance</p>
+                      <div className="flex items-baseline gap-3">
+                        <span className="text-3xl sm:text-4xl font-bold text-accent">
+                          {formatCurrencyFull(userData.balance)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Headline stat cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: "Total Earned",  value: userData.totalEarned, icon: FiTrendingUp,   color: "text-green-400",     bg: "bg-green-500/10" },
+                { label: "Total Spent",   value: userData.totalSpent,  icon: FiTrendingDown, color: "text-red-400",       bg: "bg-red-500/10" },
+                { label: "Numbers Owned", value: stats.numbersOwned,   icon: FiHash,         color: "text-purple-400",    bg: "bg-purple-500/10", isCount: true },
+                { label: "Total Wins",    value: stats.wins,           icon: GiTrophy,       color: "text-gold-light",    bg: "bg-gold/10",       isCount: true },
+              ].map((stat) => (
+                <div key={stat.label} className="p-5 rounded-xl bg-dark-800 border border-dark-600">
+                  <div className={`w-12 h-12 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}>
+                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                  </div>
+                  <p className="text-gray-400 text-sm mb-1">{stat.label}</p>
+                  <p className={`text-2xl font-bold ${stat.color}`}>
+                    {stat.isCount ? <CountUp end={stat.value} duration={1.5} /> : formatCurrency(stat.value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Insight grid: balance breakdown + transaction summary + achievements */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              {/* Balance Breakdown Chart */}
             <div className="p-6 rounded-xl bg-dark-800 border border-dark-600">
               <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                 <FiDollarSign className="text-accent" />
@@ -659,6 +649,7 @@ function Profile() {
                   </div>
                 ))}
               </div>
+            </div>
             </div>
           </motion.div>
         )}
@@ -933,58 +924,91 @@ function Profile() {
             exit={{ opacity: 0, y: -20 }}
             className="rounded-xl bg-dark-800 border border-dark-600 overflow-hidden"
           >
-            <div className="p-4 border-b border-dark-600">
+            <div className="p-4 border-b border-dark-600 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <FiClock className="text-accent" />
-                Recent Activity
+                Activity
               </h3>
+              {activityTotalPages > 1 && (
+                <span className="text-xs text-gray-500">
+                  Page {activityPage} of {activityTotalPages}
+                </span>
+              )}
             </div>
-            {recentActivity && recentActivity.length > 0 ? (
-              <div className="divide-y divide-dark-600">
-                {recentActivity.map((activity, i) => {
-                  const meta = getActivityMeta(activity.type);
-                  const Icon = meta.Icon;
-                  const amount = Math.abs(parseFloat(activity.amount) || 0);
-                  return (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-dark-700 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className={`w-10 h-10 rounded-xl ${meta.bg} flex items-center justify-center shrink-0`}>
-                          <Icon className={`w-4 h-4 ${meta.fg}`} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-white font-medium text-sm truncate">
-                            {meta.label}
-                          </p>
-                          {activity.description && (
-                            <p className="text-gray-500 text-xs truncate">
-                              {rewriteAmounts(activity.description, selectedCurrency)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className={`font-bold text-sm whitespace-nowrap ${meta.credit ? "text-emerald-400" : "text-red-400"}`}>
-                          {meta.credit ? "+" : "-"}
-                          {formatCurrency(amount)}
-                        </p>
-                        <p className="text-gray-500 text-[11px] whitespace-nowrap">
-                          {formatTimeAgo(activity.created_at)}
-                        </p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
+
+            {activityLoading && activityItems.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin" />
               </div>
+            ) : activityItems.length > 0 ? (
+              <>
+                <div className="divide-y divide-dark-600">
+                  {activityItems.map((activity, i) => {
+                    const meta = getActivityMeta(activity.type);
+                    const Icon = meta.Icon;
+                    const amount = Math.abs(parseFloat(activity.amount) || 0);
+                    return (
+                      <div
+                        key={`${activityPage}-${i}`}
+                        className="p-3 sm:p-4 flex items-center justify-between gap-3 hover:bg-dark-700 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className={`w-10 h-10 rounded-xl ${meta.bg} flex items-center justify-center shrink-0`}>
+                            <Icon className={`w-4 h-4 ${meta.fg}`} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white font-medium text-sm truncate">
+                              {meta.label}
+                            </p>
+                            {activity.description && (
+                              <p className="text-gray-500 text-xs truncate">
+                                {rewriteAmounts(activity.description, selectedCurrency)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`font-bold text-sm whitespace-nowrap ${meta.credit ? "text-emerald-400" : "text-red-400"}`}>
+                            {meta.credit ? "+" : "-"}
+                            {formatCurrency(amount)}
+                          </p>
+                          <p className="text-gray-500 text-[11px] whitespace-nowrap">
+                            {formatTimeAgo(activity.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {activityTotalPages > 1 && (
+                  <div className="flex items-center justify-between p-3 border-t border-dark-600 bg-dark-800/60">
+                    <button
+                      type="button"
+                      onClick={() => fetchActivity(Math.max(1, activityPage - 1))}
+                      disabled={activityLoading || activityPage <= 1}
+                      className="px-3 py-1.5 rounded-md text-xs font-semibold text-gray-300 bg-dark-700 border border-white/5 hover:bg-dark-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Prev
+                    </button>
+                    <span className="text-xs text-gray-500">
+                      {activityLoading ? 'Loading…' : `Page ${activityPage} of ${activityTotalPages}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => fetchActivity(Math.min(activityTotalPages, activityPage + 1))}
+                      disabled={activityLoading || activityPage >= activityTotalPages}
+                      className="px-3 py-1.5 rounded-md text-xs font-semibold text-gray-300 bg-dark-700 border border-white/5 hover:bg-dark-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="p-12 text-center">
                 <FiActivity className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-400">No recent activity</p>
+                <p className="text-gray-400">No activity yet</p>
               </div>
             )}
           </motion.div>

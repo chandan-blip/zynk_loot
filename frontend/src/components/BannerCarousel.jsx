@@ -7,7 +7,7 @@ import { getBanners } from '../services/api';
 const AUTO_INTERVAL = 5000;
 const SWIPE_THRESHOLD = 50;
 
-function BannerSlide({ banner }) {
+function BannerSlide({ banner, priority = false }) {
   const inner = (
     <div className="relative w-full aspect-[16/7] sm:aspect-[16/6] overflow-hidden rounded-xl bg-dark-700 select-none">
       <img
@@ -15,6 +15,14 @@ function BannerSlide({ banner }) {
         alt={banner.title || 'banner'}
         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         draggable={false}
+        // The first banner is above-the-fold — load eagerly with high
+        // priority so the browser doesn't put it behind other resources.
+        // Subsequent banners are pre-warmed via new Image() in the
+        // parent, so by the time they swap in the browser already has
+        // them cached.
+        loading={priority ? 'eager' : 'eager'}
+        fetchpriority={priority ? 'high' : 'auto'}
+        decoding="async"
       />
       {banner.title && (
         <div className="absolute inset-x-0 bottom-0 p-3 sm:p-5 bg-gradient-to-t from-black/70 via-black/30 to-transparent">
@@ -47,7 +55,20 @@ export default function BannerCarousel() {
 
   useEffect(() => {
     getBanners()
-      .then((res) => setBanners(res.data?.data || []))
+      .then((res) => {
+        const list = res.data?.data || [];
+        setBanners(list);
+        // Pre-warm every banner image into the browser cache so swapping
+        // slides is instant. Without this, only the visible slide is in
+        // the DOM (AnimatePresence mounts/unmounts), so each transition
+        // starts a brand-new network fetch.
+        list.forEach((b) => {
+          if (!b?.image_url) return;
+          const img = new Image();
+          img.decoding = 'async';
+          img.src = b.image_url;
+        });
+      })
       .catch(() => {});
   }, []);
 
@@ -130,7 +151,7 @@ export default function BannerCarousel() {
             onDragEnd={onDragEnd}
             className="cursor-grab active:cursor-grabbing"
           >
-            <BannerSlide banner={banner} />
+            <BannerSlide banner={banner} priority={index === 0} />
           </motion.div>
         </AnimatePresence>
       </div>

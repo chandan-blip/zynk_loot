@@ -161,29 +161,11 @@ function renderTemplate(tpl, vars) {
   );
 }
 
-const FIRST_NAMES = [
-  'Rahul', 'Amit', 'Priya', 'Neha', 'Vikram', 'Rohit', 'Anjali', 'Suresh',
-  'Deepak', 'Kavita', 'Manish', 'Pooja', 'Arjun', 'Sneha', 'Karthik', 'Meera',
-  'Sandeep', 'Divya', 'Rajesh', 'Shreya', 'Gaurav', 'Ritu', 'Naveen', 'Isha',
-  'Ajay', 'Swati', 'Vivek', 'Anita', 'Harish', 'Nisha', 'Prakash', 'Tanvi',
-  'Kiran', 'Lakshmi', 'Mohit', 'Payal', 'Saurabh', 'Aarti', 'Yogesh', 'Rekha',
-];
-
-const LAST_NAMES = [
-  'Sharma', 'Verma', 'Patel', 'Kumar', 'Singh', 'Gupta', 'Reddy', 'Nair',
-  'Iyer', 'Menon', 'Shah', 'Joshi', 'Das', 'Mishra', 'Yadav', 'Chauhan',
-  'Agarwal', 'Bansal', 'Khan', 'Rao', 'Pillai', 'Thakur', 'Pandey', 'Saxena',
-];
+// Names + masking helpers live in utils/randomNames so the live activity
+// feed and this winners feed share one pool. See that file for pool details.
+const { FIRST_NAMES, LAST_NAMES, rand, randomChoice, maskName } = require('../utils/randomNames');
 
 const PLATFORMS = ['phonepe', 'gpay', 'paytm', 'fampay', 'mobikwik', 'amazonpay'];
-
-function rand(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function randomChoice(arr) {
-  return arr[rand(0, arr.length - 1)];
-}
 
 function randomDigits(n) {
   let s = '';
@@ -196,10 +178,6 @@ function randomAlnum(n) {
   let s = '';
   for (let i = 0; i < n; i++) s += chars[rand(0, chars.length - 1)];
   return s;
-}
-
-function maskName(first, last) {
-  return `${first} ${last[0]}.`;
 }
 
 function generateJsonData() {
@@ -224,14 +202,28 @@ function generateJsonData() {
   }
 }
 
+// Sample without replacement: build (first, last) pairs and reject ones we've
+// already produced this run, so the same masked name never appears twice in
+// a single draw.
 function generateWinners(count) {
   const rows = [];
-  for (let i = 0; i < count; i++) {
+  const seen = new Set();
+  // Cap attempts so a low-pool / huge-count call can't loop forever.
+  const maxAttempts = count * 12;
+  let attempts = 0;
+
+  while (rows.length < count && attempts < maxAttempts) {
+    attempts++;
     const first = randomChoice(FIRST_NAMES);
     const last = randomChoice(LAST_NAMES);
+    const style = rand(0, 9) === 0 ? 2 : rand(0, 1); // ~10% chance of full name
+    const display = maskName(first, last, style);
+    if (seen.has(display)) continue;
+    seen.add(display);
+
     const amount = rand(5, 500) * 100; // ₹500 – ₹50,000
     rows.push({
-      name: maskName(first, last),
+      name: display,
       amount,
       json_data: generateJsonData(),
     });
@@ -535,9 +527,9 @@ class DailyWinnersService {
             continue;
           }
           const png = await this.renderHtmlToPng(browser, html, { width: 400, height: 870, mode: 'viewport' });
-          const caption =
-            `💸 <b>${winner.name}</b> just received <b>${formatINR(winner.amount)}</b>\n` +
-            `via ${platform.toUpperCase()} · Draw #${draw.period_id}`;
+          // Per-winner image caption: just the winner + amount, no draw or
+          // payment-platform details.
+          const caption = `💸 <b>${winner.name}</b> just won <b>${formatINR(winner.amount)}</b>`;
           const result = await this.sendToTelegram(png, caption, log);
           if (!result.skipped) screenshotsSent++;
           log.info(`[${i + 1}/${winners.length}] ${winner.name} (${platform}) sent`);

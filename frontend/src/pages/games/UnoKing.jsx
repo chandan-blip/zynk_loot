@@ -17,7 +17,7 @@ import usePageTitle from '../../hooks/usePageTitle';
 
 const CARD_MULTIPLIERS = { 1: 2, 2: 9, 3: 100, 4: 500 };
 const PICK_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple', 4: 'Four' };
-const KIND_MULTIPLIERS = { color: 1.3, number: 3, action: 3, wild: 6 };
+const KIND_MULTIPLIERS = { color: 2, number: 3, action: 3, wild: 6 };
 
 const BET_KINDS = [
   { id: 'cards',  label: 'Cards' },
@@ -39,9 +39,75 @@ const QUICK_AMOUNTS = [10, 50, 100, 500];
 const PHASES = {
   IDLE: 'idle',
   CONFIG: 'config',
+  SHUFFLING: 'shuffling',
   REVEAL: 'reveal',
   DONE: 'done',
 };
+
+const SHUFFLE_DURATION_MS = 3000;
+
+const SHUFFLE_PATTERNS = [
+  { x: [0, -56, 38, -22, 0], y: [0, -12, 16, -8, 0],  rotate: [0, -14, 10, -6, 0],  duration: 0.85, delay: 0.00 },
+  { x: [0,  48, -30, 22, 0], y: [0,  14, -10, 12, 0], rotate: [0,  12, -16, 8, 0],  duration: 0.78, delay: 0.10 },
+  { x: [0, -32, 50, -18, 0], y: [0,  10,  14, -8, 0], rotate: [0,  -8,  14, -10, 0], duration: 0.82, delay: 0.05 },
+  { x: [0,  30, -42, 16, 0], y: [0, -14, -6,  10, 0], rotate: [0,  16,  -8,  12, 0], duration: 0.74, delay: 0.15 },
+];
+
+const SHUFFLE_PLACEHOLDER_IDS = [0, 13, 26, 39];
+
+function ShuffleStage() {
+  return (
+    <div className="relative h-[200px] sm:h-[240px] flex items-center justify-center">
+      <motion.div
+        animate={{ scale: [1, 1.25, 1], opacity: [0.35, 0.75, 0.35] }}
+        transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute h-40 w-40 rounded-full pointer-events-none blur-3xl"
+        style={{
+          background:
+            'radial-gradient(closest-side, rgba(220,38,38,0.45), rgba(37,99,235,0.30) 55%, transparent 75%)',
+        }}
+      />
+
+      <div className="relative w-[180px] h-[160px] flex items-center justify-center">
+        {SHUFFLE_PLACEHOLDER_IDS.map((pid, i) => {
+          const p = SHUFFLE_PATTERNS[i];
+          return (
+            <motion.div
+              key={i}
+              className="absolute"
+              animate={{ x: p.x, y: p.y, rotate: p.rotate }}
+              transition={{
+                duration: p.duration,
+                delay: p.delay,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              style={{ willChange: 'transform' }}
+            >
+              <UnoCard id={pid} faceUp={false} size="md" />
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <div className="absolute bottom-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em]">
+        <motion.span
+          className="w-1.5 h-1.5 rounded-full bg-amber-400"
+          animate={{ opacity: [0.3, 1, 0.3] }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <span className="text-amber-300 font-semibold">Shuffling</span>
+        <motion.span
+          className="text-amber-300 font-semibold"
+          animate={{ opacity: [0, 1, 0] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          …
+        </motion.span>
+      </div>
+    </div>
+  );
+}
 
 function pickRandomFour() {
   const set = new Set();
@@ -220,6 +286,11 @@ function SlipTarget({ slip }) {
     );
   }
   if (slip.kind === 'wild') {
+    // Render the specific wild card the player picked. If no specific card
+    // was tracked (legacy slip), fall back to a generic "Any Wild" pill.
+    if (slip.wildCard != null) {
+      return <CardLabel id={slip.wildCard} />;
+    }
     return (
       <span
         className="inline-flex items-center px-3 h-9 rounded text-white font-bold text-xs"
@@ -255,7 +326,11 @@ export default function UnoKing() {
   const [pickedColor, setPickedColor] = useState(null);
   const [pickedNumber, setPickedNumber] = useState(null);
   const [pickedAction, setPickedAction] = useState(null);
-  const [pickedWild, setPickedWild] = useState(false);
+  // null when no wild picked, otherwise the specific wild card id (52 = Wild,
+  // 53 = Wild +4) the player tapped. The bet still wins on either wild because
+  // the backend `wild` kind matches any wild — the picked card just records
+  // which one the player targeted for the slip preview.
+  const [pickedWild, setPickedWild] = useState(null);
   const [amount, setAmount] = useState('10');
   const [slips, setSlips] = useState([]);
   const [revealed, setRevealed] = useState([]);
@@ -315,8 +390,8 @@ export default function UnoKing() {
     isPickValid = pickedAction != null;
   } else if (betKind === 'wild') {
     currentMultiplier = KIND_MULTIPLIERS.wild;
-    currentPickLabel = pickedWild ? 'Any Wild' : '—';
-    isPickValid = pickedWild;
+    currentPickLabel = pickedWild === 52 ? 'Wild' : pickedWild === 53 ? 'Wild +4' : '—';
+    isPickValid = pickedWild != null;
   }
   const projectedWin = currentMultiplier * currentAmount;
 
@@ -327,7 +402,7 @@ export default function UnoKing() {
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= 4) {
-        toast.error('Max 4 cards per slip');
+        toast.error('Max 4 cards per bet');
         return prev;
       }
       sounds.tap?.();
@@ -344,13 +419,13 @@ export default function UnoKing() {
         betKind === 'cards' ? 'Pick at least 1 card' :
         betKind === 'color' ? 'Pick a color' :
         betKind === 'number' ? 'Pick a number' :
-        betKind === 'action' ? 'Pick an action' : 'Toggle the Wild bet'
+        betKind === 'action' ? 'Pick an action' : 'Pick a wild card'
       );
       return;
     }
     if (currentAmount < 1) { toast.error('Min bet is 1'); return; }
     if (currentAmount > 10000) { toast.error('Max bet is 10,000'); return; }
-    if (slips.length >= 20) { toast.error('Max 20 slips per round'); return; }
+    if (slips.length >= 20) { toast.error('Max 20 bets per round'); return; }
 
     const slip = {
       id: Date.now() + Math.random(),
@@ -362,14 +437,14 @@ export default function UnoKing() {
     if (betKind === 'color')  slip.color  = pickedColor;
     if (betKind === 'number') slip.number = pickedNumber;
     if (betKind === 'action') slip.action = pickedAction;
-    // wild has no extra field
+    if (betKind === 'wild')   slip.wildCard = pickedWild;
 
     setSlips((prev) => [...prev, slip]);
     setSelected([]);
     setPickedColor(null);
     setPickedNumber(null);
     setPickedAction(null);
-    setPickedWild(false);
+    setPickedWild(null);
     sounds.click?.();
   };
 
@@ -381,7 +456,7 @@ export default function UnoKing() {
     setPickedColor(null);
     setPickedNumber(null);
     setPickedAction(null);
-    setPickedWild(false);
+    setPickedWild(null);
   };
 
   const handleShow = async () => {
@@ -390,8 +465,13 @@ export default function UnoKing() {
 
     setSubmitting(true);
     sounds.click?.();
+    setPhase(PHASES.SHUFFLING);
+    sounds.unoShuffle?.(SHUFFLE_DURATION_MS / 1000);
+
+    const shuffleDelay = new Promise((r) => setTimeout(r, SHUFFLE_DURATION_MS));
+
     try {
-      const res = await playUnoKing(slips.map((s) => {
+      const apiCall = playUnoKing(slips.map((s) => {
         const base = { kind: s.kind, amount: s.amount };
         if (s.kind === 'cards')  return { ...base, cards: s.cards };
         if (s.kind === 'color')  return { ...base, color: s.color };
@@ -399,10 +479,12 @@ export default function UnoKing() {
         if (s.kind === 'action') return { ...base, action: s.action };
         return base;
       }));
+      const [res] = await Promise.all([apiCall, shuffleDelay]);
       const data = res.data.data;
       setRevealed(data.revealedCards);
       setRevealResults(data);
       setPhase(PHASES.REVEAL);
+      sounds.flip?.();
 
       setTimeout(() => {
         setShowResult(true);
@@ -410,9 +492,10 @@ export default function UnoKing() {
         checkAuth();
         loadStats();
         setHistoryKey((k) => k + 1);
-      }, 1700);
+      }, 1400);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to play');
+      setPhase(PHASES.CONFIG);
     } finally {
       setSubmitting(false);
     }
@@ -423,7 +506,7 @@ export default function UnoKing() {
     setPickedColor(null);
     setPickedNumber(null);
     setPickedAction(null);
-    setPickedWild(false);
+    setPickedWild(null);
     setSlips([]);
     setRevealed([]);
     setRevealResults(null);
@@ -691,18 +774,19 @@ export default function UnoKing() {
 
                 {betKind === 'wild' && (
                   <div>
-                    <p className="text-[11px] text-gray-500 mb-2">Wins if any of the 4 dealt cards is a Wild or Wild +4.</p>
+                    <p className="text-[11px] text-gray-500 mb-2">Pick a wild — bet wins if any wild (Wild or Wild +4) is dealt.</p>
                     <div className="grid grid-cols-2 gap-2 max-w-[224px] mx-auto">
-                      <UnoCardChip
-                        id={52}
-                        selected={pickedWild}
-                        onClick={() => { setPickedWild((v) => !v); sounds.tap?.(); }}
-                      />
-                      <UnoCardChip
-                        id={53}
-                        selected={pickedWild}
-                        onClick={() => { setPickedWild((v) => !v); sounds.tap?.(); }}
-                      />
+                      {[52, 53].map((wid) => (
+                        <UnoCardChip
+                          key={wid}
+                          id={wid}
+                          selected={pickedWild === wid}
+                          onClick={() => {
+                            setPickedWild((prev) => (prev === wid ? null : wid));
+                            sounds.tap?.();
+                          }}
+                        />
+                      ))}
                     </div>
                   </div>
                 )}
@@ -734,7 +818,7 @@ export default function UnoKing() {
                     className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent/15 border border-accent/30 text-accent font-semibold hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <FiPlus className="w-4 h-4" />
-                    Add slip {isPickValid && `(${currentPickLabel} · ${currentMultiplier}x)`}
+                    Add bet {isPickValid && `(${currentPickLabel} · ${currentMultiplier}x)`}
                   </button>
                 </div>
 
@@ -783,6 +867,8 @@ export default function UnoKing() {
               </motion.div>
             )}
 
+            {phase === PHASES.SHUFFLING && <ShuffleStage />}
+
             {(phase === PHASES.REVEAL || phase === PHASES.DONE) && (
               <div className="relative h-[200px] sm:h-[240px] flex items-center justify-center">
                 <div className="flex items-center justify-center gap-2 sm:gap-4">
@@ -825,6 +911,15 @@ export default function UnoKing() {
                   <FiEye className="w-4 h-4" />
                   {submitting ? 'Showing…' : `Show — ${formatCurrency(totalWager)}`}
                 </motion.button>
+              )}
+              {phase === PHASES.SHUFFLING && (
+                <button
+                  type="button"
+                  disabled
+                  className="btn-premium px-6 py-2.5 text-sm flex items-center gap-2 opacity-60 cursor-not-allowed"
+                >
+                  <FiEye className="w-4 h-4" /> Shuffling…
+                </button>
               )}
               {(phase === PHASES.REVEAL || phase === PHASES.DONE) && (
                 <motion.button

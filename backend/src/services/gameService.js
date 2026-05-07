@@ -17,8 +17,8 @@ const WIN_PAYOUT_RATIO = 0.9;
 const MUTKA_KING_MULTIPLIERS = {
   cards: { 1: 2, 2: 9, 3: 100, 4: 500 },
   rank: 3,
-  suit: 1.3,
-  color: 1.1,
+  suit: 2,
+  color: 2,
 };
 const MUTKA_KING_MAX_BETS = 20;
 const MUTKA_KING_MIN_BET = 1;
@@ -49,7 +49,7 @@ const cardSuit = (id) => Math.floor(id / 13);
 // Winnings paid at WIN_PAYOUT_RATIO (90%) — 10% house cut on every win.
 const UNO_KING_MULTIPLIERS = {
   cards: { 1: 2, 2: 9, 3: 100, 4: 500 },
-  color:  1.3,
+  color:  2,
   number: 3,
   action: 3,
   wild:   6,

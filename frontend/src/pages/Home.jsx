@@ -129,6 +129,36 @@ function Home() {
       color: "text-purple-light",
       bgColor: "bg-purple/20",
     },
+    bonus_daily: {
+      icon: FiGift,
+      color: "text-amber-300",
+      bgColor: "bg-amber-500/20",
+    },
+    bonus_weekly: {
+      icon: FiGift,
+      color: "text-emerald-300",
+      bgColor: "bg-emerald-500/20",
+    },
+    bonus_monthly: {
+      icon: FiGift,
+      color: "text-fuchsia-300",
+      bgColor: "bg-fuchsia-500/20",
+    },
+    bonus_first_deposit: {
+      icon: FiGift,
+      color: "text-accent",
+      bgColor: "bg-accent/20",
+    },
+    invest: {
+      icon: FiTrendingUp,
+      color: "text-purple-light",
+      bgColor: "bg-purple/20",
+    },
+    invest_return: {
+      icon: FiTrendingUp,
+      color: "text-emerald-light",
+      bgColor: "bg-emerald/20",
+    },
   };
 
   useEffect(() => {
@@ -336,6 +366,43 @@ function Home() {
       <div className="space-y-3">
         {/* Banner Carousel */}
         <BannerCarousel />
+
+        {/* Free money / bonuses entry — daily, weekly, monthly + 2x first deposit */}
+        <Link to="/bonus" className="block">
+          <div
+            className="relative rounded-2xl overflow-hidden border border-emerald-500/15 cursor-pointer"
+            style={{
+              background:
+                'linear-gradient(135deg, #0f4c4a 0%, #082b2a 55%, #050a0a 100%)',
+            }}
+          >
+            {/* Soft glow behind the money so the card feels lit from the right */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  'radial-gradient(circle at 82% 55%, rgba(16,185,129,0.22), transparent 62%)',
+              }}
+            />
+            <div className="relative flex items-center justify-between px-5 py-4 sm:py-5">
+              <div className="min-w-0">
+                <h3 className="text-white text-xl sm:text-2xl font-black leading-tight tracking-tight">
+                  Free<br />money
+                </h3>
+                <p className="text-emerald-300/80 text-[10px] sm:text-[11px] uppercase tracking-[0.18em] mt-1.5">
+                  Daily · Weekly · Monthly
+                </p>
+              </div>
+              <span
+                style={{ filter: 'drop-shadow(0 6px 14px rgba(16,185,129,0.35))' }}
+                className="text-7xl sm:text-6xl select-none shrink-0 ml-3"
+                aria-hidden="true"
+              >
+                💸
+              </span>
+            </div>
+          </div>
+        </Link>
 
         {/* Live Activity */}
         <motion.div

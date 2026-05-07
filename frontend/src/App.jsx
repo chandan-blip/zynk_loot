@@ -40,6 +40,7 @@ import NumberDetail from './pages/NumberDetail';
 import Wallet from './pages/Wallet';
 import Checkout from './pages/Checkout';
 import Promote from './pages/Promote';
+import Bonus from './pages/Bonus';
 import Invest from './pages/Invest';
 import Games from './pages/games/Games';
 import Lottery from './pages/games/Lottery';
@@ -210,13 +211,14 @@ function App() {
           <Route path="checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
           <Route path="profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="promote" element={<PrivateRoute><Promote /></PrivateRoute>} />
+          <Route path="bonus" element={<PrivateRoute><Bonus /></PrivateRoute>} />
           <Route path="invest" element={<Invest />} />
           <Route path="notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="games" element={<Games />} />
-          <Route path="games/lottery" element={<Lottery />} />
-          <Route path="games/mutka-king" element={<MutkaKing />} />
-          <Route path="games/uno-king" element={<UnoKing />} />
-          <Route path="games/shuffle-card" element={<ShuffleCard />} />
+          <Route path="games/lottery" element={<PrivateRoute><Lottery /></PrivateRoute>} />
+          <Route path="games/mutka-king" element={<PrivateRoute><MutkaKing /></PrivateRoute>} />
+          <Route path="games/uno-king" element={<PrivateRoute><UnoKing /></PrivateRoute>} />
+          <Route path="games/shuffle-card" element={<PrivateRoute><ShuffleCard /></PrivateRoute>} />
           <Route path="games/coin-flip" element={<CoinFlip />} />
           <Route path="games/dice-roll" element={<DiceRoll />} />
           <Route path="games/lucky-spin" element={<LuckySpin />} />

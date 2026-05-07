@@ -19,8 +19,8 @@ const WIN_PAYOUT_RATIO = 0.9;
 const SHUFFLE_MULTIPLIERS = {
   cards: { 1: 3, 2: 50, 3: 500 },
   rank:  4,
-  suit:  1.5,
-  color: 1.1,
+  suit:  2,
+  color: 2,
 };
 
 const ROUND_TOTAL_MS    = 60_000;  // 1 minute total
@@ -261,6 +261,19 @@ class ShuffleCardService {
           ]
         );
 
+        // Lock and snapshot each winner's balance up front so we can record
+        // accurate balance_before/balance_after on every win transaction.
+        const userBalances = new Map();
+        for (const userId of perUser.keys()) {
+          const [rows] = await conn.execute(
+            'SELECT balance FROM users WHERE id = ? FOR UPDATE',
+            [userId]
+          );
+          if (rows.length > 0) {
+            userBalances.set(userId, parseFloat(rows[0].balance));
+          }
+        }
+
         // Settle every bet row
         for (const s of settlements) {
           await conn.execute(
@@ -293,19 +306,31 @@ class ShuffleCardService {
           );
 
           if (s.winAmount > 0) {
+            const balanceBefore = userBalances.get(s.userId) ?? 0;
+            const balanceAfter = Math.floor((balanceBefore + s.winAmount) * 100) / 100;
+            userBalances.set(s.userId, balanceAfter);
             await conn.execute(
-              `INSERT INTO transactions (user_id, type, amount, reference_type, reference_id, description)
-               VALUES (?, 'game_win', ?, 'game_bet', ?, ?)`,
-              [s.userId, s.winAmount.toFixed(2), gb.insertId, `Shuffle Card win: ${round.periodId}`]
+              `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
+               VALUES (?, 'game_win', ?, ?, ?, 'game_bet', ?, ?)`,
+              [
+                s.userId,
+                s.winAmount.toFixed(2),
+                balanceBefore.toFixed(2),
+                balanceAfter.toFixed(2),
+                gb.insertId,
+                `Shuffle Card win: ${round.periodId}`,
+              ]
             );
           }
         }
 
-        // Credit winners (single update per user)
-        for (const [userId, payout] of perUser.entries()) {
+        // Credit winners (single update per user) using the running balances
+        // we tracked above so the final users.balance matches the last
+        // balance_after we wrote on transactions.
+        for (const [userId, finalBalance] of userBalances.entries()) {
           await conn.execute(
-            `UPDATE users SET balance = balance + ? WHERE id = ?`,
-            [payout.toFixed(2), userId]
+            `UPDATE users SET balance = ? WHERE id = ?`,
+            [finalBalance.toFixed(2), userId]
           );
         }
 

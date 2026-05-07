@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FiSettings, FiSave, FiClock, FiDollarSign, FiPercent, FiGlobe, FiToggleRight, FiShare2, FiTrendingUp } from 'react-icons/fi';
+import { FiSettings, FiSave, FiClock, FiDollarSign, FiPercent, FiGlobe, FiToggleRight, FiShare2, FiTrendingUp, FiGift } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import { getAdminSettings, updateSetting } from '../../services/api';
@@ -50,6 +50,16 @@ const settingIcons = {
   activity_weight_withdrawal: FiPercent,
   activity_weight_game_win: FiPercent,
   activity_weight_game_play: FiPercent,
+
+  // Bonuses
+  bonus_daily_amount: FiGift,
+  bonus_weekly_amount: FiGift,
+  bonus_monthly_amount: FiGift,
+  bonus_first_deposit_multiplier: FiGift,
+  bonus_first_deposit_cap: FiGift,
+  bonus_daily_cooldown_hours: FiClock,
+  bonus_weekly_cooldown_hours: FiClock,
+  bonus_monthly_cooldown_hours: FiClock,
 
   // Session hours
   session_1_generate_hour: FiClock,
@@ -109,6 +119,16 @@ const settingLabels = {
   activity_weight_game_win: 'Game Win Weight (%)',
   activity_weight_game_play: 'Game Play Weight (%)',
 
+  // Bonuses
+  bonus_daily_amount: 'Daily Bonus Amount (Z)',
+  bonus_weekly_amount: 'Weekly Bonus Amount (Z)',
+  bonus_monthly_amount: 'Monthly Bonus Amount (Z)',
+  bonus_first_deposit_multiplier: 'First Deposit Multiplier (e.g. 2 = 2x)',
+  bonus_first_deposit_cap: 'First Deposit Bonus Cap (Z)',
+  bonus_daily_cooldown_hours: 'Daily Cooldown (hours)',
+  bonus_weekly_cooldown_hours: 'Weekly Cooldown (hours)',
+  bonus_monthly_cooldown_hours: 'Monthly Cooldown (hours)',
+
   // Session 1
   session_1_generate_hour: 'Session 1 Generate Hour',
   session_1_reveal_start_hour: 'Session 1 Reveal Start',
@@ -133,6 +153,7 @@ const settingCategories = {
   'Referral Settings': ['referral_commission_rate'],
   'Investment Settings': ['invest_enabled', 'invest_min_amount', 'invest_max_amount', 'invest_max_per_user', 'invest_base_rate_min', 'invest_base_rate_max', 'invest_early_withdraw_penalty'],
   'Live Activity Feed': ['activity_enabled', 'activity_frequency_min', 'activity_frequency_max', 'activity_amount_digits_min', 'activity_amount_digits_max', 'activity_weight_vote', 'activity_weight_buy', 'activity_weight_sell', 'activity_weight_win', 'activity_weight_zynk_buy', 'activity_weight_transfer', 'activity_weight_withdrawal', 'activity_weight_game_win', 'activity_weight_game_play'],
+  'Bonus Settings': ['bonus_daily_amount', 'bonus_weekly_amount', 'bonus_monthly_amount', 'bonus_first_deposit_multiplier', 'bonus_first_deposit_cap', 'bonus_daily_cooldown_hours', 'bonus_weekly_cooldown_hours', 'bonus_monthly_cooldown_hours'],
   'Session 1 (Morning)': ['session_1_generate_hour', 'session_1_reveal_start_hour', 'session_1_reveal_end_hour'],
   'Session 2 (Evening)': ['session_2_generate_hour', 'session_2_reveal_start_hour', 'session_2_reveal_end_hour'],
   'Session 3 (Night)': ['session_3_generate_hour', 'session_3_reveal_start_hour', 'session_3_reveal_end_hour']

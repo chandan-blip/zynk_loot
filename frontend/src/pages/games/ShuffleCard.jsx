@@ -21,7 +21,7 @@ import usePageTitle from '../../hooks/usePageTitle';
 
 const CARD_MULTIPLIERS = { 1: 3, 2: 50, 3: 500 };
 const PICK_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple' };
-const KIND_MULTIPLIERS = { rank: 4, suit: 1.5, color: 1.1 };
+const KIND_MULTIPLIERS = { rank: 4, suit: 2, color: 2 };
 
 const BET_KINDS = [
   { id: 'cards', label: 'Cards' },
@@ -620,83 +620,152 @@ export default function ShuffleCard() {
           </div>
         </div>
 
-        <ShuffleStage revealed={phase === 'reveal' ? revealedCards : null} locking={phase === 'locked'} />
-
-        {/* Shrinking progress bar — one continuous shrink across the full
-            round (betting + lock) so the bar stays smooth as the round closes.
-            Fades green → red as time drains. During reveal it parks at 100 %
-            green as a completion cue. */}
+        {/* Beautiful inline countdown — full-width rectangle with flipping
+            digit tiles, a thin progress sweep underneath, and phase-aware
+            color/urgency pulses. */}
         {(() => {
-          let pct = 0;
-          let hue = 142;
-          let urgent = false;
-          let label = '';
-          if (round && (phase === 'betting' || phase === 'locked')) {
-            const totalMs = round.roundTotalMs || (round.bettingPhaseMs + (round.lockPhaseMs || 10_000));
-            pct = Math.min(100, Math.max(0, (lockRemaining / totalMs) * 100));
-            hue = Math.round((pct / 100) * 142);
-            urgent = pct < 25;
-            label = `${Math.ceil(lockRemaining / 1000)}s`;
-          } else {
-            pct = 100;
-            hue = 152;
-            label = 'Result';
+          const totalSec = Math.max(0, Math.ceil(lockRemaining / 1000));
+          const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+          const ss = String(totalSec % 60).padStart(2, '0');
+          const urgent = phase === 'betting' && totalSec <= 5 && totalSec > 0;
+          const isLockPhase = phase === 'locked';
+          const isReveal = phase === 'reveal';
+
+          let ringFrom = '#10b981';
+          let ringTo = '#34d399';
+          let glow = 'rgba(16, 185, 129, 0.45)';
+          if (isLockPhase) {
+            ringFrom = '#f59e0b';
+            ringTo = '#fbbf24';
+            glow = 'rgba(245, 158, 11, 0.55)';
+          } else if (isReveal) {
+            ringFrom = '#8b5cf6';
+            ringTo = '#a78bfa';
+            glow = 'rgba(139, 92, 246, 0.45)';
+          } else if (urgent) {
+            ringFrom = '#ef4444';
+            ringTo = '#f87171';
+            glow = 'rgba(239, 68, 68, 0.6)';
           }
-          const head = `hsl(${hue}, 85%, 55%)`;
-          const tail = `hsl(${Math.max(0, hue - 18)}, 90%, 45%)`;
+
+          const tileStyle = {
+            width: 44,
+            height: 56,
+            background: `linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)`,
+          };
+          const digitStyle = {
+            fontSize: 32,
+            lineHeight: 1,
+            textShadow: `0 0 14px ${glow}`,
+          };
+
           return (
-            <div className="mt-3 relative h-5 rounded-full bg-dark-900/70 border border-dark-600/40 overflow-hidden shadow-inner">
-              {/* Subtle ambient track shine */}
-              <div
-                className="absolute inset-0 opacity-30 pointer-events-none"
-                style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.08), transparent 60%)' }}
-              />
-              {/* Filled portion */}
-              <motion.div
-                className="absolute left-0 top-0 h-full rounded-full"
-                animate={{
-                  width: `${pct}%`,
-                  boxShadow: urgent
-                    ? [
-                        `0 0 12px ${head}, 0 0 22px ${tail}`,
-                        `0 0 18px ${head}, 0 0 30px ${tail}`,
-                        `0 0 12px ${head}, 0 0 22px ${tail}`,
-                      ]
-                    : `0 0 10px ${head}, 0 0 18px ${tail}`,
-                }}
-                transition={{
-                  width: { duration: 0.2, ease: 'linear' },
-                  boxShadow: urgent
-                    ? { duration: 0.7, repeat: Infinity, ease: 'easeInOut' }
-                    : { duration: 0.3 },
-                }}
-                style={{
-                  background: `linear-gradient(90deg, ${tail} 0%, ${head} 100%)`,
-                }}
-              >
-                {/* Travelling shine streak — moves across the filled bar */}
-                <motion.span
-                  className="absolute inset-y-0 w-1/3 rounded-full pointer-events-none"
-                  style={{
-                    background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%)',
-                    mixBlendMode: 'overlay',
-                  }}
-                  animate={{ x: ['-100%', '350%'] }}
-                  transition={{ duration: urgent ? 1 : 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                />
-              </motion.div>
-              {/* Centered phase label / remaining seconds */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span
-                  className="text-[10px] font-black uppercase tracking-widest text-white"
-                  style={{ textShadow: '0 1px 2px rgba(0,0,0,0.85)' }}
-                >
-                  {label}
-                </span>
+            <div className="mt-3 mb-2 relative">
+              <div className="relative w-full rounded-2xl px-4 py-3 overflow-hidden">
+                {/* Urgency ambient glow */}
+                {urgent && (
+                  <motion.div
+                    className="absolute inset-0 pointer-events-none"
+                    animate={{ opacity: [0.25, 0.55, 0.25] }}
+                    transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{
+                      background: `radial-gradient(circle at 50% 50%, ${ringFrom}33 0%, transparent 70%)`,
+                    }}
+                  />
+                )}
+
+                {/* Drifting twinkles */}
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <motion.span
+                      key={i}
+                      className="absolute w-1 h-1 rounded-full"
+                      style={{
+                        background: ringTo,
+                        boxShadow: `0 0 6px ${ringTo}`,
+                        top: `${12 + i * 18}%`,
+                        left: '-5%',
+                      }}
+                      animate={{ x: ['0%', '2400%'], opacity: [0, 1, 1, 0] }}
+                      transition={{
+                        duration: 4 + i * 0.6,
+                        repeat: Infinity,
+                        ease: 'linear',
+                        delay: i * 0.7,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Digit row — fills the width */}
+                <div className="relative flex items-center justify-center gap-1.5 sm:gap-2">
+                  {isReveal ? (
+                    <motion.span
+                      key="reveal-go"
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.4 }}
+                      className="font-black tracking-[0.3em]"
+                      style={{
+                        fontSize: 36,
+                        color: 'white',
+                        textShadow: `0 0 24px ${glow}`,
+                      }}
+                    >
+                      RESULT
+                    </motion.span>
+                  ) : (
+                    <>
+                      {[mm[0], mm[1], ':', ss[0], ss[1]].map((ch, idx) => {
+                        if (ch === ':') {
+                          return (
+                            <motion.span
+                              key="colon"
+                              className="font-black text-white/70 tabular-nums"
+                              style={{ fontSize: 32, lineHeight: 1 }}
+                              animate={{ opacity: [1, 0.2, 1] }}
+                              transition={{ duration: 1, repeat: Infinity }}
+                            >
+                              :
+                            </motion.span>
+                          );
+                        }
+                        return (
+                          <div
+                            key={`tile-${idx}`}
+                            className="relative inline-flex items-center justify-center rounded-lg overflow-hidden"
+                            style={tileStyle}
+                          >
+                            <span
+                              className="absolute left-0 right-0 top-1/2 h-px pointer-events-none"
+                              style={{ background: 'rgba(255,255,255,0.06)' }}
+                            />
+                            <AnimatePresence mode="popLayout" initial={false}>
+                              <motion.span
+                                key={ch}
+                                initial={{ y: 18, opacity: 0, scale: 0.7 }}
+                                animate={{ y: 0, opacity: 1, scale: 1 }}
+                                exit={{ y: -18, opacity: 0, scale: 1.15 }}
+                                transition={{ duration: 0.3, ease: 'easeOut' }}
+                                className="font-black tabular-nums text-white"
+                                style={digitStyle}
+                              >
+                                {ch}
+                              </motion.span>
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+
               </div>
             </div>
           );
         })()}
+
+        <ShuffleStage revealed={phase === 'reveal' ? revealedCards : null} locking={phase === 'locked'} />
       </div>
 
       {/* Bet controls — inline on tablet/desktop. On mobile only the bet-kind
@@ -1095,6 +1164,211 @@ export default function ShuffleCard() {
         )}
       </div>
        </div>
+      </div>
+
+      {/* Rules + FAQ — payout reference and common questions. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
+            <FiAward className="w-4 h-4 text-amber-300" />
+            <h3 className="text-white font-semibold text-sm">Game Rules & Payouts</h3>
+          </div>
+          <div className="p-4 space-y-3 text-xs text-gray-300">
+            <p className="text-gray-400 leading-relaxed">
+              Each round the dealer reveals <b className="text-white">3 cards</b> from a shuffled 52-card deck. Place bets before the round locks — winnings pay your stake × the multiplier on a hit.
+            </p>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Cards bet (pick exact cards)</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Single</p>
+                  <p className="text-gold-light font-black">3x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Dual</p>
+                  <p className="text-gold-light font-black">50x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Triple</p>
+                  <p className="text-gold-light font-black">500x</p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Group bets (any of the 3 cards qualifies)</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Rank</p>
+                  <p className="text-gold-light font-black">4x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Suit</p>
+                  <p className="text-gold-light font-black">2x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Color</p>
+                  <p className="text-gold-light font-black">2x</p>
+                </div>
+              </div>
+            </div>
+            <ul className="text-gray-400 space-y-1 list-disc list-inside">
+              <li>Min bet <b className="text-white">1</b>, max bet <b className="text-white">10,000</b> per slip.</li>
+              <li>Place as many slips as you like — they all settle when the round reveals.</li>
+              <li>Bets close when the countdown locks; reveal happens shortly after.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
+            <GiCardRandom className="w-4 h-4 text-accent" />
+            <h3 className="text-white font-semibold text-sm">All Games at a Glance</h3>
+          </div>
+          <div className="divide-y divide-dark-600/40 max-h-[520px] overflow-y-auto">
+            {[
+              {
+                name: 'Shuffle Card',
+                tag: 'Live · Card',
+                desc: 'Bet on 3 cards drawn from a shuffled deck each round. Pick exact cards, a rank, suit, or color.',
+                payouts: 'Single 3x · Dual 50x · Triple 500x · Rank 4x · Suit 2x · Color 2x',
+              },
+              {
+                name: 'Mutka King',
+                tag: 'Card',
+                desc: '4-card draw with picks for exact cards or groups. Higher card combos pay big.',
+                payouts: '1c 2x · 2c 9x · 3c 100x · 4c 500x · Rank 3x · Suit 2x · Color 2x',
+              },
+              {
+                name: 'UNO King',
+                tag: 'Card',
+                desc: 'UNO-deck variant — bet on color, number, action, or wild card outcomes.',
+                payouts: 'Color 2x · Number 3x · Action 3x · Wild 6x · 1c 2x to 4c 500x',
+              },
+              {
+                name: '7-Digit Lottery',
+                tag: 'Live · Lottery',
+                desc: 'Pick a 7-digit ticket; partial matches still pay. Live draws on a fixed schedule.',
+                payouts: 'Tiered by digits matched · Jackpot for all 7',
+              },
+              {
+                name: 'Lucky Spin',
+                tag: 'Wheel',
+                desc: 'Spin the wheel — landing slot determines your multiplier.',
+                payouts: 'Variable · up to 50x',
+              },
+              {
+                name: 'Coin Flip',
+                tag: 'Classic',
+                desc: 'Pick heads or tails. Simple 50/50 with instant settle.',
+                payouts: '~1.96x on a hit',
+              },
+              {
+                name: 'Dice Roll',
+                tag: 'Classic',
+                desc: 'Set an over/under target; multiplier scales with the chance you take.',
+                payouts: 'Variable · risk-based',
+              },
+              {
+                name: 'Arrow Roulette',
+                tag: 'Wheel',
+                desc: 'Spinning arrow lands on a colored sector — bet on the sector or color.',
+                payouts: 'Sector & color tiers',
+              },
+              {
+                name: 'Dragon Tower',
+                tag: 'Crash · Skill',
+                desc: 'Climb floors of the tower; cash out before you pick the cursed tile.',
+                payouts: 'Compounds × ~1.94 per floor',
+              },
+              {
+                name: 'Ice Field',
+                tag: 'Crash · Skill',
+                desc: 'Step across the ice — each safe step grows your multiplier; cash out anytime.',
+                payouts: 'Compounding by step',
+              },
+              {
+                name: 'Balloon Pop',
+                tag: 'Crash',
+                desc: 'Inflate the balloon for higher multipliers — pop and you lose your stake.',
+                payouts: '1.5x · 2x · 3x · 5x · 10x · 25x presets',
+              },
+              {
+                name: 'Fuse',
+                tag: 'Crash',
+                desc: 'Light the fuse — defuse before it burns out to lock in your multiplier.',
+                payouts: '1.5x · 2x · 3x · 5x · 10x · 25x presets',
+              },
+              {
+                name: 'Egg Hatch',
+                tag: 'Mystery',
+                desc: 'Choose an egg; hatch reveals a random multiplier from a weighted pool.',
+                payouts: '0x to 15x weighted',
+              },
+            ].map((g, i) => (
+              <details key={i} className="group">
+                <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer list-none hover:bg-dark-800/30">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-white text-xs font-semibold truncate">{g.name}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-accent/15 text-accent text-[9px] font-bold uppercase tracking-wider shrink-0">
+                      {g.tag}
+                    </span>
+                  </div>
+                  <span className="text-accent text-lg font-bold group-open:rotate-45 transition-transform shrink-0">+</span>
+                </summary>
+                <div className="px-4 pb-3 pt-1 text-xs text-gray-400 leading-relaxed space-y-1.5">
+                  <p>{g.desc}</p>
+                  <p className="text-[10px] text-gold-light/90 font-mono">{g.payouts}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* General FAQ — applies across the platform */}
+      <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
+          <FiAward className="w-4 h-4 text-gold-light" />
+          <h3 className="text-white font-semibold text-sm">FAQ</h3>
+        </div>
+        <div className="divide-y divide-dark-600/40">
+          {[
+            {
+              q: 'Are the games provably fair?',
+              a: 'Outcomes are generated server-side using cryptographic randomness. Round seeds and results are stored so any draw can be audited.',
+            },
+            {
+              q: 'Can I cancel a placed bet?',
+              a: 'No — once a slip is submitted it is locked into the round. Double-check your stake and selection before placing.',
+            },
+            {
+              q: 'How fast are winnings credited?',
+              a: 'Wins are credited to your wallet automatically the moment the round settles. The balance widget updates in real-time over the socket.',
+            },
+            {
+              q: 'What are the global stake limits?',
+              a: 'Min 1 and max 10,000 per slip on most games. Some games (Lottery, Lucky Spin) use their own ticket pricing — check that game for specifics.',
+            },
+            {
+              q: 'Can I play multiple games at once?',
+              a: 'Yes. Each game runs on its own round/timer and your wallet is shared, so you can keep slips active across several games simultaneously.',
+            },
+            {
+              q: 'Where can I see my history?',
+              a: 'Every game page has a "Your Recent Bets" panel with the last 20+ outcomes. Your full transaction log is on the Profile page.',
+            },
+          ].map((item, i) => (
+            <details key={i} className="group">
+              <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer list-none hover:bg-dark-800/30">
+                <span className="text-white text-xs font-semibold">{item.q}</span>
+                <span className="text-accent text-lg font-bold group-open:rotate-45 transition-transform">+</span>
+              </summary>
+              <div className="px-4 pb-3 pt-1 text-xs text-gray-400 leading-relaxed">
+                {item.a}
+              </div>
+            </details>
+          ))}
+        </div>
       </div>
 
       {/* Win/Loss overlay — uses the shared component so the modal animation

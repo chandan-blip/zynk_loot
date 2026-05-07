@@ -114,6 +114,86 @@ export const sounds = {
     });
   },
 
+  // Mutka King shuffle — papery riffle of a 52-card deck on felt.
+  // Dense burst of low-passed noise ticks at the start, easing out by the end
+  // so the audio lines up with the visible 3s shuffle cycle.
+  cardShuffle(durationSec = 3) {
+    play(() => {
+      const ctx = getCtx();
+      const t0 = ctx.currentTime;
+      const ticks = 28;
+      for (let i = 0; i < ticks; i++) {
+        const p = i / (ticks - 1);
+        // Ease-out: dense at the start, sparser as the deck "settles"
+        const t = t0 + (1 - Math.pow(1 - p, 2)) * durationSec;
+
+        const len = Math.floor(ctx.sampleRate * 0.05);
+        const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let j = 0; j < len; j++) {
+          data[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / len, 3);
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buf;
+
+        // Low-pass + slight resonance for the felt-and-paper character
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 2600 - p * 1400;
+        filter.Q.value = 0.7;
+
+        const gain = ctx.createGain();
+        const vol = (0.09 - p * 0.05) + Math.random() * 0.02;
+        gain.gain.setValueAtTime(vol, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(t);
+        noise.stop(t + 0.06);
+      }
+    });
+  },
+
+  // UNO King shuffle — plasticky snap shuffle. Square-wave bandpass clicks
+  // ride a higher pitch range and stay drier than Mutka's papery riffle so
+  // the two games feel sonically different even when the visuals match.
+  unoShuffle(durationSec = 3) {
+    play(() => {
+      const ctx = getCtx();
+      const t0 = ctx.currentTime;
+      const ticks = 24;
+      for (let i = 0; i < ticks; i++) {
+        const p = i / (ticks - 1);
+        // Slight rebound near the end — UNO shuffles tend to "tap" twice
+        const t = t0 + (1 - Math.pow(1 - p, 1.8)) * durationSec;
+
+        const osc = ctx.createOscillator();
+        osc.type = 'square';
+        const baseFreq = 1300 + Math.random() * 500 - p * 350;
+        osc.frequency.setValueAtTime(baseFreq, t);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.7, t + 0.04);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1700;
+        filter.Q.value = 1.6;
+
+        const gain = ctx.createGain();
+        const vol = (0.055 - p * 0.025) + Math.random() * 0.02;
+        gain.gain.setValueAtTime(vol, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.05);
+      }
+    });
+  },
+
   // Dice roll — tumble impacts synced to rotate:[0,360,720] easeInOut 1.2s
   // Two 360° segments (0.6s each), tick every 90° (face landing) = 8 ticks
   dice() {

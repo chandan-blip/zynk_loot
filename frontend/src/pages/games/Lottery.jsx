@@ -33,6 +33,7 @@ import socketService from "../../services/socket";
 import useStore from "../../store/useStore";
 import { useCurrency } from "../../contexts/CurrencyContext";
 import { formatAmount } from "../../utils/formatAmount";
+import { sounds } from "../../utils/sounds";
 import usePageTitle from "../../hooks/usePageTitle";
 
 const TOTAL_DIGITS = 7;
@@ -148,10 +149,22 @@ function Lottery() {
   const searchRef = useRef(search);
   const observerRef = useRef(null);
   const initializedRef = useRef(false);
+  // Buffers cashout events so that when several tickets settle in the same
+  // draw we show one combined toast instead of N back-to-back toasts.
+  const cashoutBufferRef = useRef({ amount: 0, count: 0, numbers: [], timer: null });
+  // Ensures the per-draw win/lose sound only plays once even when multiple
+  // ticket-cashed-out events arrive (or when a separate "you lost" check
+  // races with the cashout buffer).
+  const drawSoundFiredRef = useRef(false);
+  const drawLoseTimerRef = useRef(null);
+  // Mirror of myTickets accessible from socket-event closures without
+  // forcing them to re-subscribe whenever tickets change.
+  const myTicketsRef = useRef({});
   const ITEMS_PER_PAGE = 20;
   const MAX_CLIENT_ITEMS = 200;
 
   searchRef.current = search;
+  myTicketsRef.current = myTickets;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -512,6 +525,12 @@ function Lottery() {
       });
       fetchNumbers(true);
       setUpcomingSession(null);
+      // New draw → eligible for one new win/lose sound again.
+      drawSoundFiredRef.current = false;
+      if (drawLoseTimerRef.current) {
+        clearTimeout(drawLoseTimerRef.current);
+        drawLoseTimerRef.current = null;
+      }
     });
 
     const unsubComplete = socketService.onDrawReveal?.((data) => {
@@ -552,6 +571,19 @@ function Lottery() {
         nextRevealIn: 0,
       }));
       fetchNumbers(true);
+
+      // Wait long enough for any ticket-cashed-out events to land and play
+      // the win sound first; if nothing claimed the per-draw slot, play one
+      // lose sound (only when the user actually held tickets in this draw).
+      if (drawLoseTimerRef.current) clearTimeout(drawLoseTimerRef.current);
+      drawLoseTimerRef.current = setTimeout(() => {
+        drawLoseTimerRef.current = null;
+        if (drawSoundFiredRef.current) return;
+        const tickets = Object.values(myTicketsRef.current || {});
+        if (tickets.length === 0) return;
+        sounds.lose?.();
+        drawSoundFiredRef.current = true;
+      }, 1500);
     });
 
     const unsubVote = socketService.onNumberVote((data) => {
@@ -581,7 +613,34 @@ function Lottery() {
         ...prev,
         [data.number]: { ...prev[data.number], status: 'cashed_out', canCashOut: false }
       }));
-      toast.success(`Cashed out ${data.number} for ${fmtAmount(data.payout)}!`);
+
+      // Coalesce all cashouts that arrive within ~700ms into a single toast,
+      // so a multi-ticket draw doesn't spam N notifications.
+      const buf = cashoutBufferRef.current;
+      buf.amount += parseFloat(data.payout) || 0;
+      buf.count += 1;
+      if (data.number != null) buf.numbers.push(data.number);
+      if (buf.timer) clearTimeout(buf.timer);
+      buf.timer = setTimeout(() => {
+        const { amount, count, numbers } = cashoutBufferRef.current;
+        cashoutBufferRef.current = { amount: 0, count: 0, numbers: [], timer: null };
+        if (count <= 0) return;
+        if (count === 1) {
+          toast.success(`Cashed out ${numbers[0]} for ${fmtAmount(amount)}!`);
+        } else {
+          toast.success(`Cashed out ${count} tickets for ${fmtAmount(amount)}!`);
+        }
+        // One celebratory cue per draw — claim the slot so the lose-sound
+        // fallback in onDrawComplete won't double up on this user.
+        if (!drawSoundFiredRef.current && amount > 0) {
+          sounds.win?.();
+          drawSoundFiredRef.current = true;
+          if (drawLoseTimerRef.current) {
+            clearTimeout(drawLoseTimerRef.current);
+            drawLoseTimerRef.current = null;
+          }
+        }
+      }, 700);
     });
 
     const unsubPrizePool = socketService.onPrizePoolUpdated?.((data) => {
@@ -618,6 +677,14 @@ function Lottery() {
       unsubCashedOut?.();
       unsubPrizePool?.();
       unsubUserNumbers?.();
+      if (cashoutBufferRef.current.timer) {
+        clearTimeout(cashoutBufferRef.current.timer);
+        cashoutBufferRef.current = { amount: 0, count: 0, numbers: [], timer: null };
+      }
+      if (drawLoseTimerRef.current) {
+        clearTimeout(drawLoseTimerRef.current);
+        drawLoseTimerRef.current = null;
+      }
     };
   }, [syncRevealStateWithDraw]);
 

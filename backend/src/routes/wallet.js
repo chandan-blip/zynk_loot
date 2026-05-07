@@ -670,6 +670,14 @@ router.post('/complete-purchase/:orderId', async (req, res) => {
       referralService.processReferralCommission(req.user.id, txnResult.insertId, 'deposit', order.zynk_amount);
     }
 
+    // Credit first-deposit bonus (idempotent — only fires the first time).
+    // Runs outside the deposit transaction; failures shouldn't roll back
+    // the deposit itself.
+    const bonusService = req.app.get('bonusService');
+    if (bonusService) {
+      bonusService.creditFirstDepositBonus(req.user.id, order.zynk_amount).catch(() => {});
+    }
+
     res.json({
       success: true,
       message: 'Purchase completed successfully',

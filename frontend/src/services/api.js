@@ -35,6 +35,9 @@ api.interceptors.response.use(
 export const login = ({ email, phone, password }) => api.post('/auth/login', { email, phone, password });
 export const register = ({ username, email, phone, password, referralCode }) =>
   api.post('/auth/register', { username, email, phone, password, referral_code: referralCode });
+export const phoneSendOtp = (phone) => api.post('/auth/phone-send-otp', { phone });
+export const phoneRegister = ({ username, password, referralCode, sessionId, otp }) =>
+  api.post('/auth/phone-register', { username, password, referral_code: referralCode, sessionId, otp });
 export const getMe = () => api.get('/auth/me');
 
 // Lottery
@@ -135,6 +138,8 @@ export const createInvestmentTier = (data) => api.post('/admin/investment-tiers'
 
 // User Profile
 export const getUserProfile = () => api.get('/users/me/profile');
+export const getUserActivity = (page = 1, limit = 20) =>
+  api.get(`/users/activity?page=${page}&limit=${limit}`);
 export const updateUserSettings = (settings) => api.put('/users/me/settings', settings);
 
 // User Transfers (P2P)
@@ -313,5 +318,9 @@ export const adminUpdateWebsite = (id, data) => api.put(`/admin/websites/${id}`,
 export const adminPublishWebsite = (id) => api.post(`/admin/websites/${id}/publish`);
 export const adminUnpublishWebsite = (id) => api.post(`/admin/websites/${id}/unpublish`);
 export const adminDeleteWebsite = (id) => api.delete(`/admin/websites/${id}`);
+
+// Bonus module
+export const getBonusStatus = () => api.get('/bonuses/status');
+export const claimBonus = (type) => api.post('/bonuses/claim', { type });
 
 export default api;

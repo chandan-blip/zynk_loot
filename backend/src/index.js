@@ -32,7 +32,9 @@ const ActivityService = require('./services/activityService');
 const GameService = require('./services/gameService');
 const ShuffleCardService = require('./services/shuffleCardService');
 const NotificationService = require('./services/notificationService');
+const BonusService = require('./services/bonusService');
 const referralRoutes = require('./routes/referral');
+const bonusRoutes = require('./routes/bonuses');
 const investRoutes = require('./routes/invest');
 const gameRoutes = require('./routes/games');
 const notificationRoutes = require('./routes/notifications');
@@ -71,6 +73,7 @@ const activityService = new ActivityService(io);
 const gameService = new GameService(io);
 const shuffleCardService = new ShuffleCardService(io);
 const notificationService = new NotificationService(io);
+const bonusService = new BonusService();
 const trackingService = new TrackingService(io);
 const dailyWinnersService = new DailyWinnersService();
 
@@ -93,6 +96,7 @@ app.set('activityService', activityService);
 app.set('gameService', gameService);
 app.set('shuffleCardService', shuffleCardService);
 app.set('notificationService', notificationService);
+app.set('bonusService', bonusService);
 app.set('trackingService', trackingService);
 app.set('dailyWinnersService', dailyWinnersService);
 app.set('io', io);
@@ -213,6 +217,7 @@ app.use('/api/referral', apiLimiter, referralRoutes);
 app.use('/api/invest', apiLimiter, investRoutes);
 app.use('/api/games', gameLimiter, gameRoutes);
 app.use('/api/notifications', apiLimiter, notificationRoutes);
+app.use('/api/bonuses', apiLimiter, bonusRoutes);
 app.use('/api/tracking', apiLimiter, trackingRoutes);
 
 // Recent activities (public, no auth needed)
