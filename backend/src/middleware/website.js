@@ -15,6 +15,9 @@ const extractSubdomain = (host, appDomain) => {
 
 // Auto-injected snippet: persists a session id, fires `visit` on load, and a `click`
 // for every <a>/<button>/[data-track] interaction. Uses sendBeacon so it survives unload.
+// Content-Type is text/plain (not application/json) so the cross-origin POST from
+// sub.APP_DOMAIN → APP_DOMAIN/api stays a CORS-simple request and skips preflight.
+// The /track handler reads the raw body and JSON.parses it.
 const buildTrackingScript = (websiteId, apiBase) => {
   const safeBase = String(apiBase || '/api').replace(/<\/script/gi, '<\\/script');
   return `<script>(function(){try{
@@ -26,9 +29,9 @@ function send(type,target){
   var payload=JSON.stringify({websiteId:WID,type:type,target:target||null,referrer:document.referrer||null,sessionId:sid});
   var url=API+'/websites/track';
   try{
-    if(navigator.sendBeacon){navigator.sendBeacon(url,new Blob([payload],{type:'application/json'}));return;}
+    if(navigator.sendBeacon){navigator.sendBeacon(url,new Blob([payload],{type:'text/plain'}));return;}
   }catch(e){}
-  try{fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:true});}catch(e){}
+  try{fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:payload,keepalive:true});}catch(e){}
 }
 send('visit');
 document.addEventListener('click',function(ev){
