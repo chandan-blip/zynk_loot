@@ -41,6 +41,7 @@ const notificationRoutes = require('./routes/notifications');
 const TrackingService = require('./services/trackingService');
 const DailyWinnersService = require('./services/dailyWinnersService');
 const trackingRoutes = require('./routes/tracking');
+const websiteTrackingRoutes = require('./routes/websiteTracking');
 const prerenderMiddleware = require('./middleware/prerender');
 const { subdomainMiddleware, siteByPathHandler } = require('./middleware/website');
 
@@ -219,6 +220,7 @@ app.use('/api/games', gameLimiter, gameRoutes);
 app.use('/api/notifications', apiLimiter, notificationRoutes);
 app.use('/api/bonuses', apiLimiter, bonusRoutes);
 app.use('/api/tracking', apiLimiter, trackingRoutes);
+app.use('/api/websites', apiLimiter, websiteTrackingRoutes);
 
 // Recent activities (public, no auth needed)
 app.get('/api/activities/recent', (req, res) => {

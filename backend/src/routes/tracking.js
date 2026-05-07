@@ -14,7 +14,7 @@ const optionalAuth = async (req, res, next) => {
       const JWT_SECRET = process.env.JWT_SECRET || require('../middleware/auth').JWT_SECRET;
       const decoded = jwt.verify(token, JWT_SECRET);
       const [users] = await db.pool.query(
-        'SELECT id, username FROM users WHERE id = ? AND is_active = TRUE',
+        'SELECT id, username, is_admin FROM users WHERE id = ? AND is_active = TRUE',
         [decoded.userId]
       );
       if (users.length > 0) req.user = users[0];

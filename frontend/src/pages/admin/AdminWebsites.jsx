@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheck, FiGlobe, FiEye, FiEyeOff, FiExternalLink, FiPlay, FiRefreshCw, FiCode } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheck, FiGlobe, FiEye, FiEyeOff, FiExternalLink, FiPlay, FiRefreshCw, FiCode, FiBarChart2 } from 'react-icons/fi';
 import CodeMirror from '@uiw/react-codemirror';
 import { html as cmHtml } from '@codemirror/lang-html';
 import { css as cmCss } from '@codemirror/lang-css';
@@ -10,6 +10,7 @@ import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import {
   adminGetWebsites,
   adminGetWebsite,
+  adminGetWebsiteStats,
   adminCreateWebsite,
   adminUpdateWebsite,
   adminPublishWebsite,
@@ -70,6 +71,9 @@ export default function AdminWebsites() {
   const [activeTab, setActiveTab] = useState('html');
   const [previewKey, setPreviewKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [statsFor, setStatsFor] = useState(null); // site object
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const iframeRef = useRef(null);
 
   const load = async () => {
@@ -166,6 +170,20 @@ export default function AdminWebsites() {
     } catch { toast.error('Failed'); }
   };
 
+  const openStats = async (site) => {
+    setStatsFor(site);
+    setStats(null);
+    setStatsLoading(true);
+    try {
+      const res = await adminGetWebsiteStats(site.id);
+      setStats(res.data?.data || null);
+    } catch {
+      toast.error('Failed to load stats');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   const remove = async (id) => {
     if (!confirm('Delete this website?')) return;
     try {
@@ -213,6 +231,8 @@ export default function AdminWebsites() {
                 <th className="px-4 py-3">Domain</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Active</th>
+                <th className="px-4 py-3 text-right">Visits</th>
+                <th className="px-4 py-3 text-right">Clicks</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -237,8 +257,17 @@ export default function AdminWebsites() {
                       ? <FiEye className="w-4 h-4 text-green-400" />
                       : <FiEyeOff className="w-4 h-4 text-gray-500" />}
                   </td>
+                  <td className="px-4 py-3 text-right text-gray-200 font-mono text-xs">{site.visits ?? 0}</td>
+                  <td className="px-4 py-3 text-right text-gray-200 font-mono text-xs">{site.clicks ?? 0}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => openStats(site)}
+                        className="p-2 text-gray-400 hover:text-accent rounded hover:bg-dark-600"
+                        title="View tracking stats"
+                      >
+                        <FiBarChart2 className="w-4 h-4" />
+                      </button>
                       {site.status === 'published' && (
                         <>
                           <a
@@ -454,6 +483,118 @@ export default function AdminWebsites() {
                 <FiPlay className="w-4 h-4" /> Save & Publish
               </button>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {statsFor && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setStatsFor(null)}>
+          <motion.div
+            initial={{ scale: 0.97, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-dark-800 border border-dark-600 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-dark-600">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <FiBarChart2 className="w-5 h-5 text-accent" /> {statsFor.title}
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">{statsFor.sub_domain}</p>
+              </div>
+              <button onClick={() => setStatsFor(null)} className="p-2 text-gray-400 hover:text-white rounded hover:bg-dark-700">
+                <FiX className="w-5 h-5" />
+              </button>
+            </div>
+
+            {statsLoading ? (
+              <div className="p-12 text-center text-gray-500">Loading stats...</div>
+            ) : !stats ? (
+              <div className="p-12 text-center text-gray-500">No data</div>
+            ) : (
+              <div className="p-5 space-y-6">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-dark-700/60 rounded-lg p-4">
+                    <div className="text-xs text-gray-400">Total Visits</div>
+                    <div className="text-2xl font-bold text-white mt-1">{stats.totals.visits}</div>
+                  </div>
+                  <div className="bg-dark-700/60 rounded-lg p-4">
+                    <div className="text-xs text-gray-400">Total Clicks</div>
+                    <div className="text-2xl font-bold text-white mt-1">{stats.totals.clicks}</div>
+                  </div>
+                  <div className="bg-dark-700/60 rounded-lg p-4">
+                    <div className="text-xs text-gray-400">Unique Sessions</div>
+                    <div className="text-2xl font-bold text-white mt-1">{stats.totals.uniqueSessions}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-300 mb-2">Last 30 days</h3>
+                  {stats.daily.length === 0 ? (
+                    <p className="text-xs text-gray-500">No activity in the last 30 days.</p>
+                  ) : (
+                    <div className="bg-dark-700/40 rounded-lg p-3">
+                      <div className="flex items-end gap-1 h-32">
+                        {(() => {
+                          const max = Math.max(1, ...stats.daily.map((d) => Number(d.visits) + Number(d.clicks)));
+                          return stats.daily.map((d) => {
+                            const v = Number(d.visits);
+                            const c = Number(d.clicks);
+                            const total = v + c;
+                            const h = (total / max) * 100;
+                            return (
+                              <div key={d.day} className="flex-1 flex flex-col items-center gap-1" title={`${d.day}: ${v} visits, ${c} clicks`}>
+                                <div className="w-full flex flex-col justify-end" style={{ height: '100%' }}>
+                                  <div className="w-full bg-accent/70 rounded-t" style={{ height: `${(v / max) * 100}%` }} />
+                                  <div className="w-full bg-blue-400/70" style={{ height: `${(c / max) * 100}%` }} />
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-accent/70 rounded-sm" /> Visits</span>
+                        <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-400/70 rounded-sm" /> Clicks</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-300 mb-2">Top click targets</h3>
+                    {stats.topTargets.length === 0 ? (
+                      <p className="text-xs text-gray-500">No clicks recorded.</p>
+                    ) : (
+                      <div className="bg-dark-700/40 rounded-lg divide-y divide-dark-600">
+                        {stats.topTargets.map((t, i) => (
+                          <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
+                            <span className="text-gray-300 truncate mr-3" title={t.target}>{t.target}</span>
+                            <span className="text-accent font-mono">{t.clicks}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-300 mb-2">Top referrers</h3>
+                    {stats.topReferrers.length === 0 ? (
+                      <p className="text-xs text-gray-500">No referrers recorded.</p>
+                    ) : (
+                      <div className="bg-dark-700/40 rounded-lg divide-y divide-dark-600">
+                        {stats.topReferrers.map((t, i) => (
+                          <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
+                            <span className="text-gray-300 truncate mr-3" title={t.referrer}>{t.referrer}</span>
+                            <span className="text-accent font-mono">{t.visits}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
       )}

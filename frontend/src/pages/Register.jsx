@@ -90,7 +90,12 @@ function Register() {
 
     setLoading(true);
     try {
-      const response = await api.phoneSendOtp(result.phone);
+      const response = await api.phoneSendOtp({
+        username,
+        phone: result.phone,
+        password,
+        referralCode: referralCode || undefined,
+      });
       if (response.data.success) {
         setSessionId(response.data.data.sessionId);
         setStep('otp');
@@ -116,13 +121,7 @@ function Register() {
 
     setLoading(true);
     try {
-      const response = await api.phoneRegister({
-        username,
-        password,
-        referralCode: referralCode || undefined,
-        sessionId,
-        otp,
-      });
+      const response = await api.phoneRegister({ sessionId, otp });
       if (response.data.success) {
         login(response.data.data.token, response.data.data.user);
         toast.success('Account created successfully!');

@@ -134,13 +134,21 @@ router.post('/register', [
 });
 
 // Send OTP to a phone number via 2Factor.in
-// Returns a sessionId the client must echo back at registration time.
-router.post('/phone-send-otp', async (req, res) => {
+// Validates the FULL registration payload upfront so we don't burn an SMS for
+// a request that would fail at register time. Stores the validated data in the
+// session, keyed by 2Factor's sessionId, so /phone-register only needs sessionId+otp.
+router.post('/phone-send-otp', [
+  body('username').trim().isLength({ min: 3, max: 50 }).matches(/^[a-zA-Z0-9_]+$/),
+  body('password').isLength({ min: 6 }),
+  body('phone').isString().notEmpty(),
+], async (req, res) => {
   try {
-    const { phone } = req.body || {};
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Phone is required' });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Username (3+ chars, alphanumeric/underscore) and password (6+ chars) are required' });
     }
+
+    const { username, phone, password, referral_code } = req.body;
 
     const phoneResult = validatePhone(phone);
     if (!phoneResult.valid) {
@@ -148,12 +156,27 @@ router.post('/phone-send-otp', async (req, res) => {
     }
     const normalizedPhone = phoneResult.phone;
 
+    // Username + phone uniqueness — fail fast before sending SMS.
     const [existing] = await db.pool.query(
-      'SELECT id FROM users WHERE phone = ?',
-      [normalizedPhone]
+      'SELECT username, phone FROM users WHERE username = ? OR phone = ?',
+      [username, normalizedPhone]
     );
     if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'Phone already registered' });
+      const conflict = existing.find((u) => u.username === username) ? 'Username' : 'Phone';
+      return res.status(400).json({ success: false, message: `${conflict} already registered` });
+    }
+
+    // Resolve referral now so an invalid code doesn't burn an SMS.
+    let referrerId = null;
+    if (referral_code) {
+      const [referrers] = await db.pool.query(
+        'SELECT id FROM users WHERE referral_code = ?',
+        [referral_code]
+      );
+      if (referrers.length === 0) {
+        return res.status(400).json({ success: false, message: 'Invalid referral code' });
+      }
+      referrerId = referrers[0].id;
     }
 
     const apiKey = process.env.TWOFACTOR_API_KEY;
@@ -175,7 +198,13 @@ router.post('/phone-send-otp', async (req, res) => {
     }
 
     const sessionId = data.Details;
-    otpStore.set(sessionId, normalizedPhone);
+    // Stash the full validated payload — /phone-register will create the user from this.
+    otpStore.set(sessionId, {
+      phone: normalizedPhone,
+      username,
+      password,
+      referrerId,
+    });
 
     res.json({ success: true, data: { sessionId } });
   } catch (error) {
@@ -184,11 +213,9 @@ router.post('/phone-send-otp', async (req, res) => {
   }
 });
 
-// Phone register — verifies the OTP via 2Factor, then creates the user.
-// Expects: { username, password, referral_code, sessionId, otp }
+// Phone register — verifies the OTP via 2Factor, then creates the user from
+// the data stashed during /phone-send-otp.
 router.post('/phone-register', [
-  body('username').trim().isLength({ min: 3, max: 50 }).matches(/^[a-zA-Z0-9_]+$/),
-  body('password').isLength({ min: 6 }),
   body('sessionId').isString().notEmpty(),
   body('otp').isString().isLength({ min: 4, max: 8 }),
 ], async (req, res) => {
@@ -198,7 +225,7 @@ router.post('/phone-register', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { username, password, referral_code, sessionId, otp } = req.body;
+    const { sessionId, otp } = req.body;
 
     const session = otpStore.get(sessionId);
     if (!session) {
@@ -224,29 +251,18 @@ router.post('/phone-register', [
       return res.status(401).json({ success: false, message: 'Invalid OTP' });
     }
 
-    // OTP good — consume the session and trust the bound phone.
+    // OTP good — consume the session and use the data we stashed at send time.
     otpStore.consume(sessionId);
-    const normalizedPhone = session.phone;
+    const { phone: normalizedPhone, username, password, referrerId } = session;
 
+    // Re-check uniqueness in case someone grabbed the username/phone in the window
+    // between send and verify.
     const [existing] = await db.pool.query(
       'SELECT id FROM users WHERE username = ? OR phone = ?',
       [username, normalizedPhone]
     );
     if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'Username or phone already exists' });
-    }
-
-    // Resolve referrer
-    let referrerId = null;
-    if (referral_code) {
-      const [referrers] = await db.pool.query(
-        'SELECT id FROM users WHERE referral_code = ?',
-        [referral_code]
-      );
-      if (referrers.length === 0) {
-        return res.status(400).json({ success: false, message: 'Invalid referral code' });
-      }
-      referrerId = referrers[0].id;
+      return res.status(400).json({ success: false, message: 'Username or phone already registered' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -255,10 +271,6 @@ router.post('/phone-register', [
       'INSERT INTO users (username, phone, phone_verified, password_hash, referred_by) VALUES (?, ?, 1, ?, ?)',
       [username, normalizedPhone, passwordHash, referrerId]
     );
-
-    if (referrerId === result.insertId) {
-      await db.pool.query('UPDATE users SET referred_by = NULL WHERE id = ?', [result.insertId]);
-    }
 
     const token = generateToken(result.insertId);
 

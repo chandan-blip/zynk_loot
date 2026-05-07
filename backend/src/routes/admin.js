@@ -1441,12 +1441,82 @@ ${html || ''}
 router.get('/websites', async (req, res) => {
   try {
     const [rows] = await db.pool.query(
-      'SELECT id, title, sub_domain, domain, status, is_active, published_at, created_at, updated_at FROM websites ORDER BY id DESC'
+      `SELECT id, title, sub_domain, domain, status, is_active, published_at, created_at, updated_at,
+              visits, clicks, last_visit_at
+         FROM websites
+        ORDER BY id DESC`
     );
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('List websites error:', error);
     res.status(500).json({ success: false, message: 'Failed to list websites' });
+  }
+});
+
+// Per-website tracking stats: totals + 30-day daily series + top click targets + top referrers.
+router.get('/websites/:id/stats', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid id' });
+
+    const [[totals]] = await db.pool.query(
+      `SELECT
+         COALESCE(SUM(event_type='visit'),0) AS visits,
+         COALESCE(SUM(event_type='click'),0) AS clicks,
+         COUNT(DISTINCT session_id) AS unique_sessions,
+         MAX(created_at) AS last_event_at
+       FROM website_events WHERE website_id = ?`,
+      [id]
+    );
+
+    const [daily] = await db.pool.query(
+      `SELECT DATE(created_at) AS day,
+              SUM(event_type='visit') AS visits,
+              SUM(event_type='click') AS clicks
+         FROM website_events
+        WHERE website_id = ? AND created_at >= (NOW() - INTERVAL 30 DAY)
+        GROUP BY DATE(created_at)
+        ORDER BY day ASC`,
+      [id]
+    );
+
+    const [topTargets] = await db.pool.query(
+      `SELECT target, COUNT(*) AS clicks
+         FROM website_events
+        WHERE website_id = ? AND event_type = 'click' AND target IS NOT NULL AND target <> ''
+        GROUP BY target
+        ORDER BY clicks DESC
+        LIMIT 10`,
+      [id]
+    );
+
+    const [topReferrers] = await db.pool.query(
+      `SELECT referrer, COUNT(*) AS visits
+         FROM website_events
+        WHERE website_id = ? AND event_type = 'visit' AND referrer IS NOT NULL AND referrer <> ''
+        GROUP BY referrer
+        ORDER BY visits DESC
+        LIMIT 10`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        totals: {
+          visits: Number(totals.visits) || 0,
+          clicks: Number(totals.clicks) || 0,
+          uniqueSessions: Number(totals.unique_sessions) || 0,
+          lastEventAt: totals.last_event_at,
+        },
+        daily,
+        topTargets,
+        topReferrers,
+      },
+    });
+  } catch (error) {
+    console.error('Website stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load stats' });
   }
 });
 

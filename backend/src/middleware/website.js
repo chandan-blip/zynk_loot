@@ -13,6 +13,68 @@ const extractSubdomain = (host, appDomain) => {
   return null;
 };
 
+// Auto-injected snippet: persists a session id, fires `visit` on load, and a `click`
+// for every <a>/<button>/[data-track] interaction. Uses sendBeacon so it survives unload.
+const buildTrackingScript = (websiteId, apiBase) => {
+  const safeBase = String(apiBase || '/api').replace(/<\/script/gi, '<\\/script');
+  return `<script>(function(){try{
+var WID=${websiteId};
+var API=${JSON.stringify(safeBase)};
+var SK='_loot_sid';
+var sid=null;try{sid=localStorage.getItem(SK);if(!sid){sid='s_'+Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem(SK,sid);}}catch(e){}
+function send(type,target){
+  var payload=JSON.stringify({websiteId:WID,type:type,target:target||null,referrer:document.referrer||null,sessionId:sid});
+  var url=API+'/websites/track';
+  try{
+    if(navigator.sendBeacon){navigator.sendBeacon(url,new Blob([payload],{type:'application/json'}));return;}
+  }catch(e){}
+  try{fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:true});}catch(e){}
+}
+send('visit');
+document.addEventListener('click',function(ev){
+  var el=ev.target;
+  while(el && el!==document){
+    if(el.tagName==='A'||el.tagName==='BUTTON'||el.hasAttribute('data-track')){
+      var t=el.getAttribute('data-track')||el.getAttribute('href')||el.textContent||el.tagName;
+      send('click',String(t).slice(0,500));
+      return;
+    }
+    el=el.parentNode;
+  }
+},true);
+}catch(e){}})();</script>`;
+};
+
+const injectTracker = (html, websiteId, apiBase) => {
+  const snippet = buildTrackingScript(websiteId, apiBase);
+  if (!html) return snippet;
+  const idx = html.toLowerCase().lastIndexOf('</body>');
+  if (idx === -1) return html + snippet;
+  return html.slice(0, idx) + snippet + html.slice(idx);
+};
+
+// Decide what API base the served page should call. Prefer an explicit override,
+// otherwise derive from APP_DOMAIN, otherwise fall back to relative /api (works
+// when serving via /sites/:sub on the same host).
+const apiBaseFor = (req) => {
+  if (process.env.PUBLIC_API_URL) return process.env.PUBLIC_API_URL;
+  const appDomain = getAppDomain(req);
+  if (appDomain) {
+    const proto = req.protocol || 'http';
+    return `${proto}://${appDomain}/api`;
+  }
+  return '/api';
+};
+
+const sendTrackedHtml = (res, html) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src *;"
+  );
+  res.send(html);
+};
+
 // Middleware: if Host is sub.APP_DOMAIN and site is published, serve HTML directly.
 const subdomainMiddleware = async (req, res, next) => {
   try {
@@ -21,16 +83,12 @@ const subdomainMiddleware = async (req, res, next) => {
     const sub = extractSubdomain(req.headers.host, appDomain);
     if (!sub) return next();
     const [rows] = await db.pool.query(
-      `SELECT content FROM websites WHERE sub_domain = ? AND status = 'published' AND is_active = 1 LIMIT 1`,
+      `SELECT id, content FROM websites WHERE sub_domain = ? AND status = 'published' AND is_active = 1 LIMIT 1`,
       [sub]
     );
     if (!rows.length) return next();
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader(
-      'Content-Security-Policy',
-      "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:;"
-    );
-    return res.send(rows[0].content);
+    const html = injectTracker(rows[0].content, rows[0].id, apiBaseFor(req));
+    return sendTrackedHtml(res, html);
   } catch (error) {
     console.error('Subdomain middleware error:', error);
     return next();
@@ -43,16 +101,12 @@ const siteByPathHandler = async (req, res) => {
     const sub = String(req.params.sub || '').trim().toLowerCase();
     if (!sub) return res.status(404).send('Not found');
     const [rows] = await db.pool.query(
-      `SELECT content FROM websites WHERE sub_domain = ? AND status = 'published' AND is_active = 1 LIMIT 1`,
+      `SELECT id, content FROM websites WHERE sub_domain = ? AND status = 'published' AND is_active = 1 LIMIT 1`,
       [sub]
     );
     if (!rows.length) return res.status(404).send('Not found');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader(
-      'Content-Security-Policy',
-      "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:;"
-    );
-    res.send(rows[0].content);
+    const html = injectTracker(rows[0].content, rows[0].id, apiBaseFor(req));
+    sendTrackedHtml(res, html);
   } catch (error) {
     console.error('Site by path error:', error);
     res.status(500).send('Server error');

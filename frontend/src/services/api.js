@@ -35,9 +35,10 @@ api.interceptors.response.use(
 export const login = ({ email, phone, password }) => api.post('/auth/login', { email, phone, password });
 export const register = ({ username, email, phone, password, referralCode }) =>
   api.post('/auth/register', { username, email, phone, password, referral_code: referralCode });
-export const phoneSendOtp = (phone) => api.post('/auth/phone-send-otp', { phone });
-export const phoneRegister = ({ username, password, referralCode, sessionId, otp }) =>
-  api.post('/auth/phone-register', { username, password, referral_code: referralCode, sessionId, otp });
+export const phoneSendOtp = ({ username, phone, password, referralCode }) =>
+  api.post('/auth/phone-send-otp', { username, phone, password, referral_code: referralCode });
+export const phoneRegister = ({ sessionId, otp }) =>
+  api.post('/auth/phone-register', { sessionId, otp });
 export const getMe = () => api.get('/auth/me');
 
 // Lottery
@@ -313,6 +314,7 @@ export const adminDeleteBanner = (id) => api.delete(`/admin/banners/${id}`);
 // Websites (landing pages)
 export const adminGetWebsites = () => api.get('/admin/websites');
 export const adminGetWebsite = (id) => api.get(`/admin/websites/${id}`);
+export const adminGetWebsiteStats = (id) => api.get(`/admin/websites/${id}/stats`);
 export const adminCreateWebsite = (data) => api.post('/admin/websites', data);
 export const adminUpdateWebsite = (id, data) => api.put(`/admin/websites/${id}`, data);
 export const adminPublishWebsite = (id) => api.post(`/admin/websites/${id}/publish`);
