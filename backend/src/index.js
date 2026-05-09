@@ -42,6 +42,7 @@ const TrackingService = require('./services/trackingService');
 const DailyWinnersService = require('./services/dailyWinnersService');
 const trackingRoutes = require('./routes/tracking');
 const websiteTrackingRoutes = require('./routes/websiteTracking');
+const enrollRoutes = require('./routes/enroll');
 const prerenderMiddleware = require('./middleware/prerender');
 const { subdomainMiddleware, siteByPathHandler } = require('./middleware/website');
 
@@ -51,13 +52,32 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+  ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
   : ['http://localhost', 'http://localhost:3000', 'http://localhost:3001'];
+
+const appDomain = process.env.APP_DOMAIN;
+
+// In dev, allow everything. In prod, allow:
+//   - exact match against ALLOWED_ORIGINS
+//   - the APP_DOMAIN apex and any subdomain of it (so subdomain landing pages
+//     can hit /api/enroll, /api/websites/track, etc. on the apex API).
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // same-origin / non-browser requests
+  if (process.env.NODE_ENV !== 'production') return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (appDomain) {
+    try {
+      const host = new URL(origin).hostname;
+      if (host === appDomain || host.endsWith(`.${appDomain}`)) return true;
+    } catch (_) { /* malformed origin */ }
+  }
+  return false;
+};
 
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
+    origin: (origin, cb) => cb(isOriginAllowed(origin) ? null : new Error('Not allowed'), isOriginAllowed(origin)),
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -169,9 +189,17 @@ io.on('connection', (socket) => {
 });
 
 // Middleware
-app.use(helmet());
+// crossOriginResourcePolicy: 'cross-origin' is required so subdomain pages
+// (e.g. tzenpro.lootmarket.store) can read responses from the apex API
+// without being blocked by ERR_BLOCKED_BY_RESPONSE.NotSameOrigin (CORB).
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
+  origin: (origin, cb) => {
+    if (isOriginAllowed(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 app.use(morgan('dev'));
@@ -221,6 +249,7 @@ app.use('/api/notifications', apiLimiter, notificationRoutes);
 app.use('/api/bonuses', apiLimiter, bonusRoutes);
 app.use('/api/tracking', apiLimiter, trackingRoutes);
 app.use('/api/websites', apiLimiter, websiteTrackingRoutes);
+app.use('/api/enroll', apiLimiter, enrollRoutes);
 
 // Recent activities (public, no auth needed)
 app.get('/api/activities/recent', (req, res) => {

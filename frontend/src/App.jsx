@@ -62,6 +62,7 @@ import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminWebsites from './pages/admin/AdminWebsites';
 import AdminBanners from './pages/admin/AdminBanners';
+import AdminWebsiteLeads from './pages/admin/AdminWebsiteLeads';
 import useTracking from './hooks/useTracking';
 
 function PublicRoute({ children }) {
@@ -201,6 +202,7 @@ function App() {
           <Route path="social-links" element={<AdminSocialLinks />} />
           <Route path="websites" element={<AdminWebsites />} />
           <Route path="banners" element={<AdminBanners />} />
+          <Route path="website-leads" element={<AdminWebsiteLeads />} />
         </Route>
 
         {/* Main App Routes */}

@@ -1351,6 +1351,59 @@ router.delete('/social-links/:id', async (req, res) => {
   }
 });
 
+// ===== Website Leads (submissions to /api/enroll) =====
+router.get('/website-leads', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const origin = req.query.origin?.trim();
+    const search = req.query.search?.trim();
+
+    const where = [];
+    const params = [];
+    if (origin) {
+      where.push('origin LIKE ?');
+      params.push(`%${origin}%`);
+    }
+    if (search) {
+      where.push('(name LIKE ? OR email LIKE ? OR phone LIKE ?)');
+      const s = `%${search}%`;
+      params.push(s, s, s);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [[{ total }]] = await db.pool.query(
+      `SELECT COUNT(*) AS total FROM website_leads ${whereSql}`,
+      params
+    );
+
+    const [rows] = await db.pool.query(
+      `SELECT id, origin, referer, name, email, phone, message, payload,
+              ip_address, user_agent, created_at
+       FROM website_leads
+       ${whereSql}
+       ORDER BY id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json({ success: true, data: rows, total, limit, offset });
+  } catch (error) {
+    console.error('List website leads error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load leads' });
+  }
+});
+
+router.delete('/website-leads/:id', async (req, res) => {
+  try {
+    await db.pool.query('DELETE FROM website_leads WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete website lead error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete lead' });
+  }
+});
+
 // ===== Banners (home page carousel) =====
 router.get('/banners', async (req, res) => {
   try {

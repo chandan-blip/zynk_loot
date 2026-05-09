@@ -9,7 +9,7 @@ const SWIPE_THRESHOLD = 50;
 
 function BannerSlide({ banner, priority = false }) {
   const inner = (
-    <div className="relative w-full aspect-[16/7] sm:aspect-[16/6] overflow-hidden rounded-xl bg-dark-700 select-none">
+    <div className="relative w-full aspect-[16/9] overflow-hidden rounded-xl bg-dark-700 select-none">
       <img
         src={banner.image_url}
         alt={banner.title || 'banner'}

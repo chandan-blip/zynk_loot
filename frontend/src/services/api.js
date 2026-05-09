@@ -304,6 +304,18 @@ export const adminCreateSocialLink = (data) => api.post('/admin/social-links', d
 export const adminUpdateSocialLink = (id, data) => api.put(`/admin/social-links/${id}`, data);
 export const adminDeleteSocialLink = (id) => api.delete(`/admin/social-links/${id}`);
 
+// Website leads (form submissions to /api/enroll)
+export const adminGetWebsiteLeads = (params = {}) => {
+  const q = new URLSearchParams();
+  if (params.limit != null) q.set('limit', params.limit);
+  if (params.offset != null) q.set('offset', params.offset);
+  if (params.origin) q.set('origin', params.origin);
+  if (params.search) q.set('search', params.search);
+  const qs = q.toString();
+  return api.get(`/admin/website-leads${qs ? `?${qs}` : ''}`);
+};
+export const adminDeleteWebsiteLead = (id) => api.delete(`/admin/website-leads/${id}`);
+
 // Banners (home page carousel)
 export const getBanners = () => api.get('/lottery/banners');
 export const adminGetBanners = () => api.get('/admin/banners');
