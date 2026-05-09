@@ -25,6 +25,7 @@ const emptyForm = {
   html: '<section style="padding:40px;text-align:center">\n  <h1>Hello World</h1>\n  <p>Edit this landing page on the left.</p>\n  <button id="cta">Click me</button>\n</section>',
   css: 'body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#0a0e13;color:#fff;margin:0}\nh1{color:#00d4aa}\nbutton{padding:10px 20px;background:#00d4aa;color:#0a0e13;border:0;border-radius:8px;cursor:pointer;font-weight:600}',
   js: "document.getElementById('cta')?.addEventListener('click',()=>alert('Hi from your landing page!'));",
+  head_code: '',
   status: 'draft',
   is_active: true,
 };
@@ -33,14 +34,17 @@ const LANG_EXT = {
   html: () => cmHtml({ matchClosingTags: true, autoCloseTags: true }),
   css: () => cmCss(),
   js: () => cmJs(),
+  head_code: () => cmHtml({ matchClosingTags: true, autoCloseTags: true }),
 };
 
-const PRETTIER_PARSER = { html: 'html', css: 'css', js: 'babel' };
+const PRETTIER_PARSER = { html: 'html', css: 'css', js: 'babel', head_code: 'html' };
+
+const TAB_LABELS = { html: 'HTML', css: 'CSS', js: 'JS', head_code: 'HEAD' };
 
 const formatCode = async (code, lang) => {
   const prettier = await import('prettier/standalone');
   const parsers = [];
-  if (lang === 'html') parsers.push(import('prettier/plugins/html'));
+  if (lang === 'html' || lang === 'head_code') parsers.push(import('prettier/plugins/html'));
   if (lang === 'css') parsers.push(import('prettier/plugins/postcss'));
   if (lang === 'js') {
     parsers.push(import('prettier/plugins/babel'));
@@ -56,10 +60,11 @@ const formatCode = async (code, lang) => {
   });
 };
 
-const buildPreview = ({ html, css, js, title }) => `<!DOCTYPE html>
+const buildPreview = ({ html, css, js, head_code, title }) => `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${(title || 'Preview').replace(/</g, '&lt;')}</title>
-<style>${css || ''}</style></head>
+<style>${css || ''}</style>
+${head_code || ''}</head>
 <body>${html || ''}<script>${js || ''}<\/script></body></html>`;
 
 export default function AdminWebsites() {
@@ -118,6 +123,7 @@ export default function AdminWebsites() {
         html: data.html || '',
         css: data.css || '',
         js: data.js || '',
+        head_code: data.head_code || '',
         status: data.status || 'draft',
         is_active: !!data.is_active,
       });
@@ -388,14 +394,15 @@ export default function AdminWebsites() {
               <div className="flex flex-col border-r border-dark-600 min-h-0">
                 <div className="flex items-center justify-between px-2 py-2 bg-dark-700/50 border-b border-dark-600">
                   <div className="flex gap-1">
-                    {['html', 'css', 'js'].map((tab) => (
+                    {['html', 'css', 'js', 'head_code'].map((tab) => (
                       <button
                         key={tab}
                         type="button"
                         onClick={() => setActiveTab(tab)}
                         className={`px-3 py-1.5 text-xs font-mono rounded ${activeTab === tab ? 'bg-accent text-dark-900 font-bold' : 'text-gray-400 hover:text-white hover:bg-dark-600'}`}
+                        title={tab === 'head_code' ? 'Code injected inside <head> (meta tags, pixels, fonts, scripts)' : undefined}
                       >
-                        {tab.toUpperCase()}
+                        {TAB_LABELS[tab]}
                       </button>
                     ))}
                   </div>
