@@ -35,10 +35,6 @@ api.interceptors.response.use(
 export const login = ({ email, phone, password }) => api.post('/auth/login', { email, phone, password });
 export const register = ({ username, email, phone, password, referralCode }) =>
   api.post('/auth/register', { username, email, phone, password, referral_code: referralCode });
-export const phoneSendOtp = ({ username, phone, password, referralCode }) =>
-  api.post('/auth/phone-send-otp', { username, phone, password, referral_code: referralCode });
-export const phoneRegister = ({ sessionId, otp }) =>
-  api.post('/auth/phone-register', { sessionId, otp });
 export const getMe = () => api.get('/auth/me');
 
 // Lottery

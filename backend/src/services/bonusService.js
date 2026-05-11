@@ -45,23 +45,40 @@ class BonusService {
     return rows[0]?.last ? new Date(rows[0].last) : null;
   }
 
+  async _userCreatedAt(userId) {
+    const [rows] = await db.pool.query('SELECT created_at FROM users WHERE id = ?', [userId]);
+    return rows[0]?.created_at ? new Date(rows[0].created_at) : null;
+  }
+
+  // Weekly/monthly are gated by a full cooldown after registration so a
+  // brand-new account can't grab the long-cycle bonuses on day zero. Daily
+  // remains claimable immediately on signup.
+  _hasRegistrationDelay(type) {
+    return type === 'weekly' || type === 'monthly';
+  }
+
   async _statusForRecurring(userId, type) {
     const cfg = RECURRING_TYPES[type];
     const amount = await this._getNumberSetting(cfg.amountKey, 0);
     const cooldownHours = await this._getNumberSetting(cfg.cooldownKey, cfg.defaultCooldown);
     const last = await this._lastClaimAt(userId, type);
 
-    if (!last) {
+    let anchor = last;
+    if (!anchor && this._hasRegistrationDelay(type)) {
+      anchor = await this._userCreatedAt(userId);
+    }
+
+    if (!anchor) {
       return { type, amount, claimable: amount > 0, lastClaimedAt: null, nextClaimAt: null, cooldownHours };
     }
 
-    const nextMs = last.getTime() + cooldownHours * 3600 * 1000;
+    const nextMs = anchor.getTime() + cooldownHours * 3600 * 1000;
     const claimable = Date.now() >= nextMs && amount > 0;
     return {
       type,
       amount,
       claimable,
-      lastClaimedAt: last.toISOString(),
+      lastClaimedAt: last ? last.toISOString() : null,
       nextClaimAt: claimable ? null : new Date(nextMs).toISOString(),
       cooldownHours,
     };
@@ -120,15 +137,20 @@ class BonusService {
         [userId, type]
       );
       const lastAt = last[0]?.last ? new Date(last[0].last) : null;
-      if (lastAt && Date.now() < lastAt.getTime() + cooldownHours * 3600 * 1000) {
-        throw new Error('Bonus not yet available');
-      }
 
       const [users] = await conn.execute(
-        'SELECT balance FROM users WHERE id = ? FOR UPDATE',
+        'SELECT balance, created_at FROM users WHERE id = ? FOR UPDATE',
         [userId]
       );
       if (users.length === 0) throw new Error('User not found');
+
+      let anchor = lastAt;
+      if (!anchor && this._hasRegistrationDelay(type)) {
+        anchor = users[0].created_at ? new Date(users[0].created_at) : null;
+      }
+      if (anchor && Date.now() < anchor.getTime() + cooldownHours * 3600 * 1000) {
+        throw new Error('Bonus not yet available');
+      }
 
       const balanceBefore = parseFloat(users[0].balance);
       const balanceAfter = Math.floor((balanceBefore + amount) * 100) / 100;

@@ -3,11 +3,8 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const db = require('../config/database');
 const { generateToken, authenticateToken } = require('../middleware/auth');
-const otpStore = require('../utils/otpSessionStore');
 
 const router = express.Router();
-
-const TWOFACTOR_BASE = 'https://2factor.in/API/V1';
 
 // Phone validation (server-side, mirrors frontend logic)
 function validatePhone(number) {
@@ -40,7 +37,7 @@ function validatePhone(number) {
   return { valid: false };
 }
 
-// Register
+// Register — accepts either email or phone (no OTP).
 router.post('/register', [
   body('username').trim().isLength({ min: 3, max: 50 }).matches(/^[a-zA-Z0-9_]+$/),
   body('password').isLength({ min: 6 })
@@ -53,29 +50,46 @@ router.post('/register', [
 
     const { username, email, phone, password, referral_code } = req.body;
 
-    // Phone registration must go through /phone-register (OTP-verified) to ensure phone ownership.
+    if (!email && !phone) {
+      return res.status(400).json({ success: false, message: 'Email or phone is required' });
+    }
+
+    let normalizedEmail = null;
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ success: false, message: 'Invalid email format' });
+      }
+      normalizedEmail = email.trim().toLowerCase();
+    }
+
+    let normalizedPhone = null;
     if (phone) {
-      return res.status(400).json({ success: false, message: 'Phone registration requires OTP verification. Use /phone-register.' });
+      const phoneResult = validatePhone(phone);
+      if (!phoneResult.valid) {
+        return res.status(400).json({ success: false, message: 'Invalid phone number' });
+      }
+      normalizedPhone = phoneResult.phone;
     }
 
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Email is required' });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ success: false, message: 'Invalid email format' });
-    }
+    const conditions = ['username = ?'];
+    const params = [username];
+    if (normalizedEmail) { conditions.push('email = ?'); params.push(normalizedEmail); }
+    if (normalizedPhone) { conditions.push('phone = ?'); params.push(normalizedPhone); }
 
     const [existing] = await db.pool.query(
-      'SELECT id FROM users WHERE username = ? OR email = ?',
-      [username, email]
+      `SELECT username, email, phone FROM users WHERE ${conditions.join(' OR ')}`,
+      params
     );
     if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'Username or email already exists' });
+      const row = existing[0];
+      let conflict = 'Username';
+      if (row.username !== username) {
+        conflict = row.email === normalizedEmail ? 'Email' : 'Phone';
+      }
+      return res.status(400).json({ success: false, message: `${conflict} already registered` });
     }
 
-    // Look up referrer
     let referrerId = null;
     if (referral_code) {
       const [referrers] = await db.pool.query(
@@ -91,8 +105,8 @@ router.post('/register', [
     const passwordHash = await bcrypt.hash(password, 10);
 
     const [result] = await db.pool.query(
-      'INSERT INTO users (username, email, password_hash, referred_by) VALUES (?, ?, ?, ?)',
-      [username, email, passwordHash, referrerId]
+      'INSERT INTO users (username, email, phone, password_hash, referred_by) VALUES (?, ?, ?, ?, ?)',
+      [username, normalizedEmail, normalizedPhone, passwordHash, referrerId]
     );
 
     if (referrerId === result.insertId) {
@@ -101,7 +115,6 @@ router.post('/register', [
 
     const token = generateToken(result.insertId);
 
-    // Welcome notification
     const notificationService = req.app.get('notificationService');
     if (notificationService) {
       notificationService.create({
@@ -120,8 +133,8 @@ router.post('/register', [
         user: {
           id: result.insertId,
           username,
-          email,
-          phone: null,
+          email: normalizedEmail,
+          phone: normalizedPhone,
           balance: 0,
           isAdmin: false
         }
@@ -129,179 +142,6 @@ router.post('/register', [
     });
   } catch (error) {
     console.error('Register error:', error);
-    res.status(500).json({ success: false, message: 'Registration failed' });
-  }
-});
-
-// Send OTP to a phone number via 2Factor.in
-// Validates the FULL registration payload upfront so we don't burn an SMS for
-// a request that would fail at register time. Stores the validated data in the
-// session, keyed by 2Factor's sessionId, so /phone-register only needs sessionId+otp.
-router.post('/phone-send-otp', [
-  body('username').trim().isLength({ min: 3, max: 50 }).matches(/^[a-zA-Z0-9_]+$/),
-  body('password').isLength({ min: 6 }),
-  body('phone').isString().notEmpty(),
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Username (3+ chars, alphanumeric/underscore) and password (6+ chars) are required' });
-    }
-
-    const { username, phone, password, referral_code } = req.body;
-
-    const phoneResult = validatePhone(phone);
-    if (!phoneResult.valid) {
-      return res.status(400).json({ success: false, message: 'Invalid phone number' });
-    }
-    const normalizedPhone = phoneResult.phone;
-
-    // Username + phone uniqueness — fail fast before sending SMS.
-    const [existing] = await db.pool.query(
-      'SELECT username, phone FROM users WHERE username = ? OR phone = ?',
-      [username, normalizedPhone]
-    );
-    if (existing.length > 0) {
-      const conflict = existing.find((u) => u.username === username) ? 'Username' : 'Phone';
-      return res.status(400).json({ success: false, message: `${conflict} already registered` });
-    }
-
-    // Resolve referral now so an invalid code doesn't burn an SMS.
-    let referrerId = null;
-    if (referral_code) {
-      const [referrers] = await db.pool.query(
-        'SELECT id FROM users WHERE referral_code = ?',
-        [referral_code]
-      );
-      if (referrers.length === 0) {
-        return res.status(400).json({ success: false, message: 'Invalid referral code' });
-      }
-      referrerId = referrers[0].id;
-    }
-
-    const apiKey = process.env.TWOFACTOR_API_KEY;
-    if (!apiKey) {
-      console.error('TWOFACTOR_API_KEY not set');
-      return res.status(500).json({ success: false, message: 'OTP service not configured' });
-    }
-
-    // 2Factor expects digits-only with country code, no leading +
-    const phoneForApi = normalizedPhone.replace(/^\+/, '');
-    const url = `${TWOFACTOR_BASE}/${apiKey}/SMS/${phoneForApi}/AUTOGEN`;
-
-    const r = await fetch(url);
-    const data = await r.json();
-
-    if (data.Status !== 'Success') {
-      console.error('2Factor SMS send error:', data);
-      return res.status(502).json({ success: false, message: data.Details || 'Failed to send OTP' });
-    }
-
-    const sessionId = data.Details;
-    // Stash the full validated payload — /phone-register will create the user from this.
-    otpStore.set(sessionId, {
-      phone: normalizedPhone,
-      username,
-      password,
-      referrerId,
-    });
-
-    res.json({ success: true, data: { sessionId } });
-  } catch (error) {
-    console.error('Send OTP error:', error);
-    res.status(500).json({ success: false, message: 'Failed to send OTP' });
-  }
-});
-
-// Phone register — verifies the OTP via 2Factor, then creates the user from
-// the data stashed during /phone-send-otp.
-router.post('/phone-register', [
-  body('sessionId').isString().notEmpty(),
-  body('otp').isString().isLength({ min: 4, max: 8 }),
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
-    }
-
-    const { sessionId, otp } = req.body;
-
-    const session = otpStore.get(sessionId);
-    if (!session) {
-      return res.status(401).json({ success: false, message: 'OTP session expired. Please request a new OTP.' });
-    }
-
-    const apiKey = process.env.TWOFACTOR_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ success: false, message: 'OTP service not configured' });
-    }
-
-    const verifyUrl = `${TWOFACTOR_BASE}/${apiKey}/SMS/VERIFY/${encodeURIComponent(sessionId)}/${encodeURIComponent(otp)}`;
-    let verifyData;
-    try {
-      const r = await fetch(verifyUrl);
-      verifyData = await r.json();
-    } catch (err) {
-      console.error('2Factor verify request failed:', err.message);
-      return res.status(502).json({ success: false, message: 'OTP verification service unavailable' });
-    }
-
-    if (verifyData.Status !== 'Success' || verifyData.Details !== 'OTP Matched') {
-      return res.status(401).json({ success: false, message: 'Invalid OTP' });
-    }
-
-    // OTP good — consume the session and use the data we stashed at send time.
-    otpStore.consume(sessionId);
-    const { phone: normalizedPhone, username, password, referrerId } = session;
-
-    // Re-check uniqueness in case someone grabbed the username/phone in the window
-    // between send and verify.
-    const [existing] = await db.pool.query(
-      'SELECT id FROM users WHERE username = ? OR phone = ?',
-      [username, normalizedPhone]
-    );
-    if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'Username or phone already registered' });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    const [result] = await db.pool.query(
-      'INSERT INTO users (username, phone, phone_verified, password_hash, referred_by) VALUES (?, ?, 1, ?, ?)',
-      [username, normalizedPhone, passwordHash, referrerId]
-    );
-
-    const token = generateToken(result.insertId);
-
-    const notificationService = req.app.get('notificationService');
-    if (notificationService) {
-      notificationService.create({
-        userId: result.insertId,
-        type: 'personal',
-        title: 'Welcome to LOOT Market!',
-        message: `Hi ${username}, your account is ready. Buy numbers, play games, and start winning!`,
-      }).catch(() => {});
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Registration successful',
-      data: {
-        token,
-        user: {
-          id: result.insertId,
-          username,
-          email: null,
-          phone: normalizedPhone,
-          phoneVerified: true,
-          balance: 0,
-          isAdmin: false,
-        },
-      },
-    });
-  } catch (error) {
-    console.error('Phone register error:', error);
     res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
