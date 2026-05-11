@@ -120,6 +120,7 @@ const DEFAULT_CAPTION_TEMPLATE =
 
 const CAPTION_SETTING_KEY = 'daily_winners_caption_template';
 const PAYMENT_DETAILS_SETTING_KEY = 'payment_template_details';
+const SMM_PANEL_SETTING_KEY = 'smm_panel_config';
 
 const DEFAULT_PAYMENT_DETAILS = {
   senderName: 'Sachin Kumar',
@@ -128,6 +129,18 @@ const DEFAULT_PAYMENT_DETAILS = {
   recipientUpiHandle: '@okhdfcbank',
   brandLine: 'LOOT Market Winner',
   supportName: 'LOOT Market',
+};
+
+const DEFAULT_SMM_PANEL_CONFIG = {
+  enabled: false,
+  apiUrl: 'https://cheapestsmmpanels.com/api/v2',
+  apiKey: '',
+  viewsServiceId: '',
+  viewsQuantity: 1000,
+  viewsEnabled: true,
+  reactionsServiceId: '',
+  reactionsQuantity: 100,
+  reactionsEnabled: true,
 };
 
 function formatINR(n) {
@@ -276,6 +289,132 @@ class DailyWinnersService {
       { key: 'brandLine', label: 'Brand Line', placeholder: 'LOOT Market Winner' },
       { key: 'supportName', label: 'Support Name', placeholder: 'LOOT Market' },
     ];
+  }
+
+  async getSmmPanelConfig() {
+    const [rows] = await db.pool.query(
+      'SELECT setting_value FROM settings WHERE setting_key = ?',
+      [SMM_PANEL_SETTING_KEY]
+    );
+    if (rows.length && rows[0].setting_value) {
+      try {
+        return { ...DEFAULT_SMM_PANEL_CONFIG, ...JSON.parse(rows[0].setting_value) };
+      } catch (_) {
+        return { ...DEFAULT_SMM_PANEL_CONFIG };
+      }
+    }
+    return { ...DEFAULT_SMM_PANEL_CONFIG };
+  }
+
+  async saveSmmPanelConfig(config) {
+    const merged = { ...DEFAULT_SMM_PANEL_CONFIG, ...(config || {}) };
+    merged.viewsQuantity = Math.max(0, parseInt(merged.viewsQuantity, 10) || 0);
+    merged.reactionsQuantity = Math.max(0, parseInt(merged.reactionsQuantity, 10) || 0);
+    merged.enabled = Boolean(merged.enabled);
+    merged.viewsEnabled = Boolean(merged.viewsEnabled);
+    merged.reactionsEnabled = Boolean(merged.reactionsEnabled);
+    await db.pool.query(
+      `INSERT INTO settings (setting_key, setting_value, description)
+       VALUES (?, ?, 'SMM panel API config for auto-ordering views/reactions on Telegram posts')
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [SMM_PANEL_SETTING_KEY, JSON.stringify(merged)]
+    );
+    return merged;
+  }
+
+  getDefaultSmmPanelConfig() {
+    return { ...DEFAULT_SMM_PANEL_CONFIG };
+  }
+
+  getSmmPanelSchema() {
+    return [
+      { key: 'enabled', label: 'Enabled', type: 'boolean' },
+      { key: 'apiUrl', label: 'API URL', placeholder: 'https://cheapestsmmpanels.com/api/v2' },
+      { key: 'apiKey', label: 'API Key', placeholder: 'your-panel-api-key', secret: true },
+      { key: 'viewsEnabled', label: 'Order Views', type: 'boolean' },
+      { key: 'viewsServiceId', label: 'Views Service ID', placeholder: 'e.g. 1234' },
+      { key: 'viewsQuantity', label: 'Views Quantity', type: 'number', placeholder: '1000' },
+      { key: 'reactionsEnabled', label: 'Order Reactions', type: 'boolean' },
+      { key: 'reactionsServiceId', label: 'Reactions Service ID', placeholder: 'e.g. 5678' },
+      { key: 'reactionsQuantity', label: 'Reactions Quantity', type: 'number', placeholder: '100' },
+    ];
+  }
+
+  async placeSmmOrder(cfg, { serviceId, quantity, link, kind, log }) {
+    const body = new URLSearchParams({
+      key: cfg.apiKey,
+      action: 'add',
+      service: String(serviceId),
+      link,
+      quantity: String(quantity),
+    });
+    const res = await fetch(cfg.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    const text = await res.text();
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (_) { parsed = { raw: text }; }
+    if (!res.ok || parsed.error) {
+      throw new Error(`SMM ${kind} order failed: ${res.status} ${parsed.error || text}`);
+    }
+    log.info(`SMM ${kind} order placed: id=${parsed.order || '?'} qty=${quantity} link=${link}`);
+    return { orderId: parsed.order || null, response: parsed };
+  }
+
+  async placeSmmOrdersForPost(postUrl, log) {
+    if (!postUrl) {
+      log.warn('SMM: Telegram send succeeded but no postUrl was derived — skipping orders (likely missing chat.username on a private channel)');
+      return { skipped: true, reason: 'no_post_url', placed: 0 };
+    }
+    const cfg = await this.getSmmPanelConfig();
+    if (!cfg.enabled) {
+      log.info('SMM: disabled in settings — skipping orders');
+      return { skipped: true, reason: 'disabled', placed: 0 };
+    }
+    if (!cfg.apiKey || !cfg.apiUrl) {
+      log.warn('SMM: apiKey or apiUrl missing — skipping orders');
+      return { skipped: true, reason: 'missing_credentials', placed: 0 };
+    }
+
+    log.info(`SMM: queueing orders for ${postUrl}`);
+    const results = { skipped: false, placed: 0, views: null, reactions: null };
+    if (cfg.viewsEnabled && cfg.viewsServiceId && cfg.viewsQuantity > 0) {
+      try {
+        results.views = await this.placeSmmOrder(cfg, {
+          serviceId: cfg.viewsServiceId,
+          quantity: cfg.viewsQuantity,
+          link: postUrl,
+          kind: 'views',
+          log,
+        });
+        results.placed++;
+      } catch (err) {
+        log.error(err.message);
+        results.views = { error: err.message };
+      }
+    } else {
+      log.info('SMM: views order skipped (disabled or missing serviceId/quantity)');
+    }
+    if (cfg.reactionsEnabled && cfg.reactionsServiceId && cfg.reactionsQuantity > 0) {
+      try {
+        results.reactions = await this.placeSmmOrder(cfg, {
+          serviceId: cfg.reactionsServiceId,
+          quantity: cfg.reactionsQuantity,
+          link: postUrl,
+          kind: 'reactions',
+          log,
+        });
+        results.placed++;
+      } catch (err) {
+        log.error(err.message);
+        results.reactions = { error: err.message };
+      }
+    } else {
+      log.info('SMM: reactions order skipped (disabled or missing serviceId/quantity)');
+    }
+    return results;
   }
 
   async getCaptionTemplate() {
@@ -472,27 +611,140 @@ class DailyWinnersService {
     }
   }
 
-  async sendToTelegram(pngBuffer, caption, log) {
+  async sendToTelegram(pngBuffer, caption, log, { maxRetries = 3 } = {}) {
     if (!this.telegramToken || !this.telegramChatId) {
       log.warn('Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_WINNERS_CHANNEL_ID missing) — skipping send');
       return { skipped: true };
     }
 
-    log.info(`Sending photo to Telegram chat ${this.telegramChatId}`);
-    const form = new FormData();
-    form.append('chat_id', this.telegramChatId);
-    form.append('caption', caption);
-    form.append('parse_mode', 'HTML');
-    form.append('photo', new Blob([pngBuffer], { type: 'image/png' }), 'winners.png');
-
     const url = `https://api.telegram.org/bot${this.telegramToken}/sendPhoto`;
-    const res = await fetch(url, { method: 'POST', body: form });
-    const body = await res.text();
-    if (!res.ok) {
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      log.info(`Sending photo to Telegram chat ${this.telegramChatId}${attempt > 1 ? ` (retry ${attempt - 1})` : ''}`);
+      const form = new FormData();
+      form.append('chat_id', this.telegramChatId);
+      form.append('caption', caption);
+      form.append('parse_mode', 'HTML');
+      form.append('photo', new Blob([pngBuffer], { type: 'image/png' }), 'winners.png');
+
+      const res = await fetch(url, { method: 'POST', body: form });
+      const body = await res.text();
+
+      if (res.ok) {
+        let postUrl = null;
+        let messageId = null;
+        try {
+          const parsed = JSON.parse(body);
+          const msg = parsed.result || {};
+          messageId = msg.message_id || null;
+          const chat = msg.chat || {};
+          if (messageId) {
+            if (chat.username) {
+              postUrl = `https://t.me/${chat.username}/${messageId}`;
+            } else if (typeof chat.id === 'number' || typeof chat.id === 'string') {
+              const internalId = String(chat.id).replace(/^-100/, '');
+              postUrl = `https://t.me/c/${internalId}/${messageId}`;
+            }
+          }
+        } catch (_) { /* non-JSON body */ }
+        log.info(`Telegram broadcast OK (${res.status})${postUrl ? ` — ${postUrl}` : ''}`);
+        return { skipped: false, response: body, messageId, postUrl };
+      }
+
+      // 429 = flood-wait; Telegram tells us how long to back off.
+      if (res.status === 429 && attempt < maxRetries) {
+        let retryAfter = 1;
+        try {
+          const parsed = JSON.parse(body);
+          retryAfter = parsed.parameters?.retry_after || parsed.retry_after || 1;
+        } catch (_) {}
+        const waitMs = (Number(retryAfter) + 1) * 1000;
+        log.warn(`Telegram 429 flood-wait — sleeping ${waitMs}ms then retrying (attempt ${attempt}/${maxRetries})`);
+        await sleep(waitMs);
+        continue;
+      }
+
       throw new Error(`Telegram sendPhoto failed: ${res.status} ${body}`);
     }
-    log.info(`Telegram broadcast OK (${res.status})`);
-    return { skipped: false, response: body };
+    throw new Error(`Telegram sendPhoto failed after ${maxRetries} attempts`);
+  }
+
+  async sendTestTelegramMessage(text, { placeSmmOrders = true } = {}) {
+    const log = this.createLogger();
+    const startedAt = Date.now();
+    if (!this.telegramToken || !this.telegramChatId) {
+      return {
+        success: false,
+        error: 'Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_WINNERS_CHANNEL_ID missing)',
+        logs: log.entries,
+      };
+    }
+
+    const message = (text && String(text).trim()) ||
+      `✅ <b>Test message</b> from LOOT Market admin\n<i>${new Date().toLocaleString('en-IN')}</i>`;
+
+    try {
+      log.info(`Sending test message to Telegram chat ${this.telegramChatId}`);
+      const url = `https://api.telegram.org/bot${this.telegramToken}/sendMessage`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: this.telegramChatId,
+          text: message,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+        }),
+      });
+      const body = await res.text();
+      if (!res.ok) {
+        throw new Error(`Telegram sendMessage failed: ${res.status} ${body}`);
+      }
+
+      let postUrl = null;
+      let messageId = null;
+      try {
+        const parsed = JSON.parse(body);
+        const msg = parsed.result || {};
+        messageId = msg.message_id || null;
+        const chat = msg.chat || {};
+        if (messageId) {
+          if (chat.username) {
+            postUrl = `https://t.me/${chat.username}/${messageId}`;
+          } else if (typeof chat.id === 'number' || typeof chat.id === 'string') {
+            const internalId = String(chat.id).replace(/^-100/, '');
+            postUrl = `https://t.me/c/${internalId}/${messageId}`;
+          }
+        }
+      } catch (_) { /* non-JSON */ }
+      log.info(`Test message sent (${res.status})${postUrl ? ` — ${postUrl}` : ''}`);
+
+      let smm = null;
+      if (placeSmmOrders) {
+        smm = await this.placeSmmOrdersForPost(postUrl, log);
+      } else {
+        log.info('SMM: skipped by request (placeSmmOrders=false)');
+      }
+
+      return {
+        success: true,
+        messageId,
+        postUrl,
+        chatId: this.telegramChatId,
+        sentText: message,
+        smm,
+        durationMs: Date.now() - startedAt,
+        logs: log.entries,
+      };
+    } catch (err) {
+      log.error(err.message);
+      return {
+        success: false,
+        error: err.message,
+        durationMs: Date.now() - startedAt,
+        logs: log.entries,
+      };
+    }
   }
 
   async processDrawComplete(draw) {
@@ -503,6 +755,7 @@ class DailyWinnersService {
     let success = false;
     let errorMsg = null;
     let screenshotsSent = 0;
+    let smmOrdersPlaced = 0;
 
     let browser = null;
     try {
@@ -533,19 +786,29 @@ class DailyWinnersService {
           const result = await this.sendToTelegram(png, caption, log);
           if (!result.skipped) screenshotsSent++;
           log.info(`[${i + 1}/${winners.length}] ${winner.name} (${platform}) sent`);
+          // Every successful Telegram send → run the SMM step. The function
+          // itself decides what to do based on settings / postUrl availability
+          // and logs its own skip reason.
+          if (!result.skipped) {
+            const smm = await this.placeSmmOrdersForPost(result.postUrl, log);
+            smmOrdersPlaced += smm.placed || 0;
+          }
         } catch (err) {
           log.error(`Screenshot ${i + 1}/${winners.length} failed: ${err.message}`);
         }
 
         // Don't sleep after the last one
         if (i < winners.length - 1) {
-          const delay = rand(1000, 3000);
+          // Telegram channel cap is ~20 msg/min for bots; keep 3–5s spacing
+          // so a 15-winner run + summary stays comfortably under the limit.
+          const delay = rand(3000, 5000);
           await sleep(delay);
         }
       }
 
-      // Short pause before the summary card
-      await sleep(1500);
+      // Longer pause before the summary card — gives Telegram's per-chat
+      // counter time to recover after the burst of per-winner sends.
+      await sleep(4000);
 
       // 2. Send summary card
       log.info('Rendering summary card');
@@ -557,9 +820,20 @@ class DailyWinnersService {
       const caption = this.renderCaption(template, draw, winners);
       log.info(`Caption rendered (${caption.length} chars)`);
 
-      telegramResult = await this.sendToTelegram(summaryPng, caption, log);
+      try {
+        telegramResult = await this.sendToTelegram(summaryPng, caption, log);
+        if (telegramResult && !telegramResult.skipped) {
+          const smm = await this.placeSmmOrdersForPost(telegramResult.postUrl, log);
+          smmOrdersPlaced += smm.placed || 0;
+        }
+      } catch (err) {
+        // Don't let a summary-card failure wipe out the entire run's success
+        // flag — the per-winner screenshots already landed.
+        log.error(`Summary card send failed: ${err.message}`);
+        telegramResult = { skipped: false, error: err.message };
+      }
       success = true;
-      log.info(`=== done in ${Date.now() - startedAt}ms, ${screenshotsSent} screenshots + 1 summary sent ===`);
+      log.info(`=== done in ${Date.now() - startedAt}ms, ${screenshotsSent} screenshots + 1 summary sent, ${smmOrdersPlaced} SMM orders placed ===`);
     } catch (err) {
       errorMsg = err.message || String(err);
       log.error(`processDrawComplete failed: ${errorMsg}`);
@@ -577,6 +851,7 @@ class DailyWinnersService {
       periodId: draw.period_id,
       winnersCount: winners.length,
       screenshotsSent,
+      smmOrdersPlaced,
       telegram: telegramResult,
       durationMs: Date.now() - startedAt,
       logs: log.entries,

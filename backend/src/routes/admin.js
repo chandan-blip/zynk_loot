@@ -1083,6 +1083,56 @@ router.put('/daily-winners/payment-details', async (req, res) => {
   }
 });
 
+router.get('/daily-winners/smm-panel', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const config = await svc.getSmmPanelConfig();
+    res.json({
+      success: true,
+      data: {
+        config,
+        defaults: svc.getDefaultSmmPanelConfig(),
+        schema: svc.getSmmPanelSchema(),
+      },
+    });
+  } catch (error) {
+    console.error('Get smm panel config error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/daily-winners/smm-panel', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const { config } = req.body || {};
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ success: false, message: 'config object required' });
+    }
+    const saved = await svc.saveSmmPanelConfig(config);
+    res.json({ success: true, data: { config: saved } });
+  } catch (error) {
+    console.error('Save smm panel config error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/daily-winners/test-telegram', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const { text, placeSmmOrders } = req.body || {};
+    const result = await svc.sendTestTelegramMessage(text, {
+      placeSmmOrders: placeSmmOrders !== false,
+    });
+    res.json({ success: result.success, data: result });
+  } catch (error) {
+    console.error('Test telegram error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Preview: substitute variables and return rendered HTML (reads fresh from disk)
 router.post('/daily-winners/payment-templates/:platform/preview', async (req, res) => {
   try {

@@ -182,6 +182,11 @@ export const previewPaymentTemplatePng = (platform, sampleOverride) =>
 export const getPaymentDetails = () => api.get('/admin/daily-winners/payment-details');
 export const savePaymentDetails = (config) =>
   api.put('/admin/daily-winners/payment-details', { config });
+export const getSmmPanel = () => api.get('/admin/daily-winners/smm-panel');
+export const saveSmmPanel = (config) =>
+  api.put('/admin/daily-winners/smm-panel', { config });
+export const testTelegramMessage = (text, placeSmmOrders = true) =>
+  api.post('/admin/daily-winners/test-telegram', { text, placeSmmOrders });
 export const getAdminNumbers = (page = 1, limit = 50) => api.get(`/admin/numbers?page=${page}&limit=${limit}`);
 export const getAdminSettings = () => api.get('/admin/settings');
 export const updateSetting = (key, value) => api.put(`/admin/settings/${key}`, { value });
