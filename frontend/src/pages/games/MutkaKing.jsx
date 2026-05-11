@@ -1,20 +1,26 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { FiArrowLeft, FiPlus, FiTrash2, FiPlay, FiEye, FiRotateCcw } from 'react-icons/fi';
-import { GiCardJackHearts } from 'react-icons/gi';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FiArrowLeft, FiPlus, FiTrendingUp, FiAward, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { GiCardRandom } from 'react-icons/gi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useStore from '../../store/useStore';
 import { useCurrency } from '../../contexts/CurrencyContext';
-import { playMutkaKing, getGameStats } from '../../services/api';
+import {
+  getMutkaKingState,
+  placeMutkaKingBet,
+  getMutkaKingHistory,
+  getMutkaKingMyBets,
+} from '../../services/api';
+import socketService from '../../services/socket';
 import { sounds } from '../../utils/sounds';
-import GameResultOverlay from '../../components/GameResultOverlay';
-import GameHistory from '../../components/GameHistory';
-import GameLiveFeed from '../../components/GameLiveFeed';
-import BetStepper from '../../components/BetStepper';
 import PlayingCard, { decodeCard, SUITS, RANK_LABELS } from '../../components/PlayingCard';
+import BetStepper from '../../components/BetStepper';
+import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 
+// Multipliers per pick-count (Mutka King is geometric — exact matches scale
+// fast). Type-N round = max picks N. Picking 1 pays 2x, picking 4 pays 500x.
 const CARD_MULTIPLIERS = { 1: 2, 2: 9, 3: 100, 4: 500 };
 const PICK_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple', 4: 'Four' };
 const KIND_MULTIPLIERS = { rank: 3, suit: 2, color: 2 };
@@ -26,280 +32,36 @@ const BET_KINDS = [
   { id: 'color', label: 'Color' },
 ];
 
-// Rank bet covers every rank: A, 2-10, J, Q, K (indices 0-12)
-const RANK_BET_INDICES = Array.from({ length: 13 }, (_, i) => i);
-
 const QUICK_AMOUNTS = [10, 50, 100, 500];
 
-const PHASES = {
-  IDLE: 'idle',          // deck stacked, "Play" button
-  CONFIG: 'config',      // 4 cards spread face-down, bet section visible
-  SHUFFLING: 'shuffling',// 3-second face-down shuffle animation after Show
-  REVEAL: 'reveal',      // server replied, cards flipping over
-  DONE: 'done',          // result overlay shown, allow another round
-};
-
-const SHUFFLE_DURATION_MS = 3000;
-
-// Per-card riffle motion: each card cycles through a small loop of x/y/rotate
-// keyframes so the deck looks like a real shuffle. Patterns are intentionally
-// asymmetric so cards visibly cross over and swap z-order rather than orbiting
-// in unison.
-const SHUFFLE_PATTERNS = [
-  { x: [0, -56, 38, -22, 0], y: [0, -12, 16, -8, 0],  rotate: [0, -14, 10, -6, 0],  duration: 0.85, delay: 0.00 },
-  { x: [0,  48, -30, 22, 0], y: [0,  14, -10, 12, 0], rotate: [0,  12, -16, 8, 0],  duration: 0.78, delay: 0.10 },
-  { x: [0, -32, 50, -18, 0], y: [0,  10,  14, -8, 0], rotate: [0,  -8,  14, -10, 0], duration: 0.82, delay: 0.05 },
-  { x: [0,  30, -42, 16, 0], y: [0, -14, -6,  10, 0], rotate: [0,  16,  -8,  12, 0], duration: 0.74, delay: 0.15 },
-];
-
-const SHUFFLE_PLACEHOLDER_IDS = [0, 13, 26, 39];
-
-function ShuffleStage() {
-  return (
-    <div className="relative h-[200px] sm:h-[240px] flex items-center justify-center">
-      <motion.div
-        animate={{ scale: [1, 1.25, 1], opacity: [0.35, 0.75, 0.35] }}
-        transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute h-40 w-40 rounded-full pointer-events-none blur-3xl"
-        style={{
-          background:
-            'radial-gradient(closest-side, rgba(245,210,122,0.55), rgba(0,212,170,0.25) 55%, transparent 75%)',
-        }}
-      />
-
-      <div className="relative w-[180px] h-[160px] flex items-center justify-center">
-        {SHUFFLE_PLACEHOLDER_IDS.map((pid, i) => {
-          const p = SHUFFLE_PATTERNS[i];
-          return (
-            <motion.div
-              key={i}
-              className="absolute"
-              animate={{ x: p.x, y: p.y, rotate: p.rotate }}
-              transition={{
-                duration: p.duration,
-                delay: p.delay,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-              style={{ willChange: 'transform' }}
-            >
-              <PlayingCard id={pid} faceUp={false} size="md" />
-            </motion.div>
-          );
-        })}
-      </div>
-
-      <div className="absolute bottom-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em]">
-        <motion.span
-          className="w-1.5 h-1.5 rounded-full bg-amber-400"
-          animate={{ opacity: [0.3, 1, 0.3] }}
-          transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <span className="text-amber-300 font-semibold">Shuffling</span>
-        <motion.span
-          className="text-amber-300 font-semibold"
-          animate={{ opacity: [0, 1, 0] }}
-          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          …
-        </motion.span>
-      </div>
-    </div>
-  );
+// Tile colors for the history pattern strip — cycle through suits to give the
+// "study the pattern" feel: each row is a colored chip block per dealt card.
+function suitTone(suitIdx) {
+  switch (suitIdx) {
+    case 0: return 'bg-gray-700 text-gray-200';   // ♣ clubs
+    case 1: return 'bg-red-500/80 text-white';    // ♦ diamonds
+    case 2: return 'bg-rose-500/80 text-white';   // ♥ hearts
+    case 3: return 'bg-slate-900 text-white';     // ♠ spades
+    default: return 'bg-dark-700 text-white';
+  }
 }
 
-function pickRandomFour() {
-  const set = new Set();
-  while (set.size < 4) set.add(Math.floor(Math.random() * 52));
-  return [...set];
+function formatPeriodId(periodId) {
+  if (!periodId) return '—';
+  return String(periodId);
 }
 
-// Idle-state "live preview" — fans out four random cards, breathes, wobbles,
-// and re-deals every few seconds with synchronised flip + sparkle particles
-// so the stage feels alive before the player presses Play.
-function DemoShowcase() {
-  const [cards, setCards] = useState(() => pickRandomFour());
-  const [faceUp, setFaceUp] = useState(true);
-
-  useEffect(() => {
-    let flipTimer;
-    const cycle = setInterval(() => {
-      setFaceUp(false);
-      flipTimer = setTimeout(() => {
-        setCards(pickRandomFour());
-        setFaceUp(true);
-      }, 750);
-    }, 4500);
-    return () => {
-      clearInterval(cycle);
-      if (flipTimer) clearTimeout(flipTimer);
-    };
-  }, []);
-
-  // Deterministic pseudo-random sparkle layout so they don't reshuffle each render
-  const sparkles = useMemo(
-    () => Array.from({ length: 10 }, (_, i) => ({
-      id: i,
-      top: 14 + (i * 47) % 72,
-      left: 6 + (i * 67) % 88,
-      size: 6 + (i % 4) * 2,
-      delay: (i * 0.37) % 2.4,
-      duration: 2 + (i % 3) * 0.6,
-      color: i % 3 === 0 ? '#f5d27a' : i % 3 === 1 ? '#00d4aa' : '#ffffff',
-    })),
-    []
-  );
-
-  return (
-    <div className="relative w-full h-full flex items-center justify-center">
-      {/* Pulsing two-tone radial spotlight */}
-      <motion.div
-        animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.85, 0.5] }}
-        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-40 sm:h-56 blur-3xl rounded-full pointer-events-none"
-        style={{
-          background: 
-            'radial-gradient(closest-side, rgba(245,210,122,0.55), rgba(0,212,170,0.28) 55%, transparent 75%)',
-        }}
-      />
-
-      {/* Slow rotating light streaks */}
-      <motion.div
-        className="absolute inset-0 pointer-events-none"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
-        style={{
-          background:
-            'conic-gradient(from 0deg, transparent 0deg, rgba(245,210,122,0.10) 30deg, transparent 60deg, transparent 180deg, rgba(0,212,170,0.10) 210deg, transparent 240deg)',
-          maskImage: 'radial-gradient(closest-side, black 30%, transparent 75%)',
-          WebkitMaskImage: 'radial-gradient(closest-side, black 30%, transparent 75%)',
-        }}
-      />
-
-      {/* Sparkle particles */}
-      {sparkles.map((s) => (
-        <motion.span
-          key={s.id}
-          className="absolute pointer-events-none font-bold leading-none select-none"
-          style={{
-            top: `${s.top}%`,
-            left: `${s.left}%`,
-            fontSize: s.size,
-            color: s.color,
-            textShadow: `0 0 6px ${s.color}`,
-          }}
-          animate={{
-            opacity: [0, 1, 0],
-            scale: [0.4, 1.3, 0.4],
-            y: [0, -14, -22],
-            rotate: [0, 90, 180],
-          }}
-          transition={{
-            duration: s.duration,
-            repeat: Infinity,
-            delay: s.delay,
-            ease: 'easeOut',
-          }}
-        >
-          ✦
-        </motion.span>
-      ))}
-
-      {/* Cards */}
-      <div className="relative flex items-center justify-center gap-2 sm:gap-3 z-[1]">
-        {cards.map((id, idx) => {
-          const rot = (idx - 1.5) * 7; // wider fan: -10.5°, -3.5°, +3.5°, +10.5°
-          return (
-            <motion.div
-              key={idx}
-              initial={{ y: 0, rotate: rot }}
-              animate={{ y: [0, -10, 0], rotate: rot }}
-              transition={{
-                duration: 3.5 + idx * 0.3,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-              style={{
-                willChange: 'transform',
-                transformOrigin: '50% 60%',
-              }}
-            >
-              <PlayingCard id={id} faceUp={faceUp} size="md" delay={idx * 0.12} />
-            </motion.div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function CardChip({ id, selected, disabled, onClick }) {
+function CardChipMini({ id }) {
   const { rank, suit } = decodeCard(id);
   return (
-    <motion.button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      whileHover={!disabled && !selected ? { y: -2 } : undefined}
-      whileTap={!disabled ? { scale: 0.92 } : undefined}
-      animate={{ scale: selected ? 1.06 : 1 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-      className={`relative aspect-[5/7] rounded-[5px] overflow-hidden transition-[filter] ${
-        disabled ? 'opacity-40 cursor-not-allowed grayscale' : 'hover:brightness-[1.05]'
-      }`}
-      style={{
-        background: selected
-          ? `linear-gradient(160deg, ${suit.color === '#c41e3a' ? '#fff5f7' : '#f0fdf9'} 0%, #ffffff 100%)`
-          : 'linear-gradient(160deg, #ffffff 0%, #eef0f4 100%)',
-        boxShadow: selected
-          ? `0 0 0 2px #00d4aa, 0 0 14px rgba(0,212,170,0.6), 0 4px 10px rgba(0,0,0,0.45)`
-          : 'inset 0 0 0 1px rgba(0,0,0,0.18), inset 0 -2px 0 rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.55)',
-      }}
+    <span
+      className="inline-flex flex-col items-center justify-center w-7 h-9 rounded bg-white border border-gray-300 font-bold text-[11px] leading-none"
+      style={{ color: suit.color }}
+      title={`${rank}${suit.symbol}`}
     >
-      {/* Big bold center suit — the primary visual at tiny sizes */}
-      <span
-        className="absolute inset-0 flex items-center justify-center font-black leading-none pointer-events-none"
-        style={{
-          color: suit.color,
-          fontSize: 'clamp(16px, 3.2vw, 24px)',
-          textShadow: '0 1px 0 rgba(255,255,255,0.7)',
-        }}
-      >
-        {suit.symbol}
-      </span>
-
-      {/* Rank in top-left corner — bigger, serif, clearly readable */}
-      <span
-        className="absolute top-[6%] left-[10%] font-black leading-none pointer-events-none"
-        style={{
-          color: suit.color,
-          fontFamily: "Georgia, 'Times New Roman', serif",
-          fontSize: 'clamp(10px, 2vw, 14px)',
-        }}
-      >
-        {rank}
-      </span>
-
-      {/* Rank in bottom-right corner (rotated) */}
-      <span
-        className="absolute bottom-[6%] right-[10%] font-black leading-none pointer-events-none"
-        style={{
-          color: suit.color,
-          fontFamily: "Georgia, 'Times New Roman', serif",
-          fontSize: 'clamp(10px, 2vw, 14px)',
-          transform: 'rotate(180deg)',
-        }}
-      >
-        {rank}
-      </span>
-
-      {/* Selected check pip */}
-      {selected && (
-        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-accent text-dark-900 flex items-center justify-center text-[11px] font-black leading-none shadow-lg ring-2 ring-dark-700">
-          ✓
-        </span>
-      )}
-    </motion.button>
+      <span>{rank}</span>
+      <span className="text-[10px]">{suit.symbol}</span>
+    </span>
   );
 }
 
@@ -307,16 +69,13 @@ function SlipTarget({ slip }) {
   if (slip.kind === 'cards') {
     return (
       <div className="flex flex-wrap gap-1">
-        {slip.cards.map((cid) => <CardLabel key={cid} id={cid} />)}
+        {slip.cards.map((cid) => <CardChipMini key={cid} id={cid} />)}
       </div>
     );
   }
   if (slip.kind === 'rank') {
     return (
-      <span
-        className="inline-flex items-center justify-center px-2 h-9 rounded bg-white border border-gray-300 font-bold text-xs text-gray-900"
-        style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-      >
+      <span className="inline-flex items-center px-2 h-9 rounded bg-white border border-gray-300 font-bold text-xs text-gray-900">
         Rank {RANK_LABELS[slip.rank]}
       </span>
     );
@@ -336,11 +95,9 @@ function SlipTarget({ slip }) {
   if (slip.kind === 'color') {
     const isRed = slip.color === 'red';
     return (
-      <span
-        className={`inline-flex items-center px-3 h-9 rounded border font-bold text-xs capitalize ${
-          isRed ? 'bg-red-500/15 border-red-500/40 text-red-300' : 'bg-gray-700/40 border-gray-500/40 text-gray-200'
-        }`}
-      >
+      <span className={`inline-flex items-center px-3 h-9 rounded border font-bold text-xs capitalize ${
+        isRed ? 'bg-red-500/15 border-red-500/40 text-red-300' : 'bg-gray-700/40 border-gray-500/40 text-gray-200'
+      }`}>
         {slip.color}
       </span>
     );
@@ -349,189 +106,416 @@ function SlipTarget({ slip }) {
 }
 
 function slipKindLabel(slip) {
-  if (slip.kind === 'cards') return PICK_LABELS[slip.cards.length];
-  if (slip.kind === 'rank') return 'Rank';
-  if (slip.kind === 'suit') return 'Suit';
+  if (slip.kind === 'cards') return PICK_LABELS[slip.cards.length] || '—';
+  if (slip.kind === 'rank')  return 'Rank';
+  if (slip.kind === 'suit')  return 'Suit';
   if (slip.kind === 'color') return 'Color';
   return slip.kind;
 }
 
-function CardLabel({ id }) {
-  const { rank, suit } = decodeCard(id);
+// Three face-down cards that gently tilt and shimmer during the betting window
+// so the user feels the deck is alive while they choose bets.
+// Renders `count` face-down or face-up cards based on the active card_count_type.
+// Each call uses different sample IDs so the placeholder set differs per type,
+// making the swap feel like changing decks rather than counts.
+const PLACEHOLDER_IDS = [0, 13, 26, 39];
+function MutkaStage({ revealed, locking, count = 3 }) {
+  const safeCount = Math.max(1, Math.min(4, count));
+  const placeholders = PLACEHOLDER_IDS.slice(0, safeCount);
+  // Center the row when there are fewer cards by offsetting each card's
+  // rotation around the visual midpoint.
+  const mid = (safeCount - 1) / 2;
+  // Mobile cards shrink to 60-72px for type-3/4 to fit 4 across without
+  // overlap; type-1/2 keep the lg sprite size on mobile too.
+  const cardClass = safeCount >= 3 ? '!w-[72px] sm:!w-[120px]' : '';
   return (
-    <span
-      className="inline-flex items-center justify-center w-7 h-9 rounded bg-white border border-gray-300 font-bold text-xs leading-none"
-      style={{ color: suit.color }}
-      title={`${rank} ${suit.name}`}
-    >
-      <span className="flex flex-col items-center gap-0.5">
-        <span>{rank}</span>
-        <span className="text-[11px]">{suit.symbol}</span>
-      </span>
-    </span>
+    <div className="relative h-44 sm:h-56 flex items-center justify-center">
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        animate={{ rotate: 360 }}
+        transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
+        style={{
+          background: 'conic-gradient(from 0deg, transparent 0deg, rgba(245,210,122,0.10) 30deg, transparent 60deg, transparent 180deg, rgba(0,212,170,0.10) 210deg, transparent 240deg)',
+          maskImage: 'radial-gradient(closest-side, black 30%, transparent 75%)',
+          WebkitMaskImage: 'radial-gradient(closest-side, black 30%, transparent 75%)',
+        }}
+      />
+      <div className={`relative flex items-center justify-center ${safeCount >= 3 ? 'gap-2 sm:gap-5' : 'gap-3 sm:gap-5'}`}>
+        {placeholders.map((pid, i) => {
+          const cardId = revealed && revealed[i] != null ? revealed[i] : pid;
+          const faceUp = !!(revealed && revealed[i] != null);
+          return (
+            <motion.div
+              key={`${safeCount}-${i}`}
+              initial={{ y: 20, opacity: 0, rotate: 0 }}
+              animate={
+                faceUp
+                  ? { y: 0, opacity: 1, rotate: (i - mid) * 6 }
+                  : locking
+                    ? { y: [0, -6, 0], opacity: 1, rotate: [(i - mid) * 6, (i - mid) * 8, (i - mid) * 6] }
+                    : { y: [0, -4, 0, 4, 0], opacity: 1, rotate: [(i - mid) * 4, (i - mid) * 8, (i - mid) * 4] }
+              }
+              transition={{
+                duration: locking ? 0.6 : 3.2,
+                repeat: faceUp ? 0 : Infinity,
+                ease: 'easeInOut',
+                delay: i * 0.12,
+              }}
+            >
+              <PlayingCard id={cardId} faceUp={faceUp} size="lg" className={cardClass} delay={i * 0.18} />
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-// Shared "card-style" chip face used by Number, Suit, Color pickers — keeps
-// the same paper/shadow vibe as CardChip so all four bet-kind pickers match.
-function ChipShell({ selected, onClick, children, faceStyle, className = '' }) {
+function CardPickerGrid({ selectedSet, onToggle, allDisabled }) {
+  // 52-card grid — 13 columns × 4 rows (one suit per row)
   return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      whileHover={!selected ? { y: -2 } : undefined}
-      whileTap={{ scale: 0.94 }}
-      animate={{ scale: selected ? 1.06 : 1 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-      className={`relative aspect-[5/7] rounded-[5px] overflow-hidden transition-[filter] hover:brightness-[1.05] ${className}`}
-      style={{
-        ...(faceStyle || {}),
-        boxShadow: selected
-          ? '0 0 0 2px #00d4aa, 0 0 14px rgba(0,212,170,0.6), 0 4px 10px rgba(0,0,0,0.45)'
-          : 'inset 0 0 0 1px rgba(0,0,0,0.18), inset 0 -2px 0 rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.55)',
-      }}
-    >
-      {children}
-      {selected && (
-        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-accent text-dark-900 flex items-center justify-center text-[11px] font-black leading-none shadow-lg ring-2 ring-dark-700">
-          ✓
-        </span>
-      )}
-    </motion.button>
+    <div className="grid gap-1 sm:gap-1.5" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
+      {Array.from({ length: 52 }).map((_, id) => {
+        const sel = selectedSet.has(id);
+        const { rank, suit } = decodeCard(id);
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => !allDisabled && onToggle(id)}
+            disabled={allDisabled}
+            className={`relative aspect-[5/7] rounded-md flex flex-col items-center justify-center text-[10px] sm:text-[11px] font-black transition-all ${
+              sel
+                ? 'bg-accent text-dark-900 ring-2 ring-accent shadow-lg'
+                : 'bg-white text-gray-900 hover:brightness-95'
+            } ${allDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            style={!sel ? { color: suit.color } : undefined}
+            title={`${rank}${suit.symbol}`}
+          >
+            <span>{rank}</span>
+            <span className="text-[9px] sm:text-[10px] leading-none">{suit.symbol}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-function NumberChip({ rank, selected, onClick }) {
-  const label = RANK_LABELS[rank];
+function RankPicker({ value, onChange, disabled }) {
   return (
-    <ChipShell
-      selected={selected}
-      onClick={onClick}
-      faceStyle={{ background: 'linear-gradient(160deg, #ffffff 0%, #eef0f4 100%)' }}
-    >
-      <span
-        className="absolute inset-0 flex items-center justify-center font-black leading-none text-gray-900 pointer-events-none"
-        style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 'clamp(18px, 3.6vw, 28px)' }}
-      >
-        {label}
-      </span>
-      <span
-        className="absolute top-[6%] left-[10%] font-black leading-none text-gray-900 pointer-events-none"
-        style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 'clamp(9px, 1.8vw, 12px)' }}
-      >
-        {label}
-      </span>
-      <span
-        className="absolute bottom-[6%] right-[10%] font-black leading-none text-gray-900 pointer-events-none"
-        style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 'clamp(9px, 1.8vw, 12px)', transform: 'rotate(180deg)' }}
-      >
-        {label}
-      </span>
-    </ChipShell>
+    <div className="grid gap-1 sm:gap-1.5" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
+      {RANK_LABELS.map((r, i) => (
+        <button
+          key={r}
+          type="button"
+          onClick={() => !disabled && onChange(i)}
+          disabled={disabled}
+          className={`aspect-[5/7] rounded-md flex items-center justify-center text-base font-black transition-all ${
+            value === i
+              ? 'bg-accent text-dark-900 ring-2 ring-accent shadow-lg'
+              : 'bg-white text-gray-900 hover:brightness-95'
+          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {r}
+        </button>
+      ))}
+    </div>
   );
 }
 
-function SuitChip({ suitId, selected, onClick }) {
-  const s = SUITS[suitId];
+function SuitPicker({ value, onChange, disabled }) {
   return (
-    <ChipShell
-      selected={selected}
-      onClick={onClick}
-      faceStyle={{ background: 'linear-gradient(160deg, #ffffff 0%, #eef0f4 100%)' }}
-    >
-      <span
-        className="absolute inset-0 flex items-center justify-center font-black leading-none pointer-events-none"
-        style={{ color: s.color, fontSize: 'clamp(28px, 6vw, 48px)', textShadow: '0 1px 0 rgba(255,255,255,0.7)' }}
-      >
-        {s.symbol}
-      </span>
-      <span
-        className="absolute top-[6%] left-[10%] font-black leading-none pointer-events-none"
-        style={{ color: s.color, fontSize: 'clamp(11px, 2vw, 14px)' }}
-      >
-        {s.symbol}
-      </span>
-      <span
-        className="absolute bottom-[6%] right-[10%] font-black leading-none pointer-events-none"
-        style={{ color: s.color, fontSize: 'clamp(11px, 2vw, 14px)', transform: 'rotate(180deg)' }}
-      >
-        {s.symbol}
-      </span>
-    </ChipShell>
+    <div className="grid grid-cols-4 gap-3">
+      {SUITS.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          onClick={() => !disabled && onChange(s.id)}
+          disabled={disabled}
+          className={`aspect-[5/7] rounded-lg flex flex-col items-center justify-center transition-all ${
+            value === s.id
+              ? 'bg-accent text-dark-900 ring-2 ring-accent shadow-lg'
+              : 'bg-white hover:brightness-95'
+          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <span className="text-3xl sm:text-4xl font-black" style={{ color: value === s.id ? '#0a0a0a' : s.color }}>
+            {s.symbol}
+          </span>
+          <span className="text-[10px] sm:text-xs font-bold capitalize mt-1" style={{ color: value === s.id ? '#0a0a0a' : s.color }}>
+            {s.name}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
-function ColorChip({ color, selected, onClick }) {
-  const isRed = color === 'red';
-  const faceStyle = {
-    background: isRed
-      ? 'linear-gradient(160deg, #ef4444 0%, #991b1b 100%)'
-      : 'linear-gradient(160deg, #1f2937 0%, #030712 100%)',
-  };
+function ColorPicker({ value, onChange, disabled }) {
   return (
-    <ChipShell
-      selected={selected}
-      onClick={onClick}
-      faceStyle={faceStyle}
-    >
-      {/* Pure colored face — no symbol, no text. */}
-    </ChipShell>
+    <div className="grid grid-cols-2 gap-3">
+      {['red', 'black'].map((c) => {
+        const sel = value === c;
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => !disabled && onChange(c)}
+            disabled={disabled}
+            className={`h-16 sm:h-20 rounded-lg flex items-center justify-center text-white font-black text-base capitalize transition-all ${
+              sel ? 'ring-2 ring-accent shadow-lg' : ''
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            style={{
+              background: c === 'red'
+                ? 'linear-gradient(160deg, #ef4444 0%, #991b1b 100%)'
+                : 'linear-gradient(160deg, #1f2937 0%, #030712 100%)',
+            }}
+          >
+            {c}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 export default function MutkaKing() {
   usePageTitle('Mutka King');
-
   const { user, checkAuth } = useStore();
   const { formatCurrency } = useCurrency();
 
-  const [phase, setPhase] = useState(PHASES.IDLE);
+  // ── Per-type state (Mutka King now runs 4 parallel instances: 1c/2c/3c/4c) ──
+  // Active type drives which round/stage/picker the user sees. Cards-bet pick
+  // count is capped at the active type (type-3 → max 3 picks).
+  const CARD_COUNT_TYPES = [1, 2, 3, 4];
+  const [activeType, setActiveType] = useState(1);
+
+  // Map<type, ...> slices so socket events for different types don't clobber
+  // each other.
+  const [roundsByType, setRoundsByType] = useState({});         // round metadata per type
+  const [phasesByType, setPhasesByType] = useState({});         // 'betting'|'locked'|'reveal'
+  const [revealedByType, setRevealedByType] = useState({});     // last revealed cards per type
+  const [lastResultByType, setLastResultByType] = useState({}); // most-recent reveal summary per type
+  const [pendingSlipsByType, setPendingSlipsByType] = useState({}); // user slips placed this round, per type
+
+  // Derived from active type
+  const round = roundsByType[activeType] || null;
+  const phase = phasesByType[activeType] || 'betting';
+  const revealedCards = revealedByType[activeType] || null;
+  const lastResult = lastResultByType[activeType] || null;
+  const pendingSlips = pendingSlipsByType[activeType] || [];
+
+  const [history, setHistory] = useState([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const HISTORY_PAGE_SIZE = 10;
+  const [myBets, setMyBets] = useState([]);
+  const [resultModal, setResultModal] = useState(null); // user-specific outcome
+  const [lockRemaining, setLockRemaining] = useState(0);
+
+  // Bet builder state
   const [betKind, setBetKind] = useState('cards');
-  const [selected, setSelected] = useState([]);     // for 'cards' kind
-  const [pickedRank, setPickedRank] = useState(null);  // 1..9 for 2..10
-  const [pickedSuit, setPickedSuit] = useState(null);  // 0..3
-  const [pickedColor, setPickedColor] = useState(null); // 'red' | 'black'
+  const [selected, setSelected] = useState([]);
+  // Sync pick cap with active type — picking up to N cards in a type-N round.
+  const pickTarget = activeType;
+  const [pickedRank, setPickedRank] = useState(null);
+  const [pickedSuit, setPickedSuit] = useState(null);
+  const [pickedColor, setPickedColor] = useState(null);
   const [amount, setAmount] = useState('10');
-  const [slips, setSlips] = useState([]);           // queued bets for next show
-  const [revealed, setRevealed] = useState([]);     // cards returned from server
-  const [revealResults, setRevealResults] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showResult, setShowResult] = useState(false);
-  const [stats, setStats] = useState(null);
-  const [historyKey, setHistoryKey] = useState(0);
+  // Mobile bottom-sheet visibility for the bet controls
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  // Stable face-down "deck" card placeholders for the spread
-  const placeholderIds = useMemo(() => [0, 13, 26, 39], []);
+  // Setter helpers that update only the slot for the round's type — they take
+  // an explicit `type` so socket handlers can hit the right pane even when the
+  // user is currently viewing a different tab.
+  const setRoundForType    = (type, r) => setRoundsByType(prev => ({ ...prev, [type]: r }));
+  const setPhaseForType    = (type, p) => setPhasesByType(prev => ({ ...prev, [type]: p }));
+  const setRevealedForType = (type, c) => setRevealedByType(prev => ({ ...prev, [type]: c }));
+  const setLastResultForType   = (type, r) => setLastResultByType(prev => ({ ...prev, [type]: r }));
+  const setPendingSlipsForType = (type, updater) =>
+    setPendingSlipsByType(prev => ({
+      ...prev,
+      [type]: typeof updater === 'function' ? updater(prev[type] || []) : updater,
+    }));
 
-  const loadStats = useCallback(async () => {
-    if (!user) return;
+  const tickRef = useRef(null);
+  const historyPageRef = useRef(1);
+  useEffect(() => { historyPageRef.current = historyPage; }, [historyPage]);
+  // Mirror activeType into a ref so long-lived socket handlers see the
+  // current tab instead of the captured-at-mount value.
+  const activeTypeRef = useRef(1);
+  useEffect(() => { activeTypeRef.current = activeType; }, [activeType]);
+  // Tracks the last whole-second we played a countdown sound for, so each
+  // tick from 5..0 fires exactly once even though the timer ticks at 200ms.
+  const lastBeepSecRef = useRef(null);
+
+  const loadHistoryPage = useCallback(async (page = 1, typeOverride = null) => {
+    setHistoryLoading(true);
+    const type = typeOverride != null ? typeOverride : activeType;
     try {
-      const res = await getGameStats();
-      const s = (res.data.data || []).find(x => x.game_type === 'mutka_king');
-      setStats(s || null);
+      const res = await getMutkaKingHistory(page, HISTORY_PAGE_SIZE, type);
+      const payload = res.data?.data || {};
+      const items = Array.isArray(payload) ? payload : (payload.items || []);
+      setHistory(items);
+      setHistoryPage(payload.page || page);
+      setHistoryTotalPages(payload.totalPages || 1);
+      setHistoryTotal(payload.total || items.length);
+      // Latest reveal for this type lives on page 1 slot 0.
+      if ((payload.page || page) === 1 && items.length > 0) {
+        setLastResultForType(type, {
+          roundId: items[0].roundId,
+          periodId: items[0].periodId,
+          cards: items[0].cards || [],
+        });
+      }
     } catch {}
-  }, [user]);
+    setHistoryLoading(false);
+  }, [activeType]);
 
-  useEffect(() => { loadStats(); }, [loadStats]);
+  const refreshMyBets = useCallback(async (typeOverride = null) => {
+    if (!user) return;
+    const type = typeOverride != null ? typeOverride : activeType;
+    try {
+      const mine = await getMutkaKingMyBets(20, type);
+      setMyBets(mine.data.data || []);
+    } catch {}
+  }, [user, activeType]);
 
-  const totalWager = useMemo(
-    () => slips.reduce((s, b) => s + Number(b.amount || 0), 0),
-    [slips]
-  );
+  // Initial fetch + socket subscriptions
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    socketService.connect(token);
 
-  // Only 'cards' slips lock specific cards. Rank/suit/color slips don't.
-  const allSelectedAcrossSlips = useMemo(() => {
-    const set = new Set();
-    slips.forEach((b) => {
-      if (b.kind === 'cards') b.cards.forEach((c) => set.add(c));
+    getMutkaKingState()
+      .then((res) => {
+        const rounds = res.data?.data?.rounds || {};
+        for (const t of CARD_COUNT_TYPES) {
+          const r = rounds[t];
+          if (r) {
+            setRoundForType(t, r);
+            setPhaseForType(t, r.status);
+          }
+        }
+      })
+      .catch(() => {});
+
+    loadHistoryPage(1);
+    refreshMyBets();
+
+    const unsubState = socketService.onMutkaRoundState?.((r) => {
+      if (r && r.cardCountType) {
+        setRoundForType(r.cardCountType, r);
+        setPhaseForType(r.cardCountType, r.status);
+      }
     });
-    return set;
-  }, [slips]);
+    const unsubOpen = socketService.onMutkaRoundOpen?.((r) => {
+      const t = r?.cardCountType;
+      if (!t) return;
+      setRoundForType(t, r);
+      setPhaseForType(t, 'betting');
+      setRevealedForType(t, null);
+      setPendingSlipsForType(t, []);
+      if (t === activeTypeRef.current) {
+        setSelected([]);
+        setPickedRank(null);
+        setPickedSuit(null);
+        setPickedColor(null);
+      }
+    });
+    const unsubLock = socketService.onMutkaRoundLock?.((data) => {
+      const t = data?.cardCountType;
+      if (!t) return;
+      setPhaseForType(t, 'locked');
+      if (t === activeTypeRef.current) setSheetOpen(false);
+    });
+    const unsubResult = socketService.onMutkaRoundResult?.((data) => {
+      const t = data?.cardCountType;
+      if (!t) return;
+      setRevealedForType(t, data.cards);
+      setPhaseForType(t, 'reveal');
+      setLastResultForType(t, {
+        roundId: data.roundId,
+        periodId: data.periodId,
+        cards: data.cards || [],
+      });
+      if (t === activeTypeRef.current) {
+        loadHistoryPage(historyPageRef.current, t);
+        refreshMyBets(t);
+      }
+    });
+    const unsubSettled = socketService.onMutkaRoundSettled?.((data) => {
+      setResultModal(data);
+      checkAuth?.();
+    });
+    const unsubBalance = socketService.onBalanceUpdate?.(() => {
+      checkAuth?.();
+    });
 
-  // Per-kind: current target & multiplier the player is staging
+    return () => {
+      unsubState?.();
+      unsubOpen?.();
+      unsubLock?.();
+      unsubResult?.();
+      unsubSettled?.();
+      unsubBalance?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When the user switches type tab, reload history & my-bets filtered to that
+  // type so the "Pattern History" and "Your Recent Bets" panels match the
+  // round they're now viewing.
+  useEffect(() => {
+    setHistoryPage(1);
+    loadHistoryPage(1, activeType);
+    refreshMyBets(activeType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeType]);
+
+  // Tick every 200ms for smooth countdowns
+  useEffect(() => {
+    const tick = () => {
+      if (!round) return;
+      const now = Date.now();
+      const lockMs = new Date(round.lockedAt).getTime();
+      const completeMs = new Date(round.completeAt).getTime();
+      const remaining = Math.max(0, completeMs - now);
+      setLockRemaining(remaining);
+      if (phase === 'betting' && now >= lockMs) setPhaseForType(activeType, 'locked');
+
+      // Final 5-second countdown SFX. Ticks fire once per integer second
+      // 5..2, then a dramatic "drop" sound at the last tick (1s) so the
+      // moment feels conclusive before the reveal at 0. Reset once we
+      // leave the window.
+      const wholeSec = Math.ceil(remaining / 1000);
+      if (remaining > 0 && wholeSec <= 5) {
+        if (lastBeepSecRef.current !== wholeSec) {
+          lastBeepSecRef.current = wholeSec;
+          if (wholeSec === 1) {
+            sounds.countdownGo?.();
+          } else {
+            // step grows as we approach the drop (6 - sec) → 1..4
+            sounds.countdownTick?.(6 - wholeSec);
+          }
+        }
+      } else if (wholeSec > 5) {
+        lastBeepSecRef.current = null;
+      }
+    };
+    tick();
+    tickRef.current = setInterval(tick, 200);
+    return () => clearInterval(tickRef.current);
+  }, [round, phase]);
+
+  // Locked when the round is past betting, OR the active type's round hasn't
+  // loaded yet (page just opened / between rounds) — guards against bets that
+  // would 400 with "Type-N round has not been opened yet".
+  const isLocked = phase !== 'betting' || !round;
+
   const pickCount = selected.length;
   const currentAmount = parseFloat(amount) || 0;
-
   let currentMultiplier = 0;
   let currentPickLabel = '—';
   let isPickValid = false;
@@ -554,17 +538,17 @@ export default function MutkaKing() {
   }
   const projectedWin = currentMultiplier * currentAmount;
 
-  const startRound = () => {
-    sounds.click?.();
-    setPhase(PHASES.CONFIG);
-  };
+  const totalPendingWager = useMemo(
+    () => pendingSlips.reduce((s, b) => s + Number(b.amount || 0), 0),
+    [pendingSlips]
+  );
 
   const toggleCard = (id) => {
-    if (phase !== PHASES.CONFIG) return;
+    if (isLocked) return;
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 4) {
-        toast.error('Max 4 cards per bet');
+      if (prev.length >= pickTarget) {
+        toast.error(`This tab is set to ${pickTarget} ${pickTarget === 1 ? 'card' : 'cards'} — switch the tab to pick more.`);
         return prev;
       }
       sounds.tap?.();
@@ -572,612 +556,995 @@ export default function MutkaKing() {
     });
   };
 
-  const switchKind = (k) => {
-    setBetKind(k);
-    sounds.tap?.();
+  // Switching the type tab switches which round the user is viewing/betting.
+  // Also trims any over-selection so the picker can't keep cards beyond the
+  // new type's max picks (e.g. switching from type-4 to type-2 keeps the first
+  // 2 selections).
+  const handlePickTarget = (n) => {
+    if (!CARD_COUNT_TYPES.includes(n)) return;
+    setActiveType(n);
+    setSelected((prev) => prev.slice(0, n));
   };
 
-  const addSlip = () => {
-    if (phase !== PHASES.CONFIG) return;
+  const placeBet = async () => {
+    if (!user) { toast.error('Please log in to play'); return; }
+    if (isLocked) { toast.error('Betting is locked for this round'); return; }
     if (!isPickValid) {
       toast.error(
         betKind === 'cards' ? 'Pick at least 1 card' :
-        betKind === 'rank' ? 'Pick a number 2–10' :
+        betKind === 'rank' ? 'Pick a rank' :
         betKind === 'suit' ? 'Pick a suit' : 'Pick a color'
       );
       return;
     }
     if (currentAmount < 1) { toast.error('Min bet is 1'); return; }
     if (currentAmount > 10000) { toast.error('Max bet is 10,000'); return; }
-    if (slips.length >= 20) { toast.error('Max 20 bets per round'); return; }
 
-    const slip = {
-      id: Date.now() + Math.random(),
-      kind: betKind,
-      amount: Math.floor(currentAmount * 100) / 100,
-      multiplier: currentMultiplier,
-    };
-    if (betKind === 'cards') {
-      slip.cards = [...selected].sort((a, b) => a - b);
-    } else if (betKind === 'rank') {
-      slip.rank = pickedRank;
-    } else if (betKind === 'suit') {
-      slip.suit = pickedSuit;
-    } else if (betKind === 'color') {
-      slip.color = pickedColor;
-    }
-
-    setSlips((prev) => [...prev, slip]);
-    setSelected([]);
-    setPickedRank(null);
-    setPickedSuit(null);
-    setPickedColor(null);
-    sounds.click?.();
-  };
-
-  const removeSlip = (id) => {
-    setSlips((prev) => prev.filter((b) => b.id !== id));
-  };
-
-  const clearSlips = () => {
-    setSlips([]);
-    setSelected([]);
-    setPickedRank(null);
-    setPickedSuit(null);
-    setPickedColor(null);
-  };
-
-  const handleShow = async () => {
-    if (slips.length === 0) { toast.error('Place at least one bet'); return; }
-    if (!user) { toast.error('Please log in to play'); return; }
+    const payload = { kind: betKind, amount: currentAmount, cardCountType: activeType };
+    if (betKind === 'cards') payload.cards = [...selected].sort((a, b) => a - b);
+    else if (betKind === 'rank')  payload.rank = pickedRank;
+    else if (betKind === 'suit')  payload.suit = pickedSuit;
+    else if (betKind === 'color') payload.color = pickedColor;
 
     setSubmitting(true);
     sounds.click?.();
-    setPhase(PHASES.SHUFFLING);
-    sounds.cardShuffle?.(SHUFFLE_DURATION_MS / 1000);
-
-    // Run the shuffle animation in parallel with the API call so the player
-    // always sees the full 3s of shuffle, even if the server responds instantly.
-    const shuffleDelay = new Promise((r) => setTimeout(r, SHUFFLE_DURATION_MS));
-
     try {
-      const apiCall = playMutkaKing(slips.map((s) => {
-        const base = { kind: s.kind, amount: s.amount };
-        if (s.kind === 'cards') return { ...base, cards: s.cards };
-        if (s.kind === 'rank')  return { ...base, rank: s.rank };
-        if (s.kind === 'suit')  return { ...base, suit: s.suit };
-        if (s.kind === 'color') return { ...base, color: s.color };
-        return base;
-      }));
-      const [res] = await Promise.all([apiCall, shuffleDelay]);
-      const data = res.data.data;
-
-      setRevealed(data.revealedCards);
-      setRevealResults(data);
-      setPhase(PHASES.REVEAL);
-      sounds.flip?.();
-
-      // Wait for the spread + flip animation to land before showing the overlay
-      setTimeout(() => {
-        setShowResult(true);
-        setPhase(PHASES.DONE);
-        checkAuth();
-        loadStats();
-        setHistoryKey((k) => k + 1);
-      }, 1400);
+      const res = await placeMutkaKingBet(payload);
+      const data = res.data?.data;
+      const slip = {
+        id: data.betId,
+        kind: betKind,
+        amount: currentAmount,
+        multiplier: currentMultiplier,
+        ...(betKind === 'cards' ? { cards: payload.cards } : {}),
+        ...(betKind === 'rank'  ? { rank: pickedRank } : {}),
+        ...(betKind === 'suit'  ? { suit: pickedSuit } : {}),
+        ...(betKind === 'color' ? { color: pickedColor } : {}),
+      };
+      setPendingSlipsForType(activeType, (prev) => [...prev, slip]);
+      // Clear builder
+      setSelected([]);
+      setPickedRank(null);
+      setPickedSuit(null);
+      setPickedColor(null);
+      checkAuth?.();
+      toast.success(`Bet placed: ${currentAmount} Z (type ${activeType})`);
+      setSheetOpen(false);
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to play');
-      setPhase(PHASES.CONFIG);
+      toast.error(error.response?.data?.message || 'Failed to place bet');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const newRound = () => {
-    setSelected([]);
-    setPickedRank(null);
-    setPickedSuit(null);
-    setPickedColor(null);
-    setSlips([]);
-    setRevealed([]);
-    setRevealResults(null);
-    setShowResult(false);
-    setPhase(PHASES.IDLE);
+  const closeResultModal = () => {
+    setResultModal(null);
   };
 
-  const closeResult = useCallback(() => setShowResult(false), []);
-
-  const overlayResult = revealResults
-    ? {
-        isWin: revealResults.isWin,
-        betAmount: revealResults.totalWager,
-        winAmount: revealResults.totalWin,
-        multiplier: revealResults.totalWager > 0
-          ? Math.round((revealResults.totalWin / revealResults.totalWager) * 100) / 100
-          : 0,
-        result: revealResults.revealedCards.map((id) => {
-          const c = decodeCard(id);
-          return `${c.rank}${c.suit.symbol}`;
-        }).join(' '),
-      }
-    : null;
-
-  const winRate = stats ? ((stats.wins / stats.total_bets) * 100).toFixed(1) : '0.0';
-  const netProfit = stats
-    ? (parseFloat(stats.total_won) - parseFloat(stats.total_wagered)).toFixed(2)
-    : '0.00';
+  // Countdown values rounded
+  const lockSecs = Math.ceil(lockRemaining / 1000);
+  // Pretty 10-0 countdown during locked phase
+  const lockPhaseSec = Math.max(0, Math.min(10, lockSecs));
 
   return (
-    <div className="mx-auto">
-      <GameResultOverlay
-        result={overlayResult}
-        show={showResult && phase === PHASES.DONE}
-        onClose={closeResult}
-        title="Mutka King"
-      />
+    <div className="space-y-3">
+      {/* Header — just the back link; game name + period live inside the
+          stage block to keep the chrome minimal. */}
+      <div className="flex items-center">
+        <Link to="/games" className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+          <FiArrowLeft className="w-4 h-4" />
+          <span className="text-sm">Back to Games</span>
+        </Link>
+      </div>
 
-      <Link to="/games" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-4 transition-colors">
-        <FiArrowLeft className="w-4 h-4" />
-        <span className="text-sm">Back to Games</span>
-      </Link>
+      {/* Two-column responsive layout: on md+ the history/your-bets panels
+          sit on the left and the live game moves to the right column. On
+          mobile the game stays first (default order) so users see the stage
+          before scrolling into history. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+       <div className="space-y-3 min-w-0 md:order-2">
 
-      <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-4">
-        {/* Sidebar: Stats + History */}
-        <div className="md:order-1 order-2 space-y-4">
-          {stats && (
-            <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
-              <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
-                <p className="text-xs text-gray-500">Total Bets</p>
-                <p className="text-sm font-bold text-white">{stats.total_bets}</p>
+      {/* Last revealed cards — sits above the live stage so the player always
+          sees the most recent result without scrolling to the history table. */}
+      {lastResult && (() => {
+        const last = lastResult;
+        const cards = last.cards || [];
+        return (
+          <motion.div
+            key={last.roundId}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="rounded-xl bg-dark-800/60 border border-dark-600/50 px-3 py-2 flex items-center justify-between gap-3"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-widest">
+                Last
+              </span>
+              <span className="text-gray-400 font-mono text-[11px] truncate">
+                {formatPeriodId(last.periodId)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {cards.map((cid, i) => {
+                const { rank, suit } = decodeCard(cid);
+                return (
+                  <motion.span
+                    key={i}
+                    initial={{ scale: 0.85, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: i * 0.06 }}
+                    className="inline-flex flex-col items-center justify-center w-8 h-10 rounded-md bg-white border border-gray-200 font-black text-[12px] leading-none shadow-sm"
+                    style={{ color: suit.color }}
+                    title={`${rank}${suit.symbol}`}
+                  >
+                    <span>{rank}</span>
+                    <span className="text-[11px]">{suit.symbol}</span>
+                  </motion.span>
+                );
+              })}
+            </div>
+          </motion.div>
+        );
+      })()}
+
+      {/* Stage block — Mutka-style: dark brick-red clay matka pot surface
+          framed in a hammered copper/brass band, with diya-style corner dots
+          and brass-medallion tabs. Distinct from Shuffle's casino-gold and
+          UNO's bright arcade chrome. */}
+      <div
+        className="relative overflow-hidden rounded-2xl p-[2px]"
+        style={{
+          // Hammered copper frame
+          background:
+            'linear-gradient(135deg, #5c2a16 0%, #b87333 18%, #e8a76a 30%, #b87333 50%, #4a1e10 75%, #d18847 100%)',
+          boxShadow:
+            '0 24px 60px -20px rgba(0,0,0,0.7), 0 2px 0 rgba(255,200,140,0.12) inset, 0 -2px 0 rgba(0,0,0,0.65) inset',
+        }}
+      >
+        <div
+          className="relative rounded-[14px] overflow-hidden"
+          style={{
+            // Deep maroon/clay surface — like the inside of a matka pot.
+            background:
+              'radial-gradient(ellipse at 50% -10%, rgba(255, 190, 120, 0.18) 0%, transparent 55%),' +
+              'radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.6) 0%, transparent 60%),' +
+              'linear-gradient(180deg, #4a1715 0%, #2d0f0d 50%, #1a0807 100%)',
+            boxShadow: 'inset 0 0 0 1px rgba(232,167,106,0.25), inset 0 0 40px rgba(0,0,0,0.55)',
+          }}
+        >
+          {/* Clay texture — coarser dot pattern, warm tint */}
+          <div
+            className="absolute inset-0 pointer-events-none opacity-[0.08]"
+            style={{
+              backgroundImage:
+                'radial-gradient(rgba(232,167,106,0.65) 1px, transparent 1px)',
+              backgroundSize: '10px 10px',
+            }}
+          />
+
+          {/* Diya / lotus corner motifs — small ornamental dots arranged like
+              the pip pattern on traditional matka pottery. */}
+          <span className="pointer-events-none absolute top-2 left-3 text-orange-300/35 text-xl font-black select-none">❖</span>
+          <span className="pointer-events-none absolute top-2 right-3 text-orange-300/35 text-xl font-black select-none">❖</span>
+          <span className="pointer-events-none absolute bottom-2 left-3 text-orange-300/35 text-xl font-black select-none">❖</span>
+          <span className="pointer-events-none absolute bottom-2 right-3 text-orange-300/35 text-xl font-black select-none">❖</span>
+
+          <div className="relative p-4">
+            {/* Marquee header — copper gradient title with a brass-plate period token */}
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <GiCardRandom className="w-5 h-5 text-orange-300 shrink-0 drop-shadow-[0_0_6px_rgba(232,167,106,0.8)]" />
+                <h1
+                  className="font-black text-base sm:text-lg truncate tracking-[0.22em] uppercase"
+                  style={{
+                    background: 'linear-gradient(180deg, #ffd6a8 0%, #e8a76a 45%, #7a3614 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    textShadow: '0 0 14px rgba(232,167,106,0.4)',
+                    fontFamily: '"Georgia", "Times New Roman", serif',
+                  }}
+                >
+                  Mutka King
+                </h1>
               </div>
-              <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
-                <p className="text-xs text-gray-500">Win Rate</p>
-                <p className="text-sm font-bold text-accent">{winRate}%</p>
-              </div>
-              <div className="rounded-lg bg-dark-700/40 border border-white/5 p-3 text-center">
-                <p className="text-xs text-gray-500">Net</p>
-                <p className={`text-sm font-bold ${parseFloat(netProfit) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {parseFloat(netProfit) >= 0 ? '+' : ''}{netProfit}
+              {/* Brass-plate period badge — square plate instead of round chip */}
+              <div
+                className="shrink-0 px-3 py-1 rounded-md border text-right"
+                style={{
+                  background:
+                    'linear-gradient(180deg, rgba(232,167,106,0.22), rgba(74,30,16,0.55) 75%)',
+                  borderColor: 'rgba(232,167,106,0.55)',
+                  boxShadow:
+                    '0 2px 6px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,200,140,0.08)',
+                }}
+              >
+                <p className="text-[9px] text-orange-200/80 uppercase tracking-[0.22em] leading-none">
+                  Type {activeType}
+                </p>
+                <p className="text-orange-100 font-mono text-[11px] font-bold leading-tight">
+                  {formatPeriodId(round?.periodId)}
                 </p>
               </div>
             </div>
-          )}
 
-          <GameLiveFeed />
-          <GameHistory
-            gameType="mutka_king"
-            title="Recent Rounds"
-            refreshKey={historyKey}
-            renderItem={(bet) => {
-              const details = typeof bet.details === 'string'
-                ? JSON.parse(bet.details)
-                : bet.details;
-              const slipCount = details?.bets?.length || 0;
-              const revealed = details?.revealedCards || [];
-              return (
-                <div key={bet.id} className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${
-                      bet.is_win ? 'bg-accent/20 text-accent' : 'bg-red-500/20 text-red-400'
-                    }`}>
-                      {bet.is_win ? 'W' : 'L'}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm text-white truncate">
-                        {slipCount} slip{slipCount === 1 ? '' : 's'} · {formatCurrency(parseFloat(bet.bet_amount))}
-                      </p>
-                      <p className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
-                        {revealed.slice(0, 4).map((cid, i) => {
-                          const c = decodeCard(cid);
-                          return (
-                            <span key={i} style={{ color: c.suit.color }} className="font-bold">
-                              {c.rank}{c.suit.symbol}
-                            </span>
-                          );
-                        })}
-                        <span className="text-gray-600">·</span>
-                        <span>{new Date(bet.created_at).toLocaleString()}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <span className={`text-sm font-bold shrink-0 ${bet.is_win ? 'text-accent' : 'text-red-400'}`}>
-                    {bet.is_win ? `+${formatCurrency(parseFloat(bet.win_amount))}` : `-${formatCurrency(parseFloat(bet.bet_amount))}`}
-                  </span>
-                </div>
-              );
-            }}
-          />
-        </div>
-
-        {/* Main: Game */}
-        <div className="md:order-2 order-1 space-y-4">
-          <div
-            className="relative rounded-xl border border-white/5 p-3 sm:p-6 space-y-4 overflow-hidden"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <GiCardJackHearts className="w-5 h-5 text-amber-400" />
-                <h1 className="text-lg sm:text-xl font-bold text-white">Mutka King</h1>
-              </div>
-              <span className="text-[11px] text-gray-500">
-                {phase === PHASES.CONFIG
-                  ? `${pickCount} / 4 picked${pickCount > 0 ? ` · ${currentPickLabel} · ` : ''}`
-                  : '4 cards drawn · pick 1–4 to match'}
-                {phase === PHASES.CONFIG && pickCount > 0 && (
-                  <span className="text-accent">{currentMultiplier}x</span>
-                )}
-              </span>
-            </div>
-
-            {/* Stage — swaps content by phase */}
-            {phase === PHASES.IDLE && (
-              <div className="relative">
-                {/* Soft accent glow behind the cards */}
-                <div
-                  className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-32 pointer-events-none blur-3xl opacity-50"
-                  style={{ background: 'radial-gradient(closest-side, rgba(245,158,11,0.25), transparent)' }}
-                />
-
-                <div className="relative h-[200px] sm:h-[240px] flex items-center justify-center">
-                  <DemoShowcase />
-                </div>
-
-                {/* Inviting tagline + multiplier hint */}
-                <div className="mt-3 flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                    <span className="text-amber-300 font-semibold">Live preview</span>
-                    <span className="text-gray-600">·</span>
-                    <span className="text-gray-400">Press Play to begin</span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-gray-300 text-center">
-                    Pick <span className="text-white font-semibold">1–4</span> cards · Match the deal · Win up to{' '}
-                    <span className="text-amber-300 font-bold">500x</span>
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {phase === PHASES.CONFIG && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
-              >
-                {/* Bet kind tabs */}
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-dark-900/60 border border-white/5">
-                  {BET_KINDS.map((k) => {
-                    const active = betKind === k.id;
-                    return (
-                      <button
-                        key={k.id}
-                        type="button"
-                        onClick={() => switchKind(k.id)}
-                        className={`flex-1 px-2 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                          active
-                            ? 'bg-accent/20 text-accent border border-accent/40'
-                            : 'text-gray-400 hover:text-white border border-transparent'
-                        }`}
-                      >
-                        {k.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Picker — swaps by bet kind */}
-                {betKind === 'cards' && (
-                  <div className="space-y-1.5">
-                    {SUITS.map((suit) => (
-                      <div key={suit.id} className="grid gap-1" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
-                        {RANK_LABELS.map((_, rankIdx) => {
-                          const cardId = suit.id * 13 + rankIdx;
-                          const isSelected = selected.includes(cardId);
-                          const lockedByOtherSlip = allSelectedAcrossSlips.has(cardId);
-                          return (
-                            <CardChip
-                              key={cardId}
-                              id={cardId}
-                              selected={isSelected}
-                              disabled={lockedByOtherSlip}
-                              onClick={() => toggleCard(cardId)}
-                            />
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {betKind === 'rank' && (
-                  <div>
-                    <p className="text-[11px] text-gray-500 mb-2">Wins if any of the 4 dealt cards has this rank.</p>
-                    <div className="grid grid-cols-7 gap-1.5">
-                      {RANK_BET_INDICES.map((r) => (
-                        <NumberChip
-                          key={r}
-                          rank={r}
-                          selected={pickedRank === r}
-                          onClick={() => { setPickedRank(pickedRank === r ? null : r); sounds.tap?.(); }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {betKind === 'suit' && (
-                  <div>
-                    <p className="text-[11px] text-gray-500 mb-2">Wins if any of the 4 dealt cards has this suit.</p>
-                    <div className="grid grid-cols-4 gap-2 max-w-md mx-auto">
-                      {SUITS.map((suit) => (
-                        <SuitChip
-                          key={suit.id}
-                          suitId={suit.id}
-                          selected={pickedSuit === suit.id}
-                          onClick={() => { setPickedSuit(pickedSuit === suit.id ? null : suit.id); sounds.tap?.(); }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {betKind === 'color' && (
-                  <div>
-                    <p className="text-[11px] text-gray-500 mb-2">Wins if any of the 4 dealt cards is this color.</p>
-                    <div className="grid grid-cols-2 gap-2 max-w-[224px] mx-auto">
-                      {['red', 'black'].map((c) => (
-                        <ColorChip
-                          key={c}
-                          color={c}
-                          selected={pickedColor === c}
-                          onClick={() => { setPickedColor(pickedColor === c ? null : c); sounds.tap?.(); }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Bet amount */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-gray-400">Bet amount</label>
-                    <span className="text-[11px] text-gray-500">
-                      Win up to {formatCurrency(projectedWin)}
-                    </span>
-                  </div>
-                  <BetStepper amount={amount} setAmount={setAmount} disabled={submitting} step={5} min={1} max={10000} />
-                  <div className="flex items-center gap-2">
-                    {QUICK_AMOUNTS.map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() => setAmount(String(q))}
-                        className="px-3 py-1.5 rounded-md bg-dark-800/60 border border-white/5 text-xs text-gray-300 hover:text-white hover:border-accent/40"
-                      >
-                        {formatCurrency(q)}
-                      </button>
-                    ))}
-                  </div>
-
+            {/* Card-count type tabs — brass medallion style, rounded-octagonal */}
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {CARD_COUNT_TYPES.map((n) => {
+                const active = activeType === n;
+                const tabRound = roundsByType[n];
+                const tabPhase = phasesByType[n] || 'betting';
+                const phaseColor =
+                  tabPhase === 'locked'
+                    ? 'bg-orange-400'
+                    : tabPhase === 'reveal'
+                      ? 'bg-rose-400'
+                      : 'bg-emerald-400';
+                return (
                   <button
+                    key={n}
                     type="button"
-                    onClick={addSlip}
-                    disabled={!isPickValid || currentAmount < 1}
-                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent/15 border border-accent/30 text-accent font-semibold hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                    onClick={() => handlePickTarget(n)}
+                    title={`${n}-card game · ${tabPhase}`}
+                    className="relative flex flex-col items-center justify-center py-2 rounded-lg border-2 text-xs font-bold transition-all overflow-hidden"
+                    style={
+                      active
+                        ? {
+                            background:
+                              'linear-gradient(160deg, #ffd6a8 0%, #e8a76a 35%, #7a3614 95%)',
+                            borderColor: '#ffd6a8',
+                            color: '#1a0807',
+                            boxShadow:
+                              '0 6px 14px rgba(0,0,0,0.6), 0 0 0 2px rgba(255,214,168,0.55), inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -3px 8px rgba(0,0,0,0.3)',
+                          }
+                        : {
+                            background:
+                              'linear-gradient(160deg, rgba(232,167,106,0.10) 0%, rgba(0,0,0,0.45) 80%)',
+                            borderColor: 'rgba(232,167,106,0.40)',
+                            color: '#e8a76a',
+                            boxShadow: 'inset 0 0 0 1px rgba(255,200,140,0.05)',
+                          }
+                    }
                   >
-                    <FiPlus className="w-4 h-4" />
-                    Add bet {isPickValid && `(${currentPickLabel} · ${currentMultiplier}x)`}
-                  </button>
-                </div>
-
-                {/* Slip list */}
-                {slips.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-gray-300">
-                        Your bets ({slips.length})
-                      </p>
-                      <button
-                        type="button"
-                        onClick={clearSlips}
-                        className="text-[11px] text-gray-500 hover:text-red-400"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <ul className="space-y-1.5">
-                      {slips.map((b) => (
-                        <li
-                          key={b.id}
-                          className="flex items-center gap-2 p-2 rounded-lg bg-dark-800/60 border border-white/5"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <SlipTarget slip={b} />
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-xs text-gray-400">
-                              {slipKindLabel(b)} · <span className="text-accent">{b.multiplier}x</span>
-                            </p>
-                            <p className="text-sm font-bold text-white">
-                              {formatCurrency(b.amount)}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeSlip(b.id)}
-                            className="p-1.5 text-gray-500 hover:text-red-400"
-                            aria-label="Remove slip"
-                          >
-                            <FiTrash2 className="w-4 h-4" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-xs text-gray-400">Total wager</span>
-                      <span className="text-sm font-bold text-white">{formatCurrency(totalWager)}</span>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {phase === PHASES.SHUFFLING && <ShuffleStage />}
-
-            {(phase === PHASES.REVEAL || phase === PHASES.DONE) && (
-              <div className="relative h-[200px] sm:h-[240px] flex items-center justify-center">
-                <div className="flex items-center justify-center gap-2 sm:gap-4">
-                  {placeholderIds.map((pid, idx) => {
-                    const cardId = revealed[idx] != null ? revealed[idx] : pid;
-                    return (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{
-                          delay: idx * 0.12,
-                          duration: 0.55,
-                          type: 'spring',
-                          stiffness: 180,
-                          damping: 22,
-                        }}
-                      >
-                        <PlayingCard
-                          id={cardId}
-                          faceUp={true}
-                          size="md"
-                          delay={idx * 0.18}
-                        />
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Action row */}
-            <div className="flex items-center justify-center">
-              {phase === PHASES.IDLE && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={startRound}
-                  className="btn-premium px-6 py-2.5 text-sm flex items-center gap-2"
-                >
-                  <FiPlay className="w-4 h-4" /> Play
-                </motion.button>
-              )}
-              {phase === PHASES.CONFIG && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleShow}
-                  disabled={submitting || slips.length === 0}
-                  className="btn-premium px-6 py-2.5 text-sm flex items-center gap-2 disabled:opacity-50"
-                >
-                  <FiEye className="w-4 h-4" />
-                  {submitting ? 'Showing…' : `Show — ${formatCurrency(totalWager)}`}
-                </motion.button>
-              )}
-              {phase === PHASES.SHUFFLING && (
-                <button
-                  type="button"
-                  disabled
-                  className="btn-premium px-6 py-2.5 text-sm flex items-center gap-2 opacity-60 cursor-not-allowed"
-                >
-                  <FiEye className="w-4 h-4" /> Shuffling…
-                </button>
-              )}
-              {(phase === PHASES.REVEAL || phase === PHASES.DONE) && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={newRound}
-                  disabled={phase === PHASES.REVEAL}
-                  className="btn-premium px-6 py-2.5 text-sm flex items-center gap-2 disabled:opacity-50"
-                >
-                  <FiRotateCcw className="w-4 h-4" /> New Round
-                </motion.button>
-              )}
-            </div>
-          </div>
-
-          {/* Multiplier guide — every bet ordered by payout */}
-          {(() => {
-            const tiles = [
-              { label: 'Color',  value: KIND_MULTIPLIERS.color, active: betKind === 'color' },
-              { label: 'Suit',   value: KIND_MULTIPLIERS.suit,  active: betKind === 'suit' },
-              { label: 'Single', value: CARD_MULTIPLIERS[1],    active: betKind === 'cards' && pickCount === 1 },
-              { label: 'Rank',   value: KIND_MULTIPLIERS.rank,  active: betKind === 'rank' },
-              { label: 'Dual',   value: CARD_MULTIPLIERS[2],    active: betKind === 'cards' && pickCount === 2 },
-              { label: 'Triple', value: CARD_MULTIPLIERS[3],    active: betKind === 'cards' && pickCount === 3 },
-              { label: 'Four',   value: CARD_MULTIPLIERS[4],    active: betKind === 'cards' && pickCount === 4 },
-            ];
-            return (
-              <div className="rounded-xl bg-dark-700/40 border border-white/5 p-3">
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-                  {tiles.map((t) => (
-                    <div
-                      key={t.label}
-                      className={`rounded-lg px-2 py-2 text-center border transition-colors ${
-                        t.active
-                          ? 'bg-accent/20 border-accent/40 text-accent'
-                          : 'bg-dark-800/50 border-dark-600/50 text-gray-300'
+                    {/* Inner notched ring — looks like a coin/medallion */}
+                    <span
+                      className="pointer-events-none absolute inset-1 rounded-md"
+                      style={{
+                        border: active
+                          ? '1px dotted rgba(0,0,0,0.4)'
+                          : '1px dotted rgba(232,167,106,0.3)',
+                      }}
+                    />
+                    <span
+                      className="relative text-[11px] leading-none font-black tracking-wider"
+                      style={{ fontFamily: '"Georgia", serif' }}
+                    >
+                      {PICK_LABELS[n] || `${n} Card`}
+                    </span>
+                    <span
+                      className={`relative text-[9px] mt-1 font-mono uppercase tracking-wider ${
+                        active ? 'text-[#3a1a08]/90' : 'text-orange-200/70'
                       }`}
                     >
-                      <p className="text-[10px] uppercase tracking-wider opacity-70">{t.label}</p>
-                      <p className="text-sm sm:text-base font-bold">{t.value}x</p>
+                      {n}c
+                    </span>
+                    {tabRound && (
+                      <span
+                        className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${phaseColor} shadow-[0_0_4px_currentColor]`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+        {/* Beautiful inline countdown — full-width rectangle with flipping
+            digit tiles, a thin progress sweep underneath, and phase-aware
+            color/urgency pulses. */}
+        {(() => {
+          const totalSec = Math.max(0, Math.ceil(lockRemaining / 1000));
+          const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+          const ss = String(totalSec % 60).padStart(2, '0');
+          const urgent = phase === 'betting' && totalSec <= 5 && totalSec > 0;
+          const isLockPhase = phase === 'locked';
+          const isReveal = phase === 'reveal';
+
+          let ringFrom = '#10b981';
+          let ringTo = '#34d399';
+          let glow = 'rgba(16, 185, 129, 0.45)';
+          if (isLockPhase) {
+            ringFrom = '#f59e0b';
+            ringTo = '#fbbf24';
+            glow = 'rgba(245, 158, 11, 0.55)';
+          } else if (isReveal) {
+            ringFrom = '#8b5cf6';
+            ringTo = '#a78bfa';
+            glow = 'rgba(139, 92, 246, 0.45)';
+          } else if (urgent) {
+            ringFrom = '#ef4444';
+            ringTo = '#f87171';
+            glow = 'rgba(239, 68, 68, 0.6)';
+          }
+
+          const tileStyle = {
+            width: 44,
+            height: 56,
+            background: `linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)`,
+          };
+          const digitStyle = {
+            fontSize: 32,
+            lineHeight: 1,
+            textShadow: `0 0 14px ${glow}`,
+          };
+
+          return (
+            <div className="mt-3 mb-2 relative">
+              <div className="relative w-full rounded-2xl px-4 py-3 overflow-hidden">
+                {/* Urgency ambient glow */}
+                {urgent && (
+                  <motion.div
+                    className="absolute inset-0 pointer-events-none"
+                    animate={{ opacity: [0.25, 0.55, 0.25] }}
+                    transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{
+                      background: `radial-gradient(circle at 50% 50%, ${ringFrom}33 0%, transparent 70%)`,
+                    }}
+                  />
+                )}
+
+                {/* Drifting twinkles */}
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <motion.span
+                      key={i}
+                      className="absolute w-1 h-1 rounded-full"
+                      style={{
+                        background: ringTo,
+                        boxShadow: `0 0 6px ${ringTo}`,
+                        top: `${12 + i * 18}%`,
+                        left: '-5%',
+                      }}
+                      animate={{ x: ['0%', '2400%'], opacity: [0, 1, 1, 0] }}
+                      transition={{
+                        duration: 4 + i * 0.6,
+                        repeat: Infinity,
+                        ease: 'linear',
+                        delay: i * 0.7,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Digit row — fills the width */}
+                <div className="relative flex items-center justify-center gap-1.5 sm:gap-2">
+                  {isReveal ? (
+                    <motion.span
+                      key="reveal-go"
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.4 }}
+                      className="font-black tracking-[0.3em]"
+                      style={{
+                        fontSize: 36,
+                        color: 'white',
+                        textShadow: `0 0 24px ${glow}`,
+                      }}
+                    >
+                      RESULT
+                    </motion.span>
+                  ) : (
+                    <>
+                      {[mm[0], mm[1], ':', ss[0], ss[1]].map((ch, idx) => {
+                        if (ch === ':') {
+                          return (
+                            <motion.span
+                              key="colon"
+                              className="font-black text-white/70 tabular-nums"
+                              style={{ fontSize: 32, lineHeight: 1 }}
+                              animate={{ opacity: [1, 0.2, 1] }}
+                              transition={{ duration: 1, repeat: Infinity }}
+                            >
+                              :
+                            </motion.span>
+                          );
+                        }
+                        return (
+                          <div
+                            key={`tile-${idx}`}
+                            className="relative inline-flex items-center justify-center rounded-lg overflow-hidden"
+                            style={tileStyle}
+                          >
+                            <span
+                              className="absolute left-0 right-0 top-1/2 h-px pointer-events-none"
+                              style={{ background: 'rgba(255,255,255,0.06)' }}
+                            />
+                            <AnimatePresence mode="popLayout" initial={false}>
+                              <motion.span
+                                key={ch}
+                                initial={{ y: 18, opacity: 0, scale: 0.7 }}
+                                animate={{ y: 0, opacity: 1, scale: 1 }}
+                                exit={{ y: -18, opacity: 0, scale: 1.15 }}
+                                transition={{ duration: 0.3, ease: 'easeOut' }}
+                                className="font-black tabular-nums text-white"
+                                style={digitStyle}
+                              >
+                                {ch}
+                              </motion.span>
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+
+              </div>
+            </div>
+          );
+        })()}
+
+            <MutkaStage
+              revealed={phase === 'reveal' ? revealedCards : null}
+              locking={phase === 'locked'}
+              count={activeType}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Bet controls — inline on tablet/desktop. On mobile only the bet-kind
+          tabs are visible inline; tapping any tab opens the bottom sheet
+          containing the picker + amount form for that kind. */}
+      {(() => {
+        const renderTabs = (onTabClick) => (
+          <div className="flex border-b border-dark-600/60">
+            {BET_KINDS.map((k) => (
+              <button
+                key={k.id}
+                type="button"
+                onClick={() => {
+                  setBetKind(k.id);
+                  onTabClick?.(k.id);
+                }}
+                className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors ${
+                  betKind === k.id ? 'text-accent border-b-2 border-accent bg-dark-800/40' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+        );
+
+        // Picker grid for the active bet kind. `onPicked` lets mobile auto-
+        // open the bottom sheet the moment the user makes a selection.
+        const renderPicker = (onPicked) => (
+          <div className="p-3 sm:p-4">
+            {betKind === 'cards' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-[10px] text-gray-500">
+                  <span>
+                    Type-{activeType} round — pick up to <b className="text-white">{pickTarget}</b> card{pickTarget === 1 ? '' : 's'}
+                  </span>
+                  <span>{selected.length}/{pickTarget} picked · {CARD_MULTIPLIERS[Math.max(selected.length, 1)] || 0}x on match</span>
+                </div>
+                <CardPickerGrid
+                  selectedSet={new Set(selected)}
+                  onToggle={(id) => { toggleCard(id); onPicked?.(); }}
+                  allDisabled={isLocked}
+                />
+              </div>
+            )}
+            {betKind === 'rank' && (
+              <RankPicker
+                value={pickedRank}
+                onChange={(v) => { setPickedRank(v); onPicked?.(); }}
+                disabled={isLocked}
+              />
+            )}
+            {betKind === 'suit' && (
+              <SuitPicker
+                value={pickedSuit}
+                onChange={(v) => { setPickedSuit(v); onPicked?.(); }}
+                disabled={isLocked}
+              />
+            )}
+            {betKind === 'color' && (
+              <ColorPicker
+                value={pickedColor}
+                onChange={(v) => { setPickedColor(v); onPicked?.(); }}
+                disabled={isLocked}
+              />
+            )}
+          </div>
+        );
+
+        const stakeForm = (
+          <div className="p-3 sm:p-4">
+            <div className="rounded-lg bg-dark-800/60 p-3 border border-dark-600/50 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Stake</span>
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Pick: <b className="text-white">{currentPickLabel}</b></span>
+              </div>
+              <BetStepper amount={amount} setAmount={setAmount} min={1} max={10000} step={5} disabled={isLocked} />
+              <div className="flex flex-wrap gap-2">
+                {QUICK_AMOUNTS.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setAmount(String(q))}
+                    className="px-2.5 py-1 rounded bg-dark-700 hover:bg-dark-600 text-xs text-white font-semibold border border-dark-500/50"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-gray-400">Multiplier</span>
+                <span className="text-gold-light font-bold">{currentMultiplier ? `${currentMultiplier}x` : '—'}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Projected win</span>
+                <span className="text-emerald-400 font-bold">{projectedWin > 0 ? formatCurrency(projectedWin) : '—'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={placeBet}
+                disabled={isLocked || submitting || !isPickValid}
+                className="w-full py-2.5 rounded-lg bg-accent hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed text-dark-900 font-bold text-sm flex items-center justify-center gap-2"
+              >
+                <FiPlus className="w-4 h-4" /> {submitting ? 'Placing…' : 'Place Bet'}
+              </button>
+            </div>
+          </div>
+        );
+
+        // Shared 10..0 countdown overlay shown over the picker block during
+        // the lock phase. Sits over both the mobile-inline picker and the
+        // desktop bet panel.
+        const lockOverlay = (
+          <AnimatePresence>
+            {phase === 'locked' && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-20 backdrop-blur-sm bg-dark-900/85 flex flex-col items-center justify-center"
+              >
+                <p className="text-yellow-300 text-xs uppercase tracking-widest font-bold mb-2">Betting closed</p>
+                <motion.div
+                  key={lockPhaseSec}
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 1.4, opacity: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-white font-black text-7xl sm:text-8xl tabular-nums"
+                  style={{ textShadow: '0 0 40px rgba(245, 210, 122, 0.7)' }}
+                >
+                  {lockPhaseSec}
+                </motion.div>
+                <p className="text-gray-300 text-xs mt-2">Cards revealing in {lockPhaseSec}s</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        );
+
+        return (
+          <>
+            {/* Inline (tablet/desktop) — hidden on mobile. Tabs + body. */}
+            <div className="relative rounded-xl bg-dark-700/50 overflow-hidden hidden sm:block">
+              {lockOverlay}
+              {renderTabs()}
+              {renderPicker()}
+              {stakeForm}
+            </div>
+
+            {/* Mobile — inline tabs + picker grid. Tapping any option in the
+                grid opens the bottom sheet to enter the stake amount. */}
+            <div className="sm:hidden relative rounded-xl bg-dark-700/50 overflow-hidden">
+              {lockOverlay}
+              {renderTabs()}
+              {renderPicker(() => !isLocked && setSheetOpen(true))}
+            </div>
+
+            {/* Pending slips — always visible inline so the user can track
+                their bets without re-opening the bottom sheet on mobile. */}
+            {pendingSlips.length > 0 && (
+              <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-600/50">
+                  <span className="text-xs text-gray-400 uppercase tracking-wide">Your bets this round</span>
+                  <span className="text-xs text-white font-bold">{formatCurrency(totalPendingWager)}</span>
+                </div>
+                <div className="divide-y divide-dark-700/60 max-h-48 overflow-y-auto">
+                  {pendingSlips.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[10px] text-gray-300 uppercase font-bold">{slipKindLabel(s)}</span>
+                        <SlipTarget slip={s} />
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-white text-xs font-bold">{formatCurrency(s.amount)}</p>
+                        <p className="text-gold-light text-[10px] font-bold">{s.multiplier}x</p>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
-            );
-          })()}
+            )}
 
-          {/* Per-slip results — once revealed */}
-          {(phase === PHASES.REVEAL || phase === PHASES.DONE) && revealResults && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="rounded-xl bg-dark-700/40 border border-white/5 p-4"
-            >
-              <p className="text-sm font-semibold text-white mb-3">Round results</p>
-              <ul className="space-y-2">
-                {revealResults.bets.map((b, i) => (
-                  <li
-                    key={i}
-                    className={`flex items-center gap-2 p-2 rounded-lg border ${
-                      b.isWin
-                        ? 'bg-emerald-500/10 border-emerald-500/30'
-                        : 'bg-red-500/5 border-red-500/20'
-                    }`}
+            {/* Mobile bottom-sheet */}
+            <AnimatePresence>
+              {sheetOpen && (
+                <motion.div
+                  className="sm:hidden fixed inset-0 z-50 flex flex-col justify-end"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <motion.div
+                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                    onClick={() => setSheetOpen(false)}
+                  />
+                  <motion.div
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', stiffness: 360, damping: 32 }}
+                    className="relative bg-dark-800 rounded-t-2xl border-t border-dark-600/60 max-h-[88vh] flex flex-col"
                   >
-                    <div className="flex-1 min-w-0">
-                      <SlipTarget slip={b} />
+                    {/* Drag handle + header */}
+                    <div className="px-4 pt-2 pb-1 flex flex-col items-center">
+                      <div className="w-10 h-1 rounded-full bg-dark-500 mb-2" />
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                          <GiCardRandom className="w-4 h-4 text-amber-300" />
+                          <h3 className="text-white font-semibold text-sm">Place a bet</h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSheetOpen(false)}
+                          className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center text-gray-300 hover:text-white"
+                          aria-label="Close"
+                        >
+                          <FiX className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-[11px] text-gray-400">
-                        {formatCurrency(b.amount)} · {b.multiplier}x
-                      </p>
-                      <p className={`text-sm font-bold ${b.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {b.isWin ? `+${formatCurrency(b.winAmount)}` : 'Lost'}
-                      </p>
+                    {renderTabs()}
+                    <div className="overflow-y-auto">
+                      {renderPicker()}
+                      {stakeForm}
                     </div>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
-                <span className="text-xs text-gray-400">Net</span>
-                <span className={`text-base font-bold ${revealResults.totalWin > revealResults.totalWager ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {revealResults.totalWin >= revealResults.totalWager ? '+' : ''}
-                  {formatCurrency(revealResults.totalWin - revealResults.totalWager)}
-                </span>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        );
+      })()}
+       </div>
+
+       {/* Left column on md+ (history + your bets); appears below game on mobile */}
+       <div className="space-y-3 min-w-0 md:order-1">
+
+      {/* History — pattern table, newest first, paginated */}
+      <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-600/50">
+          <div className="flex items-center gap-2">
+            <FiTrendingUp className="w-4 h-4 text-accent" />
+            <h3 className="text-white font-semibold text-sm">Pattern History</h3>
+          </div>
+          <span className="text-[10px] text-gray-500 uppercase tracking-wide">{historyTotal} rounds</span>
+        </div>
+
+        {history.length === 0 ? (
+          <div className="p-6 text-center text-gray-500 text-sm">No completed rounds yet — sit tight.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-dark-800/40 text-gray-400">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Period</th>
+                  <th className="px-2 py-2 text-center font-semibold">Type</th>
+                  <th className="px-3 py-2 text-left font-semibold">Cards</th>
+                  <th className="px-2 py-2 text-center font-semibold">Suits</th>
+                  <th className="px-2 py-2 text-center font-semibold">Color</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-600/40">
+                {history.map((h) => {
+                  const cards = h.cards || [];
+                  const suits = cards.map((c) => Math.floor(c / 13));
+                  const reds = cards.filter((c) => {
+                    const s = Math.floor(c / 13);
+                    return s === 1 || s === 2;
+                  }).length;
+                  const dom = reds > cards.length - reds ? 'red' : 'black';
+                  return (
+                    <tr key={h.roundId} className="hover:bg-dark-800/30">
+                      <td className="px-3 py-2 text-accent font-mono">{formatPeriodId(h.periodId)}</td>
+                      <td className="px-2 py-2 text-center">
+                        <span className="inline-block px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/30 text-[10px] font-black uppercase">
+                          {h.cardCountType}c
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          {cards.map((cid, i) => {
+                            const { rank, suit } = decodeCard(cid);
+                            return (
+                              <span
+                                key={i}
+                                className="inline-flex flex-col items-center justify-center w-6 h-8 rounded bg-white border border-gray-200 font-black text-[10px] leading-none"
+                                style={{ color: suit.color }}
+                              >
+                                <span>{rank}</span>
+                                <span className="text-[9px]">{suit.symbol}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          {suits.map((s, i) => (
+                            <span
+                              key={i}
+                              className={`w-4 h-4 rounded ${suitTone(s)} flex items-center justify-center text-[9px] font-bold`}
+                              title={SUITS[s].name}
+                            >
+                              {SUITS[s].symbol}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            dom === 'red' ? 'bg-red-500/20 text-red-300' : 'bg-gray-700/60 text-gray-200'
+                          }`}
+                        >
+                          {dom}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination footer */}
+        {historyTotalPages > 1 && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-dark-600/40 bg-dark-800/30">
+            <button
+              type="button"
+              onClick={() => loadHistoryPage(Math.max(1, historyPage - 1))}
+              disabled={historyPage <= 1 || historyLoading}
+              className="flex items-center gap-1 px-2.5 py-1 rounded bg-dark-700 hover:bg-dark-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs text-white"
+            >
+              <FiChevronLeft className="w-3.5 h-3.5" /> Prev
+            </button>
+            <span className="text-[11px] text-gray-400">
+              Page <b className="text-white">{historyPage}</b> / {historyTotalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => loadHistoryPage(Math.min(historyTotalPages, historyPage + 1))}
+              disabled={historyPage >= historyTotalPages || historyLoading}
+              className="flex items-center gap-1 px-2.5 py-1 rounded bg-dark-700 hover:bg-dark-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs text-white"
+            >
+              Next <FiChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Your recent bets across rounds */}
+      <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-600/50">
+          <div className="flex items-center gap-2">
+            <FiAward className="w-4 h-4 text-gold-light" />
+            <h3 className="text-white font-semibold text-sm">Your Recent Bets</h3>
+          </div>
+          <span className="text-[10px] text-gray-500 uppercase tracking-wide">{myBets.length} bets</span>
+        </div>
+        {myBets.length === 0 ? (
+          <div className="p-6 text-center text-gray-500 text-sm">No bets yet.</div>
+        ) : (
+          <div className="overflow-x-auto max-h-80 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-dark-800/40 text-gray-400 sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Period</th>
+                  <th className="px-2 py-2 text-center font-semibold">Type</th>
+                  <th className="px-3 py-2 text-left font-semibold">Bet</th>
+                  <th className="px-2 py-2 text-right font-semibold">Stake</th>
+                  <th className="px-2 py-2 text-right font-semibold">Outcome</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-600/40">
+                {myBets.map((b) => {
+                  const slip = { kind: b.kind, ...(b.details || {}) };
+                  // Type column = the round's card_count_type the bet was placed
+                  // in (always 1c..4c). Kind chip in the Bet cell shows the
+                  // bet's category (Single/Dual/Triple/Four for cards, or
+                  // Rank/Suit/Color).
+                  const cct = b.cardCountType || (b.details?.cards?.length || 0);
+                  const kindChip = slipKindLabel(slip);
+                  return (
+                    <tr key={b.betId} className="hover:bg-dark-800/30">
+                      <td className="px-3 py-2 text-accent font-mono text-[10px] whitespace-nowrap">
+                        {formatPeriodId(b.periodId)}
+                      </td>
+                      <td className="px-2 py-2 text-center whitespace-nowrap">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-accent/20 text-accent border border-accent/30">
+                          {cct}c
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[9px] text-gray-300 uppercase font-bold shrink-0">
+                            {kindChip}
+                          </span>
+                          <SlipTarget slip={slip} />
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-right text-white font-semibold whitespace-nowrap">
+                        {formatCurrency(b.amount)}
+                      </td>
+                      <td className="px-2 py-2 text-right whitespace-nowrap">
+                        {b.status === 'pending' ? (
+                          <span className="inline-block px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 text-[10px] font-bold uppercase">
+                            Pending
+                          </span>
+                        ) : b.isWin ? (
+                          <span className="text-emerald-400 font-bold">+{formatCurrency(b.winAmount || 0)}</span>
+                        ) : (
+                          <span className="inline-block px-2 py-0.5 rounded bg-red-500/15 text-red-300 text-[10px] font-bold uppercase">
+                            Lost
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+       </div>
+      </div>
+
+      {/* Rules + FAQ — payout reference and common questions. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
+            <FiAward className="w-4 h-4 text-amber-300" />
+            <h3 className="text-white font-semibold text-sm">Game Rules & Payouts</h3>
+          </div>
+          <div className="p-4 space-y-3 text-xs text-gray-300">
+            <p className="text-gray-400 leading-relaxed">
+              Mutka King runs <b className="text-white">4 parallel games</b> — pick a type tab (1c / 2c / 3c / 4c) at the top of the stage. A type-N game reveals N cards from a shuffled 52-card deck each round. Place bets before the round locks — winnings pay your stake × the multiplier on a hit.
+            </p>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Cards bet — multiplier per match count</p>
+              <div className="grid grid-cols-4 gap-2">
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">1 match</p>
+                  <p className="text-gold-light font-black">2x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">2 match</p>
+                  <p className="text-gold-light font-black">9x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">3 match</p>
+                  <p className="text-gold-light font-black">100x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">4 match</p>
+                  <p className="text-gold-light font-black">500x</p>
+                </div>
               </div>
-            </motion.div>
-          )}
+              <p className="text-[10px] text-gray-500 mt-1">Type-N game allows picking 1..N cards. Single match always 2x regardless of type.</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Group bets (any dealt card matches)</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Rank</p>
+                  <p className="text-gold-light font-black">3x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Suit</p>
+                  <p className="text-gold-light font-black">2x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">Color</p>
+                  <p className="text-gold-light font-black">2x</p>
+                </div>
+              </div>
+            </div>
+            <ul className="text-gray-400 space-y-1 list-disc list-inside">
+              <li>Each card_count_type has its own period_id, round timer, and history.</li>
+              <li>Min bet <b className="text-white">1</b>, max bet <b className="text-white">10,000</b> per slip.</li>
+              <li>Place as many slips as you like per type — they all settle when that type's round reveals.</li>
+              <li>Bets close when the countdown locks; reveal happens shortly after.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+
+      {/* General FAQ — applies across the platform */}
+      <div className="rounded-xl bg-dark-700/50 overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
+          <FiAward className="w-4 h-4 text-gold-light" />
+          <h3 className="text-white font-semibold text-sm">FAQ</h3>
+        </div>
+        <div className="divide-y divide-dark-600/40">
+          {[
+            {
+              q: 'Are the games provably fair?',
+              a: 'Outcomes are generated server-side using cryptographic randomness. Round seeds and results are stored so any draw can be audited.',
+            },
+            {
+              q: 'Can I cancel a placed bet?',
+              a: 'No — once a slip is submitted it is locked into the round. Double-check your stake and selection before placing.',
+            },
+            {
+              q: 'How fast are winnings credited?',
+              a: 'Wins are credited to your wallet automatically the moment the round settles. The balance widget updates in real-time over the socket.',
+            },
+            {
+              q: 'What are the global stake limits?',
+              a: 'Min 1 and max 10,000 per slip on most games. Some games (Lottery, Lucky Spin) use their own ticket pricing — check that game for specifics.',
+            },
+            {
+              q: 'Can I play multiple games at once?',
+              a: 'Yes. Each game runs on its own round/timer and your wallet is shared, so you can keep slips active across several games simultaneously.',
+            },
+            {
+              q: 'Where can I see my history?',
+              a: 'Every game page has a "Your Recent Bets" panel with the last 20+ outcomes. Your full transaction log is on the Profile page.',
+            },
+          ].map((item, i) => (
+            <details key={i} className="group">
+              <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer list-none hover:bg-dark-800/30">
+                <span className="text-white text-xs font-semibold">{item.q}</span>
+                <span className="text-accent text-lg font-bold group-open:rotate-45 transition-transform">+</span>
+              </summary>
+              <div className="px-4 pb-3 pt-1 text-xs text-gray-400 leading-relaxed">
+                {item.a}
+              </div>
+            </details>
+          ))}
         </div>
       </div>
+
+      {/* Win/Loss overlay — uses the shared component so the modal animation
+          and styling matches every other game (Mutka King, Coin Flip, etc.). */}
+      <GameResultOverlay
+        result={resultModal ? {
+          isWin: resultModal.isWin,
+          betAmount: resultModal.totalBet || 0,
+          winAmount: resultModal.totalWin || 0,
+          multiplier: (resultModal.totalBet || 0) > 0
+            ? Math.round((resultModal.totalWin / resultModal.totalBet) * 100) / 100
+            : 0,
+          result: (resultModal.cards || []).map((id) => {
+            const c = decodeCard(id);
+            return `${c.rank}${c.suit.symbol}`;
+          }).join(' '),
+        } : null}
+        show={!!resultModal}
+        onClose={closeResultModal}
+        title="Mutka King"
+      />
     </div>
   );
 }

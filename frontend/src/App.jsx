@@ -31,6 +31,7 @@ import AdminWithdrawals from './pages/admin/AdminWithdrawals';
 import AdminWinners from './pages/admin/AdminWinners';
 import AdminDailyWinners from './pages/admin/AdminDailyWinners';
 import AdminPaymentTemplates from './pages/admin/AdminPaymentTemplates';
+import AdminPrediction from './pages/admin/AdminPrediction';
 import AdminPackages from './pages/admin/AdminPackages';
 import AdminCurrency from './pages/admin/AdminCurrency';
 import AdminOrders from './pages/admin/AdminOrders';
@@ -187,6 +188,7 @@ function App() {
           <Route path="winners" element={<AdminWinners />} />
           <Route path="daily-winners" element={<AdminDailyWinners />} />
           <Route path="payment-templates" element={<AdminPaymentTemplates />} />
+          <Route path="prediction" element={<AdminPrediction />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="packages" element={<AdminPackages />} />
           <Route path="currency" element={<AdminCurrency />} />

@@ -234,15 +234,15 @@ function AdminPayments() {
         {/* Header with gradient */}
         <div className={`h-2 bg-gradient-to-r ${typeInfo.color || 'from-gray-500 to-gray-600'}`} />
 
-        <div className="p-5">
+        <div className="p-3 sm:p-5">
           {/* Status Badge */}
-          <div className="flex justify-between items-start mb-4">
-            <div className={`p-3 rounded-xl bg-gradient-to-br ${typeInfo.color || 'from-gray-500 to-gray-600'}`}>
-              <Icon className="w-6 h-6 text-white" />
+          <div className="flex justify-between items-start mb-3 sm:mb-4 gap-2">
+            <div className={`p-2 sm:p-3 rounded-xl bg-gradient-to-br shrink-0 ${typeInfo.color || 'from-gray-500 to-gray-600'}`}>
+              <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <button
               onClick={() => handleToggle(account)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+              className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[11px] sm:text-xs font-medium ${
                 account.is_active
                   ? 'bg-green-500/20 text-green-400'
                   : 'bg-gray-500/20 text-gray-400'
@@ -254,26 +254,30 @@ function AdminPayments() {
           </div>
 
           {/* Account Info */}
-          <h3 className="text-lg font-bold text-white mb-1">{account.label}</h3>
-          <p className="text-sm text-gray-500 mb-3">{typeInfo.label}</p>
+          <h3 className="text-base sm:text-lg font-bold text-white mb-1 break-words">{account.label}</h3>
+          <p className="text-xs sm:text-sm text-gray-500 mb-3">{typeInfo.label}</p>
 
-          {/* Type-specific details */}
+          {/* Type-specific details — each row stacks label-above-value on phones
+              so long UPI IDs / wallet addresses / IFSC codes don't overflow next
+              to the copy button. */}
           <div className="space-y-2 text-sm mb-4">
             {account.type === 'upi' && (
               <>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">UPI ID</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-white font-mono">{account.upi_id}</span>
-                    <button onClick={() => copyToClipboard(account.upi_id)} className="text-gray-400 hover:text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                  <span className="text-gray-500 text-xs sm:text-sm shrink-0">UPI ID</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-white font-mono text-xs sm:text-sm truncate flex-1 sm:flex-none">
+                      {account.upi_id}
+                    </span>
+                    <button onClick={() => copyToClipboard(account.upi_id)} className="shrink-0 text-gray-400 hover:text-white">
                       <FiCopy className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
                 {account.upi_name && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">Name</span>
-                    <span className="text-gray-300">{account.upi_name}</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                    <span className="text-gray-500 text-xs sm:text-sm shrink-0">Name</span>
+                    <span className="text-gray-300 text-xs sm:text-sm truncate">{account.upi_name}</span>
                   </div>
                 )}
               </>
@@ -281,54 +285,57 @@ function AdminPayments() {
 
             {account.type === 'bank' && (
               <>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">Bank</span>
-                  <span className="text-white">{account.bank_name}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                  <span className="text-gray-500 text-xs sm:text-sm shrink-0">Bank</span>
+                  <span className="text-white text-xs sm:text-sm truncate">{account.bank_name}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">Account</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-white font-mono">{account.bank_account}</span>
-                    <button onClick={() => copyToClipboard(account.bank_account)} className="text-gray-400 hover:text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                  <span className="text-gray-500 text-xs sm:text-sm shrink-0">Account</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-white font-mono text-xs sm:text-sm truncate flex-1 sm:flex-none">
+                      {account.bank_account}
+                    </span>
+                    <button onClick={() => copyToClipboard(account.bank_account)} className="shrink-0 text-gray-400 hover:text-white">
                       <FiCopy className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">IFSC</span>
-                  <span className="text-gray-300 font-mono">{account.bank_ifsc}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                  <span className="text-gray-500 text-xs sm:text-sm shrink-0">IFSC</span>
+                  <span className="text-gray-300 font-mono text-xs sm:text-sm">{account.bank_ifsc}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">Holder</span>
-                  <span className="text-gray-300">{account.bank_holder}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                  <span className="text-gray-500 text-xs sm:text-sm shrink-0">Holder</span>
+                  <span className="text-gray-300 text-xs sm:text-sm truncate">{account.bank_holder}</span>
                 </div>
               </>
             )}
 
             {['crypto_btc', 'crypto_eth', 'crypto_usdt'].includes(account.type) && (
               <>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">Address</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-white font-mono text-xs truncate max-w-[120px]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                  <span className="text-gray-500 text-xs sm:text-sm shrink-0">Address</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-white font-mono text-xs truncate flex-1 sm:flex-none sm:max-w-[160px]">
                       {account.wallet_address}
                     </span>
-                    <button onClick={() => copyToClipboard(account.wallet_address)} className="text-gray-400 hover:text-white">
+                    <button onClick={() => copyToClipboard(account.wallet_address)} className="shrink-0 text-gray-400 hover:text-white">
                       <FiCopy className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
                 {account.wallet_network && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">Network</span>
-                    <span className="text-gray-300">{account.wallet_network}</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                    <span className="text-gray-500 text-xs sm:text-sm shrink-0">Network</span>
+                    <span className="text-gray-300 text-xs sm:text-sm">{account.wallet_network}</span>
                   </div>
                 )}
               </>
             )}
           </div>
 
-          {/* Stats */}
+          {/* Stats — small two-column rows; stay inline on mobile since values
+              are short numbers/dates */}
           <div className="pt-3 border-t border-dark-600 mb-4 space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-500">Priority</span>
@@ -339,9 +346,9 @@ function AdminPayments() {
               <span className="text-white">{account.usage_count || 0}</span>
             </div>
             {account.daily_limit && (
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">Daily Limit</span>
-                <span className="text-white">
+              <div className="flex items-center justify-between text-xs gap-2">
+                <span className="text-gray-500 shrink-0">Daily Limit</span>
+                <span className="text-white text-right truncate">
                   ${parseFloat(account.daily_used || 0).toFixed(2)} / ${parseFloat(account.daily_limit).toFixed(2)}
                 </span>
               </div>
@@ -366,7 +373,7 @@ function AdminPayments() {
             <button
               onClick={() => handleDelete(account)}
               disabled={deleting === account.id}
-              className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-sm disabled:opacity-50"
+              className="shrink-0 flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-sm disabled:opacity-50"
             >
               {deleting === account.id ? (
                 <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
@@ -512,50 +519,52 @@ function AdminPayments() {
   return (
     <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Payment Accounts</h1>
-          <p className="text-gray-500">Manage payment accounts shown to users during checkout</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Payment Accounts</h1>
+          <p className="text-gray-500 text-xs sm:text-sm">Manage payment accounts shown to users during checkout</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 self-stretch sm:self-auto">
           <motion.button
             onClick={handleResetDaily}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-lg font-medium bg-dark-700 text-gray-400 hover:text-white hover:bg-dark-600 transition-all"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-lg font-medium bg-dark-700 text-gray-400 hover:text-white hover:bg-dark-600 transition-all text-sm"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             <FiRefreshCw className="w-4 h-4" />
             <span className="hidden sm:inline">Reset Daily</span>
+            <span className="sm:hidden">Reset</span>
           </motion.button>
           <motion.button
             onClick={() => openCreateModal()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-all"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-all text-sm"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             <FiPlus className="w-5 h-5" />
-            <span>Add Account</span>
+            <span className="hidden xs:inline sm:inline">Add Account</span>
+            <span className="xs:hidden sm:hidden">Add</span>
           </motion.button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
-          <p className="text-gray-500 text-sm">Total Accounts</p>
-          <p className="text-2xl font-bold text-white">{stats.total}</p>
+      {/* Stats — 2-col on mobile keeps cards readable, 4-col on lg */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+        <div className="bg-dark-800 border border-dark-600 rounded-xl p-3 sm:p-4">
+          <p className="text-gray-500 text-[11px] sm:text-sm">Total Accounts</p>
+          <p className="text-xl sm:text-2xl font-bold text-white">{stats.total}</p>
         </div>
-        <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
-          <p className="text-gray-500 text-sm">Active</p>
-          <p className="text-2xl font-bold text-green-400">{stats.totalActive}</p>
+        <div className="bg-dark-800 border border-dark-600 rounded-xl p-3 sm:p-4">
+          <p className="text-gray-500 text-[11px] sm:text-sm">Active</p>
+          <p className="text-xl sm:text-2xl font-bold text-green-400">{stats.totalActive}</p>
         </div>
-        <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
-          <p className="text-gray-500 text-sm">Inactive</p>
-          <p className="text-2xl font-bold text-gray-400">{stats.total - stats.totalActive}</p>
+        <div className="bg-dark-800 border border-dark-600 rounded-xl p-3 sm:p-4">
+          <p className="text-gray-500 text-[11px] sm:text-sm">Inactive</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-400">{stats.total - stats.totalActive}</p>
         </div>
-        <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
-          <p className="text-gray-500 text-sm">Types</p>
-          <p className="text-2xl font-bold text-accent">
+        <div className="bg-dark-800 border border-dark-600 rounded-xl p-3 sm:p-4">
+          <p className="text-gray-500 text-[11px] sm:text-sm">Types</p>
+          <p className="text-xl sm:text-2xl font-bold text-accent">
             {Object.values(grouped).filter(arr => arr.length > 0).length}
           </p>
         </div>
@@ -632,14 +641,14 @@ function AdminPayments() {
               initial={{ scale: 0.95 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.95 }}
-              className="bg-dark-800 border border-dark-600 rounded-xl p-4 lg:p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto"
+              className="bg-dark-800 border border-dark-600 rounded-xl p-3 sm:p-4 lg:p-6 max-w-lg w-full mx-2 sm:mx-4 max-h-[92vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white">
+              <div className="flex justify-between items-center mb-4 sm:mb-6 gap-2">
+                <h3 className="text-base sm:text-xl font-bold text-white truncate">
                   {editingAccount ? 'Edit Payment Account' : 'Add Payment Account'}
                 </h3>
-                <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white">
+                <button onClick={() => setShowModal(false)} className="shrink-0 text-gray-400 hover:text-white p-1">
                   <FiX className="w-5 h-5" />
                 </button>
               </div>
@@ -745,18 +754,18 @@ function AdminPayments() {
                 </div>
 
                 {/* Buttons */}
-                <div className="flex gap-4 pt-4">
+                <div className="flex gap-2 sm:gap-4 pt-4">
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="flex-1 py-3 rounded-lg font-semibold bg-dark-700 text-white hover:bg-dark-600 transition-colors"
+                    className="flex-1 py-3 rounded-lg font-semibold bg-dark-700 text-white hover:bg-dark-600 transition-colors text-sm sm:text-base"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 py-3 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="flex-1 py-3 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
                   >
                     {saving ? (
                       <div className="w-5 h-5 border-2 border-dark-900 border-t-transparent rounded-full animate-spin" />

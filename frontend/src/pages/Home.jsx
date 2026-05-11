@@ -39,6 +39,7 @@ import OnboardingGuide from "../components/OnboardingGuide";
 import FloatingSocialIcons from "../components/FloatingSocialIcons";
 import BannerCarousel from "../components/BannerCarousel";
 import TopWinnersStage from "../components/TopWinnersStage";
+import AllGamesAtAGlance from "../components/AllGamesAtAGlance";
 import {
   MutkaPreview,
   UnoPreview,
@@ -963,6 +964,9 @@ function Home() {
             </a>
           </div>
         </motion.div>
+
+        {/* All Games at a Glance — bottom of home */}
+        <AllGamesAtAGlance className="mt-6" maxHeight="none" />
       </div>
     </>
   );

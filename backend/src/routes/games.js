@@ -298,60 +298,132 @@ router.post('/fuse', async (req, res) => {
   }
 });
 
-// Play mutka king (52-card multi-slip betting)
-router.post('/mutka-king', async (req, res) => {
+// ── Mutka King (server-authoritative 60s round-based 52-card lottery) ──
+
+router.get('/mutka-king/state', async (req, res) => {
   try {
-    const { bets } = req.body;
-
-    if (!Array.isArray(bets) || bets.length === 0) {
-      return res.status(400).json({ success: false, message: 'At least one bet is required' });
-    }
-
-    const gameService = req.app.get('gameService');
-    const result = await gameService.playMutkaKing(req.user.id, bets);
-
+    const svc = req.app.get('mutkaKingService');
     res.json({
       success: true,
-      message: result.isWin ? `You won ${result.totalWin} Z!` : 'No matches this round.',
       data: {
-        ...result,
-        game_type: 'mutka_king',
-        bet_amount: result.totalWager,
-        win_amount: result.totalWin,
-        is_win: result.isWin,
+        rounds: svc?.getAllRoundStates() || {},
+        cardCountTypes: svc?.getCardCountTypes() || [1, 2, 3, 4],
+        multipliers: svc?.getMultipliers() || null,
       },
     });
   } catch (error) {
-    console.error('Mutka King error:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Play UNO king (54-card UNO multi-slip betting)
-router.post('/uno-king', async (req, res) => {
+router.post('/mutka-king/bet', async (req, res) => {
   try {
-    const { bets } = req.body;
-
-    if (!Array.isArray(bets) || bets.length === 0) {
-      return res.status(400).json({ success: false, message: 'At least one bet is required' });
-    }
-
-    const gameService = req.app.get('gameService');
-    const result = await gameService.playUnoKing(req.user.id, bets);
-
+    const svc = req.app.get('mutkaKingService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Mutka King not running' });
+    const result = await svc.placeBet(req.user.id, req.body || {});
     res.json({
       success: true,
-      message: result.isWin ? `You won ${result.totalWin} Z!` : 'No matches this round.',
+      message: 'Bet placed',
       data: {
         ...result,
-        game_type: 'uno_king',
-        bet_amount: result.totalWager,
-        win_amount: result.totalWin,
-        is_win: result.isWin,
+        game_type: 'mutka_king',
+        bet_amount: result.amount,
       },
     });
   } catch (error) {
-    console.error('UNO King error:', error);
+    console.error('[MUTKA] placeBet error:', error.message, '\n  payload:', JSON.stringify(req.body));
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/mutka-king/history', async (req, res) => {
+  try {
+    const svc = req.app.get('mutkaKingService');
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
+    const data = svc
+      ? await svc.getRoundHistory({ page, limit, cardCountType })
+      : { items: [], page, limit, total: 0, totalPages: 1 };
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/mutka-king/my-bets', async (req, res) => {
+  try {
+    const svc = req.app.get('mutkaKingService');
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
+    const data = svc ? await svc.getMyBets(req.user.id, limit, cardCountType) : [];
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ── UNO King (server-authoritative 60s round-based 54-card UNO lottery) ──
+
+router.get('/uno-king/state', async (req, res) => {
+  try {
+    const svc = req.app.get('unoKingService');
+    res.json({
+      success: true,
+      data: {
+        rounds: svc?.getAllRoundStates() || {},
+        cardCountTypes: svc?.getCardCountTypes() || [1, 2, 3, 4],
+        multipliers: svc?.getMultipliers() || null,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/uno-king/bet', async (req, res) => {
+  try {
+    const svc = req.app.get('unoKingService');
+    if (!svc) return res.status(500).json({ success: false, message: 'UNO King not running' });
+    const result = await svc.placeBet(req.user.id, req.body || {});
+    res.json({
+      success: true,
+      message: 'Bet placed',
+      data: {
+        ...result,
+        game_type: 'uno_king',
+        bet_amount: result.amount,
+      },
+    });
+  } catch (error) {
+    console.error('[UNO] placeBet error:', error.message, '\n  payload:', JSON.stringify(req.body));
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/uno-king/history', async (req, res) => {
+  try {
+    const svc = req.app.get('unoKingService');
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
+    const data = svc
+      ? await svc.getRoundHistory({ page, limit, cardCountType })
+      : { items: [], page, limit, total: 0, totalPages: 1 };
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/uno-king/my-bets', async (req, res) => {
+  try {
+    const svc = req.app.get('unoKingService');
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
+    const data = svc ? await svc.getMyBets(req.user.id, limit, cardCountType) : [];
+    res.json({ success: true, data });
+  } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -364,7 +436,8 @@ router.get('/shuffle-card/state', async (req, res) => {
     res.json({
       success: true,
       data: {
-        round: svc?.getCurrentRoundState() || null,
+        rounds: svc?.getAllRoundStates() || {},
+        cardCountTypes: svc?.getCardCountTypes() || [1, 2, 3, 4],
         multipliers: svc?.getMultipliers() || null,
       },
     });
@@ -388,6 +461,7 @@ router.post('/shuffle-card/bet', async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('[SHUFFLE] placeBet error:', error.message, '\n  payload:', JSON.stringify(req.body));
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -397,8 +471,9 @@ router.get('/shuffle-card/history', async (req, res) => {
     const svc = req.app.get('shuffleCardService');
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
+    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
     const data = svc
-      ? await svc.getRoundHistory({ page, limit })
+      ? await svc.getRoundHistory({ page, limit, cardCountType })
       : { items: [], page, limit, total: 0, totalPages: 1 };
     res.json({ success: true, data });
   } catch (error) {
@@ -410,7 +485,8 @@ router.get('/shuffle-card/my-bets', async (req, res) => {
   try {
     const svc = req.app.get('shuffleCardService');
     const limit = parseInt(req.query.limit, 10) || 20;
-    const data = svc ? await svc.getMyBets(req.user.id, limit) : [];
+    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
+    const data = svc ? await svc.getMyBets(req.user.id, limit, cardCountType) : [];
     res.json({ success: true, data });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

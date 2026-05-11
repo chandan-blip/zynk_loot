@@ -19,8 +19,11 @@ import BetStepper from '../../components/BetStepper';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 
-const CARD_MULTIPLIERS = { 1: 3, 2: 50, 3: 500 };
-const PICK_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple' };
+// Multipliers per pick-count are uniform across all types where that count is
+// available. Type-N round = max picks N. Picking 1 always pays 2x, picking 2
+// always pays 5x, etc.
+const CARD_MULTIPLIERS = { 1: 2, 2: 5, 3: 10, 4: 20 };
+const PICK_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple', 4: 'Four' };
 const KIND_MULTIPLIERS = { rank: 4, suit: 2, color: 2 };
 
 const BET_KINDS = [
@@ -113,8 +116,19 @@ function slipKindLabel(slip) {
 
 // Three face-down cards that gently tilt and shimmer during the betting window
 // so the user feels the deck is alive while they choose bets.
-function ShuffleStage({ revealed, locking }) {
-  const placeholders = [0, 13, 26];
+// Renders `count` face-down or face-up cards based on the active card_count_type.
+// Each call uses different sample IDs so the placeholder set differs per type,
+// making the swap feel like changing decks rather than counts.
+const PLACEHOLDER_IDS = [0, 13, 26, 39];
+function ShuffleStage({ revealed, locking, count = 3 }) {
+  const safeCount = Math.max(1, Math.min(4, count));
+  const placeholders = PLACEHOLDER_IDS.slice(0, safeCount);
+  // Center the row when there are fewer cards by offsetting each card's
+  // rotation around the visual midpoint.
+  const mid = (safeCount - 1) / 2;
+  // Mobile cards shrink to 60-72px for type-3/4 to fit 4 across without
+  // overlap; type-1/2 keep the lg sprite size on mobile too.
+  const cardClass = safeCount >= 3 ? '!w-[72px] sm:!w-[120px]' : '';
   return (
     <div className="relative h-44 sm:h-56 flex items-center justify-center">
       <motion.div
@@ -127,20 +141,20 @@ function ShuffleStage({ revealed, locking }) {
           WebkitMaskImage: 'radial-gradient(closest-side, black 30%, transparent 75%)',
         }}
       />
-      <div className="relative flex items-center justify-center gap-3 sm:gap-5">
+      <div className={`relative flex items-center justify-center ${safeCount >= 3 ? 'gap-2 sm:gap-5' : 'gap-3 sm:gap-5'}`}>
         {placeholders.map((pid, i) => {
           const cardId = revealed && revealed[i] != null ? revealed[i] : pid;
           const faceUp = !!(revealed && revealed[i] != null);
           return (
             <motion.div
-              key={i}
+              key={`${safeCount}-${i}`}
               initial={{ y: 20, opacity: 0, rotate: 0 }}
               animate={
                 faceUp
-                  ? { y: 0, opacity: 1, rotate: (i - 1) * 6 }
+                  ? { y: 0, opacity: 1, rotate: (i - mid) * 6 }
                   : locking
-                    ? { y: [0, -6, 0], opacity: 1, rotate: [(i - 1) * 6, (i - 1) * 8, (i - 1) * 6] }
-                    : { y: [0, -4, 0, 4, 0], opacity: 1, rotate: [(i - 1) * 4, (i - 1) * 8, (i - 1) * 4] }
+                    ? { y: [0, -6, 0], opacity: 1, rotate: [(i - mid) * 6, (i - mid) * 8, (i - mid) * 6] }
+                    : { y: [0, -4, 0, 4, 0], opacity: 1, rotate: [(i - mid) * 4, (i - mid) * 8, (i - mid) * 4] }
               }
               transition={{
                 duration: locking ? 0.6 : 3.2,
@@ -149,7 +163,7 @@ function ShuffleStage({ revealed, locking }) {
                 delay: i * 0.12,
               }}
             >
-              <PlayingCard id={cardId} faceUp={faceUp} size="lg" delay={i * 0.18} />
+              <PlayingCard id={cardId} faceUp={faceUp} size="lg" className={cardClass} delay={i * 0.18} />
             </motion.div>
           );
         })}
@@ -270,18 +284,33 @@ export default function ShuffleCard() {
   const { user, checkAuth } = useStore();
   const { formatCurrency } = useCurrency();
 
-  const [round, setRound] = useState(null);            // current round metadata from server
-  const [phase, setPhase] = useState('betting');       // 'betting' | 'locked' | 'reveal'
-  const [revealedCards, setRevealedCards] = useState(null);
+  // ── Per-type state (Shuffle Card now runs 4 parallel instances: 1c/2c/3c/4c) ──
+  // Active type drives which round/stage/picker the user sees. Cards-bet pick
+  // count is capped at the active type (type-3 → max 3 picks).
+  const CARD_COUNT_TYPES = [1, 2, 3, 4];
+  const [activeType, setActiveType] = useState(1);
+
+  // Map<type, ...> slices so socket events for different types don't clobber
+  // each other.
+  const [roundsByType, setRoundsByType] = useState({});         // round metadata per type
+  const [phasesByType, setPhasesByType] = useState({});         // 'betting'|'locked'|'reveal'
+  const [revealedByType, setRevealedByType] = useState({});     // last revealed cards per type
+  const [lastResultByType, setLastResultByType] = useState({}); // most-recent reveal summary per type
+  const [pendingSlipsByType, setPendingSlipsByType] = useState({}); // user slips placed this round, per type
+
+  // Derived from active type
+  const round = roundsByType[activeType] || null;
+  const phase = phasesByType[activeType] || 'betting';
+  const revealedCards = revealedByType[activeType] || null;
+  const lastResult = lastResultByType[activeType] || null;
+  const pendingSlips = pendingSlipsByType[activeType] || [];
+
   const [history, setHistory] = useState([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(false);
   const HISTORY_PAGE_SIZE = 10;
-  // Last completed round (kept independent of pagination so the strip above
-  // the stage always reflects the most recent reveal).
-  const [lastResult, setLastResult] = useState(null);
   const [myBets, setMyBets] = useState([]);
   const [resultModal, setResultModal] = useState(null); // user-specific outcome
   const [lockRemaining, setLockRemaining] = useState(0);
@@ -289,36 +318,54 @@ export default function ShuffleCard() {
   // Bet builder state
   const [betKind, setBetKind] = useState('cards');
   const [selected, setSelected] = useState([]);
+  // Sync pick cap with active type — picking up to N cards in a type-N round.
+  const pickTarget = activeType;
   const [pickedRank, setPickedRank] = useState(null);
   const [pickedSuit, setPickedSuit] = useState(null);
   const [pickedColor, setPickedColor] = useState(null);
   const [amount, setAmount] = useState('10');
   const [submitting, setSubmitting] = useState(false);
-  // Bets the user placed in the *current* round (used to show their slip list)
-  const [pendingSlips, setPendingSlips] = useState([]);
   // Mobile bottom-sheet visibility for the bet controls
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Setter helpers that update only the slot for the round's type — they take
+  // an explicit `type` so socket handlers can hit the right pane even when the
+  // user is currently viewing a different tab.
+  const setRoundForType    = (type, r) => setRoundsByType(prev => ({ ...prev, [type]: r }));
+  const setPhaseForType    = (type, p) => setPhasesByType(prev => ({ ...prev, [type]: p }));
+  const setRevealedForType = (type, c) => setRevealedByType(prev => ({ ...prev, [type]: c }));
+  const setLastResultForType   = (type, r) => setLastResultByType(prev => ({ ...prev, [type]: r }));
+  const setPendingSlipsForType = (type, updater) =>
+    setPendingSlipsByType(prev => ({
+      ...prev,
+      [type]: typeof updater === 'function' ? updater(prev[type] || []) : updater,
+    }));
 
   const tickRef = useRef(null);
   const historyPageRef = useRef(1);
   useEffect(() => { historyPageRef.current = historyPage; }, [historyPage]);
+  // Mirror activeType into a ref so the long-lived socket handlers (subscribed
+  // once on mount) see the *current* tab instead of the captured-at-mount one.
+  const activeTypeRef = useRef(1);
+  useEffect(() => { activeTypeRef.current = activeType; }, [activeType]);
   // Tracks the last whole-second we played a countdown sound for, so each
   // tick from 5..0 fires exactly once even though the timer ticks at 200ms.
   const lastBeepSecRef = useRef(null);
 
-  const loadHistoryPage = useCallback(async (page = 1) => {
+  const loadHistoryPage = useCallback(async (page = 1, typeOverride = null) => {
     setHistoryLoading(true);
+    const type = typeOverride != null ? typeOverride : activeType;
     try {
-      const res = await getShuffleCardHistory(page, HISTORY_PAGE_SIZE);
+      const res = await getShuffleCardHistory(page, HISTORY_PAGE_SIZE, type);
       const payload = res.data?.data || {};
       const items = Array.isArray(payload) ? payload : (payload.items || []);
       setHistory(items);
       setHistoryPage(payload.page || page);
       setHistoryTotalPages(payload.totalPages || 1);
       setHistoryTotal(payload.total || items.length);
-      // Latest reveal lives on page 1, slot 0.
+      // Latest reveal for this type lives on page 1 slot 0.
       if ((payload.page || page) === 1 && items.length > 0) {
-        setLastResult({
+        setLastResultForType(type, {
           roundId: items[0].roundId,
           periodId: items[0].periodId,
           cards: items[0].cards || [],
@@ -326,15 +373,16 @@ export default function ShuffleCard() {
       }
     } catch {}
     setHistoryLoading(false);
-  }, []);
+  }, [activeType]);
 
-  const refreshMyBets = useCallback(async () => {
+  const refreshMyBets = useCallback(async (typeOverride = null) => {
     if (!user) return;
+    const type = typeOverride != null ? typeOverride : activeType;
     try {
-      const mine = await getShuffleCardMyBets(20);
+      const mine = await getShuffleCardMyBets(20, type);
       setMyBets(mine.data.data || []);
     } catch {}
-  }, [user]);
+  }, [user, activeType]);
 
   // Initial fetch + socket subscriptions
   useEffect(() => {
@@ -343,10 +391,13 @@ export default function ShuffleCard() {
 
     getShuffleCardState()
       .then((res) => {
-        const r = res.data?.data?.round;
-        if (r) {
-          setRound(r);
-          setPhase(r.status);
+        const rounds = res.data?.data?.rounds || {};
+        for (const t of CARD_COUNT_TYPES) {
+          const r = rounds[t];
+          if (r) {
+            setRoundForType(t, r);
+            setPhaseForType(t, r.status);
+          }
         }
       })
       .catch(() => {});
@@ -355,36 +406,48 @@ export default function ShuffleCard() {
     refreshMyBets();
 
     const unsubState = socketService.onShuffleRoundState?.((r) => {
-      setRound(r);
-      setPhase(r.status);
+      if (r && r.cardCountType) {
+        setRoundForType(r.cardCountType, r);
+        setPhaseForType(r.cardCountType, r.status);
+      }
     });
     const unsubOpen = socketService.onShuffleRoundOpen?.((r) => {
-      setRound(r);
-      setPhase('betting');
-      setRevealedCards(null);
-      setPendingSlips([]);
-      // Clear bet builder selections at round start
-      setSelected([]);
-      setPickedRank(null);
-      setPickedSuit(null);
-      setPickedColor(null);
+      const t = r?.cardCountType;
+      if (!t) return;
+      setRoundForType(t, r);
+      setPhaseForType(t, 'betting');
+      setRevealedForType(t, null);
+      setPendingSlipsForType(t, []);
+      // Clear bet builder when the round the user is viewing reopens
+      if (t === activeTypeRef.current) {
+        setSelected([]);
+        setPickedRank(null);
+        setPickedSuit(null);
+        setPickedColor(null);
+      }
     });
-    const unsubLock = socketService.onShuffleRoundLock?.(() => {
-      setPhase('locked');
-      setSheetOpen(false);
+    const unsubLock = socketService.onShuffleRoundLock?.((data) => {
+      const t = data?.cardCountType;
+      if (!t) return;
+      setPhaseForType(t, 'locked');
+      if (t === activeTypeRef.current) setSheetOpen(false);
     });
     const unsubResult = socketService.onShuffleRoundResult?.((data) => {
-      setRevealedCards(data.cards);
-      setPhase('reveal');
-      // Always remember the most recent reveal for the strip above the stage.
-      setLastResult({
+      const t = data?.cardCountType;
+      if (!t) return;
+      setRevealedForType(t, data.cards);
+      setPhaseForType(t, 'reveal');
+      setLastResultForType(t, {
         roundId: data.roundId,
         periodId: data.periodId,
         cards: data.cards || [],
       });
-      // Refresh whichever page of history the user is currently viewing.
-      loadHistoryPage(historyPageRef.current);
-      refreshMyBets();
+      // Reload history/my-bets if the user is viewing this type — pass the
+      // ref-current type so we don't fetch with a stale closure value.
+      if (t === activeTypeRef.current) {
+        loadHistoryPage(historyPageRef.current, t);
+        refreshMyBets(t);
+      }
     });
     const unsubSettled = socketService.onShuffleRoundSettled?.((data) => {
       setResultModal(data);
@@ -405,6 +468,16 @@ export default function ShuffleCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // When the user switches type tab, reload history & my-bets filtered to that
+  // type so the "Pattern History" and "Your Recent Bets" panels match the
+  // round they're now viewing.
+  useEffect(() => {
+    setHistoryPage(1);
+    loadHistoryPage(1, activeType);
+    refreshMyBets(activeType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeType]);
+
   // Tick every 200ms for smooth countdowns
   useEffect(() => {
     const tick = () => {
@@ -414,7 +487,7 @@ export default function ShuffleCard() {
       const completeMs = new Date(round.completeAt).getTime();
       const remaining = Math.max(0, completeMs - now);
       setLockRemaining(remaining);
-      if (phase === 'betting' && now >= lockMs) setPhase('locked');
+      if (phase === 'betting' && now >= lockMs) setPhaseForType(activeType, 'locked');
 
       // Final 5-second countdown SFX. Ticks fire once per integer second
       // 5..2, then a dramatic "drop" sound at the last tick (1s) so the
@@ -440,7 +513,10 @@ export default function ShuffleCard() {
     return () => clearInterval(tickRef.current);
   }, [round, phase]);
 
-  const isLocked = phase !== 'betting';
+  // Locked when the round is past betting, OR the active type's round hasn't
+  // loaded yet (page just opened / between rounds) — guards against bets that
+  // would 400 with "Type-N round has not been opened yet".
+  const isLocked = phase !== 'betting' || !round;
 
   const pickCount = selected.length;
   const currentAmount = parseFloat(amount) || 0;
@@ -475,13 +551,23 @@ export default function ShuffleCard() {
     if (isLocked) return;
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 3) {
-        toast.error('Pick max 3 cards');
+      if (prev.length >= pickTarget) {
+        toast.error(`This tab is set to ${pickTarget} ${pickTarget === 1 ? 'card' : 'cards'} — switch the tab to pick more.`);
         return prev;
       }
       sounds.tap?.();
       return [...prev, id];
     });
+  };
+
+  // Switching the type tab switches which round the user is viewing/betting.
+  // Also trims any over-selection so the picker can't keep cards beyond the
+  // new type's max picks (e.g. switching from type-4 to type-2 keeps the first
+  // 2 selections).
+  const handlePickTarget = (n) => {
+    if (!CARD_COUNT_TYPES.includes(n)) return;
+    setActiveType(n);
+    setSelected((prev) => prev.slice(0, n));
   };
 
   const placeBet = async () => {
@@ -498,7 +584,7 @@ export default function ShuffleCard() {
     if (currentAmount < 1) { toast.error('Min bet is 1'); return; }
     if (currentAmount > 10000) { toast.error('Max bet is 10,000'); return; }
 
-    const payload = { kind: betKind, amount: currentAmount };
+    const payload = { kind: betKind, amount: currentAmount, cardCountType: activeType };
     if (betKind === 'cards') payload.cards = [...selected].sort((a, b) => a - b);
     else if (betKind === 'rank')  payload.rank = pickedRank;
     else if (betKind === 'suit')  payload.suit = pickedSuit;
@@ -519,14 +605,14 @@ export default function ShuffleCard() {
         ...(betKind === 'suit'  ? { suit: pickedSuit } : {}),
         ...(betKind === 'color' ? { color: pickedColor } : {}),
       };
-      setPendingSlips((prev) => [...prev, slip]);
+      setPendingSlipsForType(activeType, (prev) => [...prev, slip]);
       // Clear builder
       setSelected([]);
       setPickedRank(null);
       setPickedSuit(null);
       setPickedColor(null);
       checkAuth?.();
-      toast.success(`Bet placed: ${currentAmount} Z`);
+      toast.success(`Bet placed: ${currentAmount} Z (type ${activeType})`);
       setSheetOpen(false);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to place bet');
@@ -606,19 +692,151 @@ export default function ShuffleCard() {
         );
       })()}
 
-      {/* Stage block — wraps the game name, period id, animated cards, and
-          progress bar in a single container. */}
-      <div className="rounded-xl border border-white/5 p-4 relative overflow-hidden">
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <GiCardRandom className="w-5 h-5 text-amber-300 shrink-0" />
-            <h1 className="text-white font-bold text-base truncate">Shuffle Card</h1>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wide leading-none">Period</p>
-            <p className="text-accent font-mono text-xs font-bold">{formatPeriodId(round?.periodId)}</p>
-          </div>
-        </div>
+      {/* Stage block — casino-style: felt-green table inside a double gold-gilt
+          frame, with the game marquee at top and suit motifs at the corners. */}
+      <div
+        className="relative overflow-hidden rounded-2xl p-[2px]"
+        style={{
+          background:
+            'linear-gradient(135deg, #b8860b 0%, #f5d27a 18%, #fff3b3 30%, #f5d27a 50%, #a17a2c 75%, #f5d27a 100%)',
+          boxShadow:
+            '0 24px 60px -20px rgba(0,0,0,0.65), 0 2px 0 rgba(255,255,255,0.08) inset, 0 -2px 0 rgba(0,0,0,0.55) inset',
+        }}
+      >
+        <div
+          className="relative rounded-[14px] overflow-hidden"
+          style={{
+            // Felt-green casino table with a top-down spotlight vignette.
+            background:
+              'radial-gradient(ellipse at 50% -10%, rgba(255, 235, 170, 0.18) 0%, transparent 55%),' +
+              'radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 60%),' +
+              'linear-gradient(180deg, #0e3a2a 0%, #0b2c20 45%, #082017 100%)',
+            boxShadow: 'inset 0 0 0 1px rgba(255,215,128,0.18), inset 0 0 40px rgba(0,0,0,0.55)',
+          }}
+        >
+          {/* Soft felt texture — fine radial dot pattern */}
+          <div
+            className="absolute inset-0 pointer-events-none opacity-[0.07]"
+            style={{
+              backgroundImage:
+                'radial-gradient(rgba(255,255,255,0.6) 1px, transparent 1px)',
+              backgroundSize: '8px 8px',
+            }}
+          />
+
+          {/* Corner suit motifs — gold-tinted, low-contrast decoration */}
+          <span className="pointer-events-none absolute top-2 left-3 text-amber-300/30 text-xl font-black select-none">♠</span>
+          <span className="pointer-events-none absolute top-2 right-3 text-amber-300/30 text-xl font-black select-none">♥</span>
+          <span className="pointer-events-none absolute bottom-2 left-3 text-amber-300/30 text-xl font-black select-none">♦</span>
+          <span className="pointer-events-none absolute bottom-2 right-3 text-amber-300/30 text-xl font-black select-none">♣</span>
+
+          <div className="relative p-4">
+            {/* Marquee header — gold gradient title with a chip-styled period token */}
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <GiCardRandom className="w-5 h-5 text-amber-300 shrink-0 drop-shadow-[0_0_6px_rgba(245,210,122,0.7)]" />
+                <h1
+                  className="font-black text-base sm:text-lg truncate tracking-[0.18em] uppercase"
+                  style={{
+                    background: 'linear-gradient(180deg, #fff3b3 0%, #f5d27a 45%, #a17a2c 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    textShadow: '0 0 14px rgba(245,210,122,0.35)',
+                  }}
+                >
+                  Shuffle Card
+                </h1>
+              </div>
+              {/* Chip-styled period badge */}
+              <div
+                className="shrink-0 px-3 py-1 rounded-full border text-right"
+                style={{
+                  background:
+                    'radial-gradient(circle at 30% 30%, rgba(245,210,122,0.25), rgba(0,0,0,0.45) 75%)',
+                  borderColor: 'rgba(245,210,122,0.45)',
+                  boxShadow:
+                    '0 2px 6px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.05)',
+                }}
+              >
+                <p className="text-[9px] text-amber-200/70 uppercase tracking-[0.18em] leading-none">
+                  Type {activeType}
+                </p>
+                <p className="text-amber-100 font-mono text-[11px] font-bold leading-tight">
+                  {formatPeriodId(round?.periodId)}
+                </p>
+              </div>
+            </div>
+
+            {/* Card-count type tabs — styled as casino chip denominations.
+                Each tab is a parallel game with its own round/history. */}
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {CARD_COUNT_TYPES.map((n) => {
+                const active = activeType === n;
+                const tabRound = roundsByType[n];
+                const tabPhase = phasesByType[n] || 'betting';
+                // Phase indicator color
+                const phaseColor =
+                  tabPhase === 'locked'
+                    ? 'bg-amber-400'
+                    : tabPhase === 'reveal'
+                      ? 'bg-purple-400'
+                      : 'bg-emerald-400';
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => handlePickTarget(n)}
+                    title={`${n}-card game · ${tabPhase}`}
+                    className="relative flex flex-col items-center justify-center py-2 rounded-xl border-2 text-xs font-bold transition-all overflow-hidden"
+                    style={
+                      active
+                        ? {
+                            background:
+                              'radial-gradient(circle at 30% 25%, #fff3b3 0%, #f5d27a 35%, #a17a2c 90%)',
+                            borderColor: '#fff3b3',
+                            color: '#1a1208',
+                            boxShadow:
+                              '0 6px 14px rgba(0,0,0,0.55), 0 0 0 2px rgba(255,243,179,0.6), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -3px 8px rgba(0,0,0,0.25)',
+                          }
+                        : {
+                            background:
+                              'radial-gradient(circle at 30% 25%, rgba(255,255,255,0.06) 0%, rgba(0,0,0,0.35) 80%)',
+                            borderColor: 'rgba(245,210,122,0.35)',
+                            color: '#e7d59a',
+                            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.03)',
+                          }
+                    }
+                  >
+                    {/* Concentric inner ring — gives the chip texture */}
+                    <span
+                      className="pointer-events-none absolute inset-1.5 rounded-lg"
+                      style={{
+                        border: active
+                          ? '1px dashed rgba(0,0,0,0.35)'
+                          : '1px dashed rgba(245,210,122,0.25)',
+                      }}
+                    />
+                    <span className="relative text-[11px] leading-none font-black tracking-wider">
+                      {PICK_LABELS[n] || `${n} Card`}
+                    </span>
+                    <span
+                      className={`relative text-[9px] mt-1 font-mono uppercase tracking-wider ${
+                        active ? 'text-[#3a2810]/90' : 'text-amber-200/70'
+                      }`}
+                    >
+                      {n}c
+                    </span>
+                    {/* Phase dot in the chip's top-right */}
+                    {tabRound && (
+                      <span
+                        className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${phaseColor} shadow-[0_0_4px_currentColor]`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
         {/* Beautiful inline countdown — full-width rectangle with flipping
             digit tiles, a thin progress sweep underneath, and phase-aware
@@ -765,7 +983,13 @@ export default function ShuffleCard() {
           );
         })()}
 
-        <ShuffleStage revealed={phase === 'reveal' ? revealedCards : null} locking={phase === 'locked'} />
+            <ShuffleStage
+              revealed={phase === 'reveal' ? revealedCards : null}
+              locking={phase === 'locked'}
+              count={activeType}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Bet controls — inline on tablet/desktop. On mobile only the bet-kind
@@ -797,11 +1021,19 @@ export default function ShuffleCard() {
         const renderPicker = (onPicked) => (
           <div className="p-3 sm:p-4">
             {betKind === 'cards' && (
-              <CardPickerGrid
-                selectedSet={new Set(selected)}
-                onToggle={(id) => { toggleCard(id); onPicked?.(); }}
-                allDisabled={isLocked}
-              />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-[10px] text-gray-500">
+                  <span>
+                    Type-{activeType} round — pick up to <b className="text-white">{pickTarget}</b> card{pickTarget === 1 ? '' : 's'}
+                  </span>
+                  <span>{selected.length}/{pickTarget} picked · {CARD_MULTIPLIERS[Math.max(selected.length, 1)] || 0}x on match</span>
+                </div>
+                <CardPickerGrid
+                  selectedSet={new Set(selected)}
+                  onToggle={(id) => { toggleCard(id); onPicked?.(); }}
+                  allDisabled={isLocked}
+                />
+              </div>
             )}
             {betKind === 'rank' && (
               <RankPicker
@@ -1013,6 +1245,7 @@ export default function ShuffleCard() {
               <thead className="bg-dark-800/40 text-gray-400">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold">Period</th>
+                  <th className="px-2 py-2 text-center font-semibold">Type</th>
                   <th className="px-3 py-2 text-left font-semibold">Cards</th>
                   <th className="px-2 py-2 text-center font-semibold">Suits</th>
                   <th className="px-2 py-2 text-center font-semibold">Color</th>
@@ -1030,6 +1263,11 @@ export default function ShuffleCard() {
                   return (
                     <tr key={h.roundId} className="hover:bg-dark-800/30">
                       <td className="px-3 py-2 text-accent font-mono">{formatPeriodId(h.periodId)}</td>
+                      <td className="px-2 py-2 text-center">
+                        <span className="inline-block px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/30 text-[10px] font-black uppercase">
+                          {h.cardCountType}c
+                        </span>
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
                           {cards.map((cid, i) => {
@@ -1120,6 +1358,7 @@ export default function ShuffleCard() {
               <thead className="bg-dark-800/40 text-gray-400 sticky top-0 z-10">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold">Period</th>
+                  <th className="px-2 py-2 text-center font-semibold">Type</th>
                   <th className="px-3 py-2 text-left font-semibold">Bet</th>
                   <th className="px-2 py-2 text-right font-semibold">Stake</th>
                   <th className="px-2 py-2 text-right font-semibold">Outcome</th>
@@ -1128,14 +1367,26 @@ export default function ShuffleCard() {
               <tbody className="divide-y divide-dark-600/40">
                 {myBets.map((b) => {
                   const slip = { kind: b.kind, ...(b.details || {}) };
+                  // Type column = the round's card_count_type the bet was placed in
+                  // (always 1c..4c). Kind chip in the Bet cell shows what kind of
+                  // bet it was (Single/Dual/Triple/Four for cards, or Rank/Suit/Color).
+                  const cct = b.cardCountType || (b.details?.cards?.length || 0);
+                  const kindChip = slipKindLabel(slip);
                   return (
                     <tr key={b.betId} className="hover:bg-dark-800/30">
                       <td className="px-3 py-2 text-accent font-mono text-[10px] whitespace-nowrap">
                         {formatPeriodId(b.periodId)}
                       </td>
+                      <td className="px-2 py-2 text-center whitespace-nowrap">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-accent/20 text-accent border border-accent/30">
+                          {cct}c
+                        </span>
+                      </td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[9px] text-gray-300 uppercase font-bold shrink-0">{slipKindLabel(slip)}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[9px] text-gray-300 uppercase font-bold shrink-0">
+                            {kindChip}
+                          </span>
                           <SlipTarget slip={slip} />
                         </div>
                       </td>
@@ -1175,27 +1426,32 @@ export default function ShuffleCard() {
           </div>
           <div className="p-4 space-y-3 text-xs text-gray-300">
             <p className="text-gray-400 leading-relaxed">
-              Each round the dealer reveals <b className="text-white">3 cards</b> from a shuffled 52-card deck. Place bets before the round locks — winnings pay your stake × the multiplier on a hit.
+              Shuffle Card runs <b className="text-white">4 parallel games</b> — pick a type tab (1c / 2c / 3c / 4c) at the top of the stage. A type-N game reveals N cards from a shuffled 52-card deck each round. Place bets before the round locks — winnings pay your stake × the multiplier on a hit.
             </p>
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Cards bet (pick exact cards)</p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Cards bet — multiplier per match count</p>
+              <div className="grid grid-cols-4 gap-2">
                 <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">Single</p>
-                  <p className="text-gold-light font-black">3x</p>
+                  <p className="text-[10px] text-gray-400">1 match</p>
+                  <p className="text-gold-light font-black">2x</p>
                 </div>
                 <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">Dual</p>
-                  <p className="text-gold-light font-black">50x</p>
+                  <p className="text-[10px] text-gray-400">2 match</p>
+                  <p className="text-gold-light font-black">5x</p>
                 </div>
                 <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">Triple</p>
-                  <p className="text-gold-light font-black">500x</p>
+                  <p className="text-[10px] text-gray-400">3 match</p>
+                  <p className="text-gold-light font-black">10x</p>
+                </div>
+                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-400">4 match</p>
+                  <p className="text-gold-light font-black">20x</p>
                 </div>
               </div>
+              <p className="text-[10px] text-gray-500 mt-1">Type-N game allows picking 1..N cards. Single match always 2x regardless of type.</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Group bets (any of the 3 cards qualifies)</p>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Group bets (any dealt card matches)</p>
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
                   <p className="text-[10px] text-gray-400">Rank</p>
@@ -1212,117 +1468,14 @@ export default function ShuffleCard() {
               </div>
             </div>
             <ul className="text-gray-400 space-y-1 list-disc list-inside">
+              <li>Each card_count_type has its own period_id, round timer, and history.</li>
               <li>Min bet <b className="text-white">1</b>, max bet <b className="text-white">10,000</b> per slip.</li>
-              <li>Place as many slips as you like — they all settle when the round reveals.</li>
+              <li>Place as many slips as you like per type — they all settle when that type's round reveals.</li>
               <li>Bets close when the countdown locks; reveal happens shortly after.</li>
             </ul>
           </div>
         </div>
 
-        <div className="rounded-xl bg-dark-700/50 overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
-            <GiCardRandom className="w-4 h-4 text-accent" />
-            <h3 className="text-white font-semibold text-sm">All Games at a Glance</h3>
-          </div>
-          <div className="divide-y divide-dark-600/40 max-h-[520px] overflow-y-auto">
-            {[
-              {
-                name: 'Shuffle Card',
-                tag: 'Live · Card',
-                desc: 'Bet on 3 cards drawn from a shuffled deck each round. Pick exact cards, a rank, suit, or color.',
-                payouts: 'Single 3x · Dual 50x · Triple 500x · Rank 4x · Suit 2x · Color 2x',
-              },
-              {
-                name: 'Mutka King',
-                tag: 'Card',
-                desc: '4-card draw with picks for exact cards or groups. Higher card combos pay big.',
-                payouts: '1c 2x · 2c 9x · 3c 100x · 4c 500x · Rank 3x · Suit 2x · Color 2x',
-              },
-              {
-                name: 'UNO King',
-                tag: 'Card',
-                desc: 'UNO-deck variant — bet on color, number, action, or wild card outcomes.',
-                payouts: 'Color 2x · Number 3x · Action 3x · Wild 6x · 1c 2x to 4c 500x',
-              },
-              {
-                name: '7-Digit Lottery',
-                tag: 'Live · Lottery',
-                desc: 'Pick a 7-digit ticket; partial matches still pay. Live draws on a fixed schedule.',
-                payouts: 'Tiered by digits matched · Jackpot for all 7',
-              },
-              {
-                name: 'Lucky Spin',
-                tag: 'Wheel',
-                desc: 'Spin the wheel — landing slot determines your multiplier.',
-                payouts: 'Variable · up to 50x',
-              },
-              {
-                name: 'Coin Flip',
-                tag: 'Classic',
-                desc: 'Pick heads or tails. Simple 50/50 with instant settle.',
-                payouts: '~1.96x on a hit',
-              },
-              {
-                name: 'Dice Roll',
-                tag: 'Classic',
-                desc: 'Set an over/under target; multiplier scales with the chance you take.',
-                payouts: 'Variable · risk-based',
-              },
-              {
-                name: 'Arrow Roulette',
-                tag: 'Wheel',
-                desc: 'Spinning arrow lands on a colored sector — bet on the sector or color.',
-                payouts: 'Sector & color tiers',
-              },
-              {
-                name: 'Dragon Tower',
-                tag: 'Crash · Skill',
-                desc: 'Climb floors of the tower; cash out before you pick the cursed tile.',
-                payouts: 'Compounds × ~1.94 per floor',
-              },
-              {
-                name: 'Ice Field',
-                tag: 'Crash · Skill',
-                desc: 'Step across the ice — each safe step grows your multiplier; cash out anytime.',
-                payouts: 'Compounding by step',
-              },
-              {
-                name: 'Balloon Pop',
-                tag: 'Crash',
-                desc: 'Inflate the balloon for higher multipliers — pop and you lose your stake.',
-                payouts: '1.5x · 2x · 3x · 5x · 10x · 25x presets',
-              },
-              {
-                name: 'Fuse',
-                tag: 'Crash',
-                desc: 'Light the fuse — defuse before it burns out to lock in your multiplier.',
-                payouts: '1.5x · 2x · 3x · 5x · 10x · 25x presets',
-              },
-              {
-                name: 'Egg Hatch',
-                tag: 'Mystery',
-                desc: 'Choose an egg; hatch reveals a random multiplier from a weighted pool.',
-                payouts: '0x to 15x weighted',
-              },
-            ].map((g, i) => (
-              <details key={i} className="group">
-                <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer list-none hover:bg-dark-800/30">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-white text-xs font-semibold truncate">{g.name}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-accent/15 text-accent text-[9px] font-bold uppercase tracking-wider shrink-0">
-                      {g.tag}
-                    </span>
-                  </div>
-                  <span className="text-accent text-lg font-bold group-open:rotate-45 transition-transform shrink-0">+</span>
-                </summary>
-                <div className="px-4 pb-3 pt-1 text-xs text-gray-400 leading-relaxed space-y-1.5">
-                  <p>{g.desc}</p>
-                  <p className="text-[10px] text-gold-light/90 font-mono">{g.payouts}</p>
-                </div>
-              </details>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* General FAQ — applies across the platform */}

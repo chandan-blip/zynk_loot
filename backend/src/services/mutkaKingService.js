@@ -1,20 +1,11 @@
 const db = require('../config/database');
 const crypto = require('crypto');
 
-// Shuffle Card — 4 PARALLEL server-authoritative 52-card lotteries running
-// simultaneously, one per `card_count_type` (1, 2, 3, 4).
-//
-//   Type N: each round draws N cards from a shuffled 52-card deck.
-//   All 4 instances run on the same 60s cadence but have independent
-//   period_ids, histories, and result patterns.
-//
-//   BETTING (50 s)  → users may place bets on any of the 4 types.
-//   LOCKED (10 s)   → bets disabled, countdown overlay 10..0.
-//   REVEAL          → N cards drawn cryptographically; winners settled.
+// Mutka King — 4 PARALLEL server-authoritative 52-card lotteries, one per
+// card_count_type (1, 2, 3, 4). Type N draws N cards from a shuffled deck.
 //
 // Bet kinds (per type N):
-//   cards  — pick 1..N specific cards (id 0-51); all picked must appear in
-//            the N revealed cards. Multiplier from CARDS_MULTIPLIER[picks].
+//   cards  — pick 1..N specific cards; all picked must appear.
 //   rank   — pick rank index 0-12; any dealt card matches.
 //   suit   — pick suit 0-3; any dealt card matches.
 //   color  — 'red' | 'black'; any dealt card has that color.
@@ -23,11 +14,9 @@ const CARD_COUNT_TYPES = [1, 2, 3, 4];
 
 const WIN_PAYOUT_RATIO = 0.9;
 
-// Multipliers per pick-count are uniform across all types where that count is
-// available (i.e. pick 3 in type-3 and pick 3 in type-4 both pay 10x).
-const SHUFFLE_MULTIPLIERS = {
-  cards: { 1: 2, 2: 5, 3: 10, 4: 20 },
-  rank:  4,
+const MUTKA_MULTIPLIERS = {
+  cards: { 1: 2, 2: 9, 3: 100, 4: 500 },
+  rank:  3,
   suit:  2,
   color: 2,
 };
@@ -35,7 +24,7 @@ const SHUFFLE_MULTIPLIERS = {
 const ROUND_TOTAL_MS    = 60_000;
 const BETTING_PHASE_MS  = 50_000;
 const LOCK_PHASE_MS     = 10_000;
-const MAX_BETS_PER_USER = 20;  // per type per round
+const MAX_BETS_PER_USER = 20;
 const MIN_BET = 1;
 const MAX_BET = 10_000;
 
@@ -43,7 +32,7 @@ const cardSuit = (id) => Math.floor(id / 13);
 const cardRank = (id) => id % 13;
 const isRedCard = (id) => {
   const s = cardSuit(id);
-  return s === 1 || s === 2; // diamonds, hearts
+  return s === 1 || s === 2;
 };
 
 function secureSample(range, count) {
@@ -55,15 +44,11 @@ function secureSample(range, count) {
   return [...picked];
 }
 
-class ShuffleCardService {
+class MutkaKingService {
   constructor(io) {
     this.io = io;
-    // Wire-up done by index.js after construction so the round loop can ask
-    // the prediction service whether a round should use pre-rolled cards.
     this.predictionService = null;
-    // Map<type, { id, periodId, status, startedAt, lockedAt, completeAt }>
     this.currentRounds = new Map();
-    // Map<type, { lock, complete, next }> for setTimeout handles
     this.timers = new Map();
     this.running = false;
   }
@@ -76,26 +61,20 @@ class ShuffleCardService {
     if (this.running) return;
     this.running = true;
 
-    // Force-finalize any rounds left mid-flight from a previous process.
     try {
       const [stale] = await db.pool.query(
-        `SELECT id FROM shuffle_card_rounds WHERE status IN ('betting', 'locked')`
+        `SELECT id FROM mutka_king_rounds WHERE status IN ('betting', 'locked')`
       );
       for (const r of stale) {
-        try {
-          await this._forceFinalize(r.id);
-        } catch (e) {
-          console.error('[SHUFFLE] Failed to finalize stale round', r.id, e.message);
-        }
+        try { await this._forceFinalize(r.id); }
+        catch (e) { console.error('[MUTKA] Failed to finalize stale round', r.id, e.message); }
       }
     } catch (e) {
-      console.error('[SHUFFLE] Startup cleanup error:', e.message);
+      console.error('[MUTKA] Startup cleanup error:', e.message);
     }
 
-    console.log('[SHUFFLE] Service started — opening first round per type...');
-    for (const t of CARD_COUNT_TYPES) {
-      await this._openRound(t);
-    }
+    console.log('[MUTKA] Service started — opening first round per type...');
+    for (const t of CARD_COUNT_TYPES) await this._openRound(t);
   }
 
   stop() {
@@ -117,15 +96,14 @@ class ShuffleCardService {
 
   async _generatePeriodId(type) {
     // Format: YYYYMMDD + 0N + 5-digit daily sequence (15 chars total),
-    // where 0N = zero-padded card_count_type (01..04). E.g. type-3 round
-    // on 2026-05-12 → "2026051203" + "00001".
+    // where 0N = zero-padded card_count_type (01..04).
     const now = new Date();
     const pad = (n, w = 2) => String(n).padStart(w, '0');
     const day = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
     const typePrefix = pad(type);
 
     const [rows] = await db.pool.query(
-      `SELECT period_id FROM shuffle_card_rounds
+      `SELECT period_id FROM mutka_king_rounds
         WHERE card_count_type = ? AND period_id LIKE ?
         ORDER BY id DESC LIMIT 1`,
       [type, `${day}${typePrefix}%`]
@@ -149,7 +127,7 @@ class ShuffleCardService {
       const completeAt = new Date(startedAt.getTime() + ROUND_TOTAL_MS);
 
       const [result] = await db.pool.query(
-        `INSERT INTO shuffle_card_rounds (period_id, card_count_type, status, started_at)
+        `INSERT INTO mutka_king_rounds (period_id, card_count_type, status, started_at)
          VALUES (?, ?, 'betting', ?)`,
         [periodId, type, startedAt]
       );
@@ -165,29 +143,24 @@ class ShuffleCardService {
       };
       this.currentRounds.set(type, round);
 
-      console.log(`[SHUFFLE/${type}] Round opened ${periodId} (id=${result.insertId})`);
+      console.log(`[MUTKA/${type}] Round opened ${periodId} (id=${result.insertId})`);
 
-      // Ask the prediction service if this round should use pre-rolled cards
-      // (admin's switch). If so, it stashes the cards keyed by round.id and
-      // schedules the 5s Telegram broadcast.
       if (this.predictionService) {
         this.predictionService
-          .preGenerateForRound({ game: 'shuffle_card', cardCountType: type, roundId: round.id, periodId })
-          .catch(err => console.error(`[SHUFFLE/${type}] preGenerateForRound error:`, err.message));
+          .preGenerateForRound({ game: 'mutka_king', cardCountType: type, roundId: round.id, periodId })
+          .catch(err => console.error(`[MUTKA/${type}] preGenerateForRound error:`, err.message));
       }
 
-      if (this.io) {
-        this.io.emit('shuffle:round:open', this._publicRoundState(type));
-      }
+      if (this.io) this.io.emit('mutka:round:open', this._publicRoundState(type));
 
       this._setTimer(type, 'lock', BETTING_PHASE_MS, () =>
-        this._lockRound(type).catch(err => console.error(`[SHUFFLE/${type}] Lock error:`, err))
+        this._lockRound(type).catch(err => console.error(`[MUTKA/${type}] Lock error:`, err))
       );
       this._setTimer(type, 'complete', ROUND_TOTAL_MS, () =>
-        this._completeRound(type).catch(err => console.error(`[SHUFFLE/${type}] Complete error:`, err))
+        this._completeRound(type).catch(err => console.error(`[MUTKA/${type}] Complete error:`, err))
       );
     } catch (err) {
-      console.error(`[SHUFFLE/${type}] Failed to open round:`, err);
+      console.error(`[MUTKA/${type}] Failed to open round:`, err);
       this._setTimer(type, 'next', 5000, () => this._openRound(type).catch(() => {}));
     }
   }
@@ -198,14 +171,14 @@ class ShuffleCardService {
     round.status = 'locked';
 
     await db.pool.query(
-      `UPDATE shuffle_card_rounds SET status = 'locked', locked_at = NOW() WHERE id = ?`,
+      `UPDATE mutka_king_rounds SET status = 'locked', locked_at = NOW() WHERE id = ?`,
       [round.id]
     );
 
-    console.log(`[SHUFFLE/${type}] Round locked ${round.periodId}`);
+    console.log(`[MUTKA/${type}] Round locked ${round.periodId}`);
 
     if (this.io) {
-      this.io.emit('shuffle:round:lock', {
+      this.io.emit('mutka:round:lock', {
         cardCountType: type,
         roundId: round.id,
         periodId: round.periodId,
@@ -219,9 +192,7 @@ class ShuffleCardService {
     if (!round) return;
 
     try {
-      // Each type draws exactly `type` cards from a 52-card deck. If the
-      // prediction service pre-rolled cards for this round (admin switch on),
-      // use those instead so they match the Telegram broadcast.
+      // Use prediction-service pre-rolled cards if present (admin switch on).
       let cards = this.predictionService?.consumeCardsForRound(round.id) || null;
       if (!cards || cards.length !== type) cards = secureSample(52, type);
       const cardSet = new Set(cards);
@@ -230,18 +201,11 @@ class ShuffleCardService {
       const redCount = cards.filter(isRedCard).length;
       const dominantColor = redCount > type - redCount ? 'red' : 'black';
 
-      const resultSummary = {
-        cards,
-        ranks,
-        suits,
-        redCount,
-        dominantColor,
-        cardCountType: type,
-      };
+      const resultSummary = { cards, ranks, suits, redCount, dominantColor, cardCountType: type };
 
       const [bets] = await db.pool.query(
         `SELECT id, user_id, kind, amount, multiplier, details
-         FROM shuffle_card_bets WHERE round_id = ? AND status = 'pending'`,
+         FROM mutka_king_bets WHERE round_id = ? AND status = 'pending'`,
         [round.id]
       );
 
@@ -284,7 +248,7 @@ class ShuffleCardService {
         await conn.beginTransaction();
 
         await conn.execute(
-          `UPDATE shuffle_card_rounds
+          `UPDATE mutka_king_rounds
              SET status = 'completed', cards = ?, result_summary = ?,
                  total_wager = ?, total_win = ?, bet_count = ?, player_count = ?,
                  completed_at = NOW()
@@ -306,14 +270,12 @@ class ShuffleCardService {
             'SELECT balance FROM users WHERE id = ? FOR UPDATE',
             [userId]
           );
-          if (rows.length > 0) {
-            userBalances.set(userId, parseFloat(rows[0].balance));
-          }
+          if (rows.length > 0) userBalances.set(userId, parseFloat(rows[0].balance));
         }
 
         for (const s of settlements) {
           await conn.execute(
-            `UPDATE shuffle_card_bets
+            `UPDATE mutka_king_bets
                 SET is_win = ?, win_amount = ?, status = 'settled', settled_at = NOW()
               WHERE id = ?`,
             [s.isWin ? 1 : 0, s.winAmount.toFixed(2), s.id]
@@ -321,14 +283,12 @@ class ShuffleCardService {
 
           const [gb] = await conn.execute(
             `INSERT INTO game_bets (user_id, game_type, bet_amount, win_amount, multiplier, result, is_win, details)
-             VALUES (?, 'shuffle_card', ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, 'mutka_king', ?, ?, ?, ?, ?, ?)`,
             [
               s.userId,
               s.amount.toFixed(2),
               s.winAmount.toFixed(2),
-              s.isWin
-                ? Math.floor((s.winAmount / Math.max(s.amount, 0.01)) * 100) / 100
-                : 0,
+              s.isWin ? Math.floor((s.winAmount / Math.max(s.amount, 0.01)) * 100) / 100 : 0,
               cards.join(','),
               s.isWin ? 1 : 0,
               JSON.stringify({
@@ -354,7 +314,7 @@ class ShuffleCardService {
                 balanceBefore.toFixed(2),
                 balanceAfter.toFixed(2),
                 gb.insertId,
-                `Shuffle Card type-${type} win: ${round.periodId}`,
+                `Mutka King type-${type} win: ${round.periodId}`,
               ]
             );
           }
@@ -376,25 +336,19 @@ class ShuffleCardService {
       }
 
       console.log(
-        `[SHUFFLE/${type}] Round complete ${round.periodId} cards=[${cards.join(',')}] ` +
+        `[MUTKA/${type}] Round complete ${round.periodId} cards=[${cards.join(',')}] ` +
         `bets=${settlements.length} wager=${totalWager.toFixed(2)} win=${totalWin.toFixed(2)}`
       );
 
       const userOutcomes = new Map();
       for (const s of settlements) {
         const arr = userOutcomes.get(s.userId) || [];
-        arr.push({
-          kind: s.kind,
-          details: s.details,
-          amount: s.amount,
-          isWin: s.isWin,
-          winAmount: s.winAmount,
-        });
+        arr.push({ kind: s.kind, details: s.details, amount: s.amount, isWin: s.isWin, winAmount: s.winAmount });
         userOutcomes.set(s.userId, arr);
       }
 
       if (this.io) {
-        this.io.emit('shuffle:round:result', {
+        this.io.emit('mutka:round:result', {
           cardCountType: type,
           roundId: round.id,
           periodId: round.periodId,
@@ -409,7 +363,7 @@ class ShuffleCardService {
         for (const [userId, outcomes] of userOutcomes.entries()) {
           const totalUserWin = outcomes.reduce((s, o) => s + o.winAmount, 0);
           const totalUserBet = outcomes.reduce((s, o) => s + o.amount, 0);
-          this.io.to(`user:${userId}`).emit('shuffle:round:settled', {
+          this.io.to(`user:${userId}`).emit('mutka:round:settled', {
             cardCountType: type,
             roundId: round.id,
             periodId: round.periodId,
@@ -432,31 +386,30 @@ class ShuffleCardService {
         }
       }
     } catch (err) {
-      console.error(`[SHUFFLE/${type}] Round completion error:`, err);
+      console.error(`[MUTKA/${type}] Round completion error:`, err);
       try {
         await db.pool.query(
-          `UPDATE shuffle_card_rounds SET status = 'completed', completed_at = NOW() WHERE id = ?`,
+          `UPDATE mutka_king_rounds SET status = 'completed', completed_at = NOW() WHERE id = ?`,
           [round.id]
         );
       } catch {}
     }
 
     this.currentRounds.delete(type);
-
     this._setTimer(type, 'next', 3500, () => {
-      this._openRound(type).catch(err => console.error(`[SHUFFLE/${type}] Open next round error:`, err));
+      this._openRound(type).catch(err => console.error(`[MUTKA/${type}] Open next round error:`, err));
     });
   }
 
   async _forceFinalize(roundId) {
     await db.pool.query(
-      `UPDATE shuffle_card_bets SET status = 'settled', is_win = 0, win_amount = 0,
-                                    settled_at = NOW()
+      `UPDATE mutka_king_bets SET status = 'settled', is_win = 0, win_amount = 0,
+                                  settled_at = NOW()
         WHERE round_id = ? AND status = 'pending'`,
       [roundId]
     );
     const [pendingBets] = await db.pool.query(
-      `SELECT user_id, SUM(amount) as total FROM shuffle_card_bets
+      `SELECT user_id, SUM(amount) as total FROM mutka_king_bets
         WHERE round_id = ? GROUP BY user_id`,
       [roundId]
     );
@@ -467,7 +420,7 @@ class ShuffleCardService {
       );
     }
     await db.pool.query(
-      `UPDATE shuffle_card_rounds SET status = 'completed', completed_at = NOW(),
+      `UPDATE mutka_king_rounds SET status = 'completed', completed_at = NOW(),
               result_summary = JSON_OBJECT('canceled', true) WHERE id = ?`,
       [roundId]
     );
@@ -496,20 +449,14 @@ class ShuffleCardService {
     };
   }
 
-  // Returns { 1: state, 2: state, 3: state, 4: state } — one entry per active
-  // type. Missing entries mean that type is between rounds.
   getAllRoundStates() {
     const out = {};
-    for (const t of CARD_COUNT_TYPES) {
-      out[t] = this._publicRoundState(t);
-    }
+    for (const t of CARD_COUNT_TYPES) out[t] = this._publicRoundState(t);
     return out;
   }
 
-  // Back-compat for callers that asked for a single round; returns the default
-  // type-3 round if it exists, otherwise the first active type.
   getCurrentRoundState() {
-    return this._publicRoundState(3) || this._publicRoundState(1);
+    return this._publicRoundState(4) || this._publicRoundState(1);
   }
 
   getCardCountTypes() {
@@ -517,26 +464,20 @@ class ShuffleCardService {
   }
 
   getMultipliers() {
-    return SHUFFLE_MULTIPLIERS;
+    return MUTKA_MULTIPLIERS;
   }
 
   async placeBet(userId, betInput) {
     const type = parseInt(betInput?.cardCountType ?? betInput?.card_count_type, 10);
-    if (!CARD_COUNT_TYPES.includes(type)) {
-      throw new Error('cardCountType must be 1, 2, 3, or 4');
-    }
+    if (!CARD_COUNT_TYPES.includes(type)) throw new Error('cardCountType must be 1, 2, 3, or 4');
     const round = this.currentRounds.get(type);
     if (!round) {
       throw new Error(
-        `Type-${type} round has not been opened yet — server may still be starting, or migration 059 has not been applied (check backend logs for "[SHUFFLE/${type}] Failed to open round").`
+        `Type-${type} Mutka King round has not been opened yet — server may still be starting, or migration 060 has not been applied (check backend logs for "[MUTKA/${type}] Failed to open round").`
       );
     }
-    if (round.status !== 'betting') {
-      throw new Error(`Betting is closed for type-${type} round (status=${round.status})`);
-    }
-    if (Date.now() >= round.lockedAt.getTime()) {
-      throw new Error(`Betting is closed for type-${type} round (locked)`);
-    }
+    if (round.status !== 'betting') throw new Error(`Betting is closed for type-${type} round (status=${round.status})`);
+    if (Date.now() >= round.lockedAt.getTime()) throw new Error(`Betting is closed for type-${type} round (locked)`);
 
     const cleanBet = this._validateBet(betInput, type);
 
@@ -553,7 +494,7 @@ class ShuffleCardService {
       if (balance < cleanBet.amount) throw new Error('Insufficient balance');
 
       const [counts] = await conn.execute(
-        'SELECT COUNT(*) AS n FROM shuffle_card_bets WHERE round_id = ? AND user_id = ?',
+        'SELECT COUNT(*) AS n FROM mutka_king_bets WHERE round_id = ? AND user_id = ?',
         [round.id, userId]
       );
       if (Number(counts[0].n) >= MAX_BETS_PER_USER) {
@@ -564,7 +505,7 @@ class ShuffleCardService {
       await conn.execute('UPDATE users SET balance = ? WHERE id = ?', [newBalance, userId]);
 
       const [bal] = await conn.execute(
-        `INSERT INTO shuffle_card_bets
+        `INSERT INTO mutka_king_bets
             (round_id, card_count_type, user_id, kind, amount, multiplier, details, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
         [
@@ -587,15 +528,13 @@ class ShuffleCardService {
           balance,
           newBalance,
           bal.insertId,
-          `Shuffle Card type-${type} bet ${round.periodId}: ${cleanBet.kind}`,
+          `Mutka King type-${type} bet ${round.periodId}: ${cleanBet.kind}`,
         ]
       );
 
       await conn.commit();
 
-      if (this.io) {
-        this.io.to(`user:${userId}`).emit('balance:update', { balance: newBalance });
-      }
+      if (this.io) this.io.to(`user:${userId}`).emit('balance:update', { balance: newBalance });
 
       return {
         betId: bal.insertId,
@@ -634,7 +573,7 @@ class ShuffleCardService {
         return n;
       });
       if (new Set(cards).size !== cards.length) throw new Error('Duplicate cards');
-      const multiplier = SHUFFLE_MULTIPLIERS.cards[cards.length];
+      const multiplier = MUTKA_MULTIPLIERS.cards[cards.length];
       if (!multiplier) throw new Error('Unsupported pick count');
       return { kind, amount, multiplier, details: { cards } };
     }
@@ -642,18 +581,18 @@ class ShuffleCardService {
     if (kind === 'rank') {
       const rank = parseInt(bet.rank, 10);
       if (!Number.isInteger(rank) || rank < 0 || rank > 12) throw new Error('Invalid rank');
-      return { kind, amount, multiplier: SHUFFLE_MULTIPLIERS.rank, details: { rank } };
+      return { kind, amount, multiplier: MUTKA_MULTIPLIERS.rank, details: { rank } };
     }
 
     if (kind === 'suit') {
       const suit = parseInt(bet.suit, 10);
       if (!Number.isInteger(suit) || suit < 0 || suit > 3) throw new Error('Invalid suit');
-      return { kind, amount, multiplier: SHUFFLE_MULTIPLIERS.suit, details: { suit } };
+      return { kind, amount, multiplier: MUTKA_MULTIPLIERS.suit, details: { suit } };
     }
 
     if (kind === 'color') {
       if (bet.color !== 'red' && bet.color !== 'black') throw new Error('Color must be red or black');
-      return { kind, amount, multiplier: SHUFFLE_MULTIPLIERS.color, details: { color: bet.color } };
+      return { kind, amount, multiplier: MUTKA_MULTIPLIERS.color, details: { color: bet.color } };
     }
 
     throw new Error(`Unknown bet kind "${kind}"`);
@@ -669,8 +608,8 @@ class ShuffleCardService {
 
     const [countRows] = await db.pool.query(
       typeFilter == null
-        ? `SELECT COUNT(*) AS total FROM shuffle_card_rounds WHERE status = 'completed'`
-        : `SELECT COUNT(*) AS total FROM shuffle_card_rounds WHERE status = 'completed' AND card_count_type = ?`,
+        ? `SELECT COUNT(*) AS total FROM mutka_king_rounds WHERE status = 'completed'`
+        : `SELECT COUNT(*) AS total FROM mutka_king_rounds WHERE status = 'completed' AND card_count_type = ?`,
       typeFilter == null ? [] : [typeFilter]
     );
     const total = Number(countRows[0]?.total || 0);
@@ -678,13 +617,13 @@ class ShuffleCardService {
     const sql = typeFilter == null
       ? `SELECT id, period_id, card_count_type, status, cards, result_summary, total_wager, total_win,
                 bet_count, player_count, started_at, completed_at
-           FROM shuffle_card_rounds
+           FROM mutka_king_rounds
           WHERE status = 'completed'
           ORDER BY id DESC
           LIMIT ? OFFSET ?`
       : `SELECT id, period_id, card_count_type, status, cards, result_summary, total_wager, total_win,
                 bet_count, player_count, started_at, completed_at
-           FROM shuffle_card_rounds
+           FROM mutka_king_rounds
           WHERE status = 'completed' AND card_count_type = ?
           ORDER BY id DESC
           LIMIT ? OFFSET ?`;
@@ -723,16 +662,16 @@ class ShuffleCardService {
       ? `SELECT b.id, b.round_id, b.card_count_type, b.kind, b.amount, b.multiplier, b.details,
                 b.is_win, b.win_amount, b.status, b.created_at,
                 r.period_id, r.cards, r.status AS round_status
-           FROM shuffle_card_bets b
-           JOIN shuffle_card_rounds r ON r.id = b.round_id
+           FROM mutka_king_bets b
+           JOIN mutka_king_rounds r ON r.id = b.round_id
           WHERE b.user_id = ?
           ORDER BY b.id DESC
           LIMIT ?`
       : `SELECT b.id, b.round_id, b.card_count_type, b.kind, b.amount, b.multiplier, b.details,
                 b.is_win, b.win_amount, b.status, b.created_at,
                 r.period_id, r.cards, r.status AS round_status
-           FROM shuffle_card_bets b
-           JOIN shuffle_card_rounds r ON r.id = b.round_id
+           FROM mutka_king_bets b
+           JOIN mutka_king_rounds r ON r.id = b.round_id
           WHERE b.user_id = ? AND b.card_count_type = ?
           ORDER BY b.id DESC
           LIMIT ?`;
@@ -758,6 +697,6 @@ class ShuffleCardService {
   }
 }
 
-module.exports = ShuffleCardService;
-module.exports.SHUFFLE_MULTIPLIERS = SHUFFLE_MULTIPLIERS;
+module.exports = MutkaKingService;
+module.exports.MUTKA_MULTIPLIERS = MUTKA_MULTIPLIERS;
 module.exports.CARD_COUNT_TYPES = CARD_COUNT_TYPES;

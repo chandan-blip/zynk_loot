@@ -226,6 +226,68 @@ class SocketService {
     return () => this.socket.off('shuffle:round:settled', callback);
   }
 
+  // Mutka King events
+  onMutkaRoundState(callback) {
+    if (!this.socket) return;
+    this.socket.on('mutka:round:state', callback);
+    return () => this.socket.off('mutka:round:state', callback);
+  }
+
+  onMutkaRoundOpen(callback) {
+    if (!this.socket) return;
+    this.socket.on('mutka:round:open', callback);
+    return () => this.socket.off('mutka:round:open', callback);
+  }
+
+  onMutkaRoundLock(callback) {
+    if (!this.socket) return;
+    this.socket.on('mutka:round:lock', callback);
+    return () => this.socket.off('mutka:round:lock', callback);
+  }
+
+  onMutkaRoundResult(callback) {
+    if (!this.socket) return;
+    this.socket.on('mutka:round:result', callback);
+    return () => this.socket.off('mutka:round:result', callback);
+  }
+
+  onMutkaRoundSettled(callback) {
+    if (!this.socket) return;
+    this.socket.on('mutka:round:settled', callback);
+    return () => this.socket.off('mutka:round:settled', callback);
+  }
+
+  // UNO King events
+  onUnoRoundState(callback) {
+    if (!this.socket) return;
+    this.socket.on('uno:round:state', callback);
+    return () => this.socket.off('uno:round:state', callback);
+  }
+
+  onUnoRoundOpen(callback) {
+    if (!this.socket) return;
+    this.socket.on('uno:round:open', callback);
+    return () => this.socket.off('uno:round:open', callback);
+  }
+
+  onUnoRoundLock(callback) {
+    if (!this.socket) return;
+    this.socket.on('uno:round:lock', callback);
+    return () => this.socket.off('uno:round:lock', callback);
+  }
+
+  onUnoRoundResult(callback) {
+    if (!this.socket) return;
+    this.socket.on('uno:round:result', callback);
+    return () => this.socket.off('uno:round:result', callback);
+  }
+
+  onUnoRoundSettled(callback) {
+    if (!this.socket) return;
+    this.socket.on('uno:round:settled', callback);
+    return () => this.socket.off('uno:round:settled', callback);
+  }
+
   onBalanceUpdate(callback) {
     if (!this.socket) return;
     this.socket.on('balance:update', callback);

@@ -149,8 +149,8 @@ function AdminWithdrawals() {
     <div className="space-y-3">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Withdrawal Management</h1>
-        <p className="text-gray-500">Review and process withdrawal requests</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Withdrawal Management</h1>
+        <p className="text-gray-500 text-xs sm:text-sm">Review and process withdrawal requests</p>
       </div>
 
       {/* Filters */}
@@ -215,7 +215,77 @@ function AdminWithdrawals() {
             <p>No withdrawals found</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile card list (visible <sm) */}
+            <div className="sm:hidden divide-y divide-dark-400">
+              {filteredWithdrawals.map((withdrawal) => (
+                <div key={withdrawal.id} className="p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-lg bg-purple-500 flex items-center justify-center font-bold text-white text-sm shrink-0">
+                        {withdrawal.username?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white text-sm truncate">{withdrawal.username}</p>
+                        <p className="text-[10px] text-gray-500 truncate">{withdrawal.email}</p>
+                      </div>
+                    </div>
+                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${statusColors[withdrawal.status] || 'bg-gray-500/20 text-gray-400'}`}>
+                      {withdrawal.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="text-red-400 font-semibold">-₹{parseFloat(withdrawal.amount || 0).toLocaleString()}</p>
+                      <div className="flex items-center gap-1 text-[10px] text-gray-500 capitalize">
+                        {getPaymentIcon(withdrawal.payment_type)}
+                        <span>{withdrawal.payment_type}</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-500 text-right">{formatDate(withdrawal.created_at)}</p>
+                  </div>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => { setSelectedWithdrawal(withdrawal); setAdminNote(withdrawal.admin_note || ''); }}
+                      className="p-1.5 rounded-lg bg-dark-600 text-gray-400 hover:text-white hover:bg-dark-500"
+                      title="View Details"
+                    >
+                      <FiEye className="w-4 h-4" />
+                    </button>
+                    {withdrawal.status === 'pending' && (
+                      <>
+                        <button
+                          onClick={() => { setSelectedWithdrawal(withdrawal); setAdminNote(''); handleApprove(withdrawal); }}
+                          className="p-1.5 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                          title="Approve"
+                        >
+                          <FiCheck className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => { setSelectedWithdrawal(withdrawal); setAdminNote(''); }}
+                          className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                          title="Reject"
+                        >
+                          <FiX className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                    {withdrawal.status === 'approved' && (
+                      <button
+                        onClick={() => handleComplete(withdrawal)}
+                        className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                        title="Mark Complete"
+                      >
+                        <FiCheck className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop / tablet table (visible ≥sm) */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="admin-table">
               <thead className="bg-dark-700">
                 <tr>
@@ -317,16 +387,17 @@ function AdminWithdrawals() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Pagination */}
         {pagination && pagination.pages > 1 && (
-          <div className="flex justify-center gap-2 p-4 border-t border-dark-400">
+          <div className="flex justify-center flex-wrap gap-2 p-3 sm:p-4 border-t border-dark-400">
             {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((p) => (
               <button
                 key={p}
                 onClick={() => setPage(p)}
-                className={`w-10 h-10 rounded-lg font-semibold transition-colors ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg font-semibold text-sm transition-colors ${
                   page === p
                     ? 'bg-accent text-dark-900'
                     : 'bg-dark-700 text-gray-400 hover:bg-dark-600'
@@ -484,18 +555,18 @@ function AdminWithdrawals() {
 
               {/* Actions */}
               {selectedWithdrawal.status === 'pending' && (
-                <div className="flex gap-4 pt-4">
+                <div className="flex gap-2 sm:gap-4 pt-4">
                   <button
                     onClick={() => handleReject(selectedWithdrawal)}
                     disabled={processing}
-                    className="flex-1 py-3 rounded-lg font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                    className="flex-1 py-3 rounded-lg font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50 text-sm sm:text-base"
                   >
                     {processing ? 'Processing...' : 'Reject'}
                   </button>
                   <button
                     onClick={() => handleApprove(selectedWithdrawal)}
                     disabled={processing}
-                    className="flex-1 py-3 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent-600 transition-colors disabled:opacity-50"
+                    className="flex-1 py-3 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent-600 transition-colors disabled:opacity-50 text-sm sm:text-base"
                   >
                     {processing ? 'Processing...' : 'Approve'}
                   </button>

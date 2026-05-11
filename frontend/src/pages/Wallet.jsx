@@ -591,7 +591,7 @@ function Wallet() {
             onClick={() => setActiveTab('buy')}
             className="px-4 py-2 shrink-0 rounded-lg bg-dark-600 hover:bg-dark-500 text-white text-sm transition-colors border border-dark-500"
           >
-            Buy Balance
+            Deposit
           </button>
           <button
             onClick={() => setShowWithdrawModal(true)}
@@ -605,7 +605,7 @@ function Wallet() {
       {/* Tabs */}
       <div className="flex gap-2 p-1 bg-dark-700 rounded-lg overflow-x-auto snap-x scroll-smooth">
         {[
-          { id: 'buy', label: 'Buy Balance', icon: FiPlus },
+          { id: 'buy', label: 'Deposit', icon: FiPlus },
           { id: 'deposits', label: 'Deposits', icon: FiDownload },
           { id: 'withdrawals', label: 'Withdrawals', icon: FiArrowUpCircle },
           { id: 'methods', label: 'Methods', icon: FiCreditCard },
@@ -669,7 +669,7 @@ function Wallet() {
                   disabled={processingPackage === pkg.id}
                   className="w-full py-2 rounded-lg bg-accent hover:bg-accent-600 text-dark-900 font-medium transition-colors disabled:opacity-50"
                 >
-                  {processingPackage === pkg.id ? 'Processing...' : 'Buy Now'}
+                  {processingPackage === pkg.id ? 'Processing...' : 'Deposit'}
                 </button>
               </motion.div>
             ))}

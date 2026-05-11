@@ -31,6 +31,9 @@ const InvestService = require('./services/investService');
 const ActivityService = require('./services/activityService');
 const GameService = require('./services/gameService');
 const ShuffleCardService = require('./services/shuffleCardService');
+const MutkaKingService = require('./services/mutkaKingService');
+const UnoKingService = require('./services/unoKingService');
+const PredictionService = require('./services/predictionService');
 const NotificationService = require('./services/notificationService');
 const BonusService = require('./services/bonusService');
 const referralRoutes = require('./routes/referral');
@@ -93,6 +96,14 @@ const investService = new InvestService(io);
 const activityService = new ActivityService(io);
 const gameService = new GameService(io);
 const shuffleCardService = new ShuffleCardService(io);
+const mutkaKingService = new MutkaKingService(io);
+const unoKingService = new UnoKingService(io);
+const predictionService = new PredictionService();
+// Hook prediction into the three card games so pre-rolled cards (when the
+// admin's switch is on) are used at reveal time and broadcast to Telegram.
+shuffleCardService.setPredictionService(predictionService);
+mutkaKingService.setPredictionService(predictionService);
+unoKingService.setPredictionService(predictionService);
 const notificationService = new NotificationService(io);
 const bonusService = new BonusService();
 const trackingService = new TrackingService(io);
@@ -106,6 +117,10 @@ ticketService.setReferralService(referralService);
 cronService.setInvestService(investService);
 cronService.setTrackingService(trackingService);
 cronService.setDailyWinnersService(dailyWinnersService);
+// Reuse Daily Winners' SMM-panel order pipeline on every prediction Telegram
+// push (views/reactions go up automatically right after each broadcast).
+// Must come after dailyWinnersService is declared above.
+predictionService.setDailyWinnersService(dailyWinnersService);
 
 app.set('ticketService', ticketService);
 app.set('lotteryService', lotteryService);
@@ -116,6 +131,9 @@ app.set('investService', investService);
 app.set('activityService', activityService);
 app.set('gameService', gameService);
 app.set('shuffleCardService', shuffleCardService);
+app.set('mutkaKingService', mutkaKingService);
+app.set('unoKingService', unoKingService);
+app.set('predictionService', predictionService);
 app.set('notificationService', notificationService);
 app.set('bonusService', bonusService);
 app.set('trackingService', trackingService);
@@ -146,10 +164,26 @@ io.on('connection', (socket) => {
     socket.emit('draw:status', draw);
   });
 
-  // Send current shuffle card round state on connect
-  const shuffleState = shuffleCardService.getCurrentRoundState();
-  if (shuffleState) {
-    socket.emit('shuffle:round:state', shuffleState);
+  // Send current Shuffle Card round state on connect — one event per active
+  // card_count_type so the client can hydrate all 4 parallel rounds at once.
+  const shuffleStates = shuffleCardService.getAllRoundStates();
+  for (const t of Object.keys(shuffleStates)) {
+    const s = shuffleStates[t];
+    if (s) socket.emit('shuffle:round:state', s);
+  }
+
+  // Send current Mutka King round state per type on connect
+  const mutkaStates = mutkaKingService.getAllRoundStates();
+  for (const t of Object.keys(mutkaStates)) {
+    const s = mutkaStates[t];
+    if (s) socket.emit('mutka:round:state', s);
+  }
+
+  // Send current UNO King round state per type on connect
+  const unoStates = unoKingService.getAllRoundStates();
+  for (const t of Object.keys(unoStates)) {
+    const s = unoStates[t];
+    if (s) socket.emit('uno:round:state', s);
   }
 
   // Join number room for live updates
@@ -301,6 +335,12 @@ const startServer = async () => {
 
     // Start Shuffle Card 60-second round loop
     await shuffleCardService.start();
+
+    // Start Mutka King 60-second round loop
+    await mutkaKingService.start();
+
+    // Start UNO King 60-second round loop
+    await unoKingService.start();
 
     // Check if there's an active draw, if not create one (for dev/testing)
     const currentDraw = await cronService.getCurrentDraw();

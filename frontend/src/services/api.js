@@ -187,6 +187,24 @@ export const saveSmmPanel = (config) =>
   api.put('/admin/daily-winners/smm-panel', { config });
 export const testTelegramMessage = (text, placeSmmOrders = true) =>
   api.post('/admin/daily-winners/test-telegram', { text, placeSmmOrders });
+
+// Prediction admin module
+export const getPredictionConfigs = () => api.get('/admin/predictions/configs');
+export const updatePredictionConfig = (config) =>
+  api.put('/admin/predictions/configs', config);
+export const getPredictionSmmMaster = () => api.get('/admin/predictions/smm-master');
+export const setPredictionSmmMaster = (enabled) =>
+  api.put('/admin/predictions/smm-master', { enabled });
+export const getPredictionHypeMaster = () => api.get('/admin/predictions/hype-master');
+export const setPredictionHypeMaster = (enabled) =>
+  api.put('/admin/predictions/hype-master', { enabled });
+export const getPredictionLog = (game = null, cardCountType = null, limit = 50) => {
+  const params = new URLSearchParams();
+  if (game) params.set('game', game);
+  if (cardCountType) params.set('type', String(cardCountType));
+  params.set('limit', String(limit));
+  return api.get(`/admin/predictions/log?${params.toString()}`);
+};
 export const getAdminNumbers = (page = 1, limit = 50) => api.get(`/admin/numbers?page=${page}&limit=${limit}`);
 export const getAdminSettings = () => api.get('/admin/settings');
 export const updateSetting = (key, value) => api.put(`/admin/settings/${key}`, { value });
@@ -260,13 +278,38 @@ export const playIceField = (amount, difficulty, targetRows) => api.post('/games
 export const playArrowRoulette = (amount) => api.post('/games/arrow-roulette', { amount });
 export const playEggHatch = (amount) => api.post('/games/egg-hatch', { amount });
 export const playFuse = (amount, cashoutMultiplier) => api.post('/games/fuse', { amount, cashoutMultiplier });
-export const playMutkaKing = (bets) => api.post('/games/mutka-king', { bets });
-export const playUnoKing = (bets) => api.post('/games/uno-king', { bets });
+// Mutka King (round-based 60s server-authoritative, 4 parallel types 1c..4c)
+export const getMutkaKingState = () => api.get('/games/mutka-king/state');
+export const placeMutkaKingBet = (bet) => api.post('/games/mutka-king/bet', bet);
+export const getMutkaKingHistory = (page = 1, limit = 20, cardCountType = null) => {
+  const t = cardCountType ? `&type=${cardCountType}` : '';
+  return api.get(`/games/mutka-king/history?page=${page}&limit=${limit}${t}`);
+};
+export const getMutkaKingMyBets = (limit = 20, cardCountType = null) => {
+  const t = cardCountType ? `&type=${cardCountType}` : '';
+  return api.get(`/games/mutka-king/my-bets?limit=${limit}${t}`);
+};
+// UNO King (round-based 60s server-authoritative, 4 parallel types 1c..4c)
+export const getUnoKingState = () => api.get('/games/uno-king/state');
+export const placeUnoKingBet = (bet) => api.post('/games/uno-king/bet', bet);
+export const getUnoKingHistory = (page = 1, limit = 20, cardCountType = null) => {
+  const t = cardCountType ? `&type=${cardCountType}` : '';
+  return api.get(`/games/uno-king/history?page=${page}&limit=${limit}${t}`);
+};
+export const getUnoKingMyBets = (limit = 20, cardCountType = null) => {
+  const t = cardCountType ? `&type=${cardCountType}` : '';
+  return api.get(`/games/uno-king/my-bets?limit=${limit}${t}`);
+};
 export const getShuffleCardState = () => api.get('/games/shuffle-card/state');
 export const placeShuffleCardBet = (bet) => api.post('/games/shuffle-card/bet', bet);
-export const getShuffleCardHistory = (page = 1, limit = 20) =>
-  api.get(`/games/shuffle-card/history?page=${page}&limit=${limit}`);
-export const getShuffleCardMyBets = (limit = 20) => api.get(`/games/shuffle-card/my-bets?limit=${limit}`);
+export const getShuffleCardHistory = (page = 1, limit = 20, cardCountType = null) => {
+  const t = cardCountType ? `&type=${cardCountType}` : '';
+  return api.get(`/games/shuffle-card/history?page=${page}&limit=${limit}${t}`);
+};
+export const getShuffleCardMyBets = (limit = 20, cardCountType = null) => {
+  const t = cardCountType ? `&type=${cardCountType}` : '';
+  return api.get(`/games/shuffle-card/my-bets?limit=${limit}${t}`);
+};
 export const getGameHistory = (page = 1, limit = 20, game_type = '') =>
   api.get(`/games/history?page=${page}&limit=${limit}${game_type ? `&game_type=${game_type}` : ''}`);
 export const getGameStats = () => api.get('/games/stats');

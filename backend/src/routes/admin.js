@@ -3259,4 +3259,102 @@ router.get('/tracking/realtime', async (req, res) => {
   }
 });
 
+// ── Prediction (admin pre-roll + Telegram push module) ──
+
+router.get('/predictions/configs', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const configs = await svc.getConfigs();
+    res.json({ success: true, data: { configs } });
+  } catch (error) {
+    console.error('Get prediction configs error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/predictions/configs', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const { game, cardCountType, enabled, telegramEnabled, telegramMessage } = req.body || {};
+    if (!game) return res.status(400).json({ success: false, message: 'game required' });
+    if (!cardCountType) return res.status(400).json({ success: false, message: 'cardCountType required' });
+    const updated = await svc.updateConfig(game, parseInt(cardCountType, 10), {
+      enabled: !!enabled,
+      telegramEnabled: !!telegramEnabled,
+      telegramMessage: telegramMessage || null,
+    });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Update prediction config error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/predictions/smm-master', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const enabled = await svc.getSmmEnabled();
+    res.json({ success: true, data: { enabled } });
+  } catch (error) {
+    console.error('Get prediction SMM master error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/predictions/smm-master', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const { enabled } = req.body || {};
+    const saved = await svc.setSmmEnabled(!!enabled);
+    res.json({ success: true, data: { enabled: saved } });
+  } catch (error) {
+    console.error('Set prediction SMM master error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/predictions/hype-master', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const enabled = await svc.getHypeEnabled();
+    res.json({ success: true, data: { enabled } });
+  } catch (error) {
+    console.error('Get prediction hype master error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/predictions/hype-master', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const { enabled } = req.body || {};
+    const saved = await svc.setHypeEnabled(!!enabled);
+    res.json({ success: true, data: { enabled: saved } });
+  } catch (error) {
+    console.error('Set prediction hype master error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/predictions/log', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const game = req.query.game || null;
+    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
+    const data = await svc.getRecentLog({ game, cardCountType, limit });
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Get prediction log error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;

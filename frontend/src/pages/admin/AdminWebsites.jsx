@@ -210,16 +210,20 @@ export default function AdminWebsites() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Websites</h1>
-          <p className="text-gray-400 text-sm mt-1">Create landing pages. Publish to expose at <code className="text-accent">sub-domain.{appDomain}</code></p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Websites</h1>
+          <p className="text-gray-400 text-xs sm:text-sm mt-1 break-words">
+            Create landing pages. Publish to expose at <code className="text-accent break-all">sub-domain.{appDomain}</code>
+          </p>
         </div>
         <button
           onClick={startCreate}
-          className="flex items-center gap-2 px-4 py-2 bg-accent text-dark-900 font-semibold rounded-lg hover:opacity-90"
+          className="shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2 bg-accent text-dark-900 font-semibold rounded-lg hover:opacity-90 text-sm"
         >
-          <FiPlus className="w-4 h-4" /> New Website
+          <FiPlus className="w-4 h-4" />
+          <span className="hidden xs:inline sm:inline">New Website</span>
+          <span className="xs:hidden sm:hidden">New</span>
         </button>
       </div>
 
@@ -227,50 +231,42 @@ export default function AdminWebsites() {
         {loading ? (
           <div className="p-8 text-center text-gray-500">Loading...</div>
         ) : sites.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">No websites yet. Create your first landing page.</div>
+          <div className="p-8 text-center text-gray-500 text-sm">No websites yet. Create your first landing page.</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-dark-700/50">
-              <tr className="text-left text-gray-400">
-                <th className="px-4 py-3">Title</th>
-                <th className="px-4 py-3">Sub-domain</th>
-                <th className="px-4 py-3">Domain</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Active</th>
-                <th className="px-4 py-3 text-right">Visits</th>
-                <th className="px-4 py-3 text-right">Clicks</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Mobile card list (visible <md) */}
+            <div className="md:hidden divide-y divide-dark-600">
               {sites.map((site) => (
-                <tr key={site.id} className="border-t border-dark-600">
-                  <td className="px-4 py-3 text-white font-medium">{site.title}</td>
-                  <td className="px-4 py-3 text-gray-300">
-                    <div className="flex items-center gap-2">
-                      <FiGlobe className="w-3 h-3 text-gray-500" />
-                      {site.sub_domain}
+                <div key={site.id} className="p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-white font-semibold truncate">{site.title}</div>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-0.5">
+                        <FiGlobe className="w-3 h-3 shrink-0" />
+                        <span className="truncate">
+                          {site.sub_domain}{site.domain ? `.${site.domain}` : ''}
+                        </span>
+                      </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400">{site.domain || '-'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded text-xs ${site.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                      {site.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {site.is_active
-                      ? <FiEye className="w-4 h-4 text-green-400" />
-                      : <FiEyeOff className="w-4 h-4 text-gray-500" />}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-200 font-mono text-xs">{site.visits ?? 0}</td>
-                  <td className="px-4 py-3 text-right text-gray-200 font-mono text-xs">{site.clicks ?? 0}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-1">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${site.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                        {site.status}
+                      </span>
+                      {site.is_active
+                        ? <FiEye className="w-4 h-4 text-green-400" title="Active" />
+                        : <FiEyeOff className="w-4 h-4 text-gray-500" title="Inactive" />}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <span>Visits: <b className="text-gray-200 font-mono">{site.visits ?? 0}</b></span>
+                      <span>Clicks: <b className="text-gray-200 font-mono">{site.clicks ?? 0}</b></span>
+                    </div>
+                    <div className="flex items-center gap-0.5">
                       <button
                         onClick={() => openStats(site)}
-                        className="p-2 text-gray-400 hover:text-accent rounded hover:bg-dark-600"
-                        title="View tracking stats"
+                        className="p-1.5 text-gray-400 hover:text-accent rounded hover:bg-dark-600"
+                        title="Stats"
                       >
                         <FiBarChart2 className="w-4 h-4" />
                       </button>
@@ -278,14 +274,14 @@ export default function AdminWebsites() {
                         <>
                           <a
                             href={publishedUrl(site)} target="_blank" rel="noreferrer"
-                            className="p-2 text-gray-400 hover:text-accent rounded hover:bg-dark-600"
+                            className="p-1.5 text-gray-400 hover:text-accent rounded hover:bg-dark-600"
                             title={publishedUrl(site)}
                           >
                             <FiExternalLink className="w-4 h-4" />
                           </a>
                           <button
                             onClick={() => unpublish(site)}
-                            className="p-2 text-gray-400 hover:text-yellow-400 rounded hover:bg-dark-600"
+                            className="p-1.5 text-gray-400 hover:text-yellow-400 rounded hover:bg-dark-600"
                             title="Unpublish"
                           >
                             <FiEyeOff className="w-4 h-4" />
@@ -295,48 +291,136 @@ export default function AdminWebsites() {
                       {site.status !== 'published' && (
                         <button
                           onClick={() => publish(site)}
-                          className="p-2 text-gray-400 hover:text-green-400 rounded hover:bg-dark-600"
+                          className="p-1.5 text-gray-400 hover:text-green-400 rounded hover:bg-dark-600"
                           title="Publish"
                         >
                           <FiPlay className="w-4 h-4" />
                         </button>
                       )}
-                      <button onClick={() => startEdit(site)} className="p-2 text-gray-400 hover:text-white rounded hover:bg-dark-600">
+                      <button onClick={() => startEdit(site)} className="p-1.5 text-gray-400 hover:text-white rounded hover:bg-dark-600" title="Edit">
                         <FiEdit2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => remove(site.id)} className="p-2 text-gray-400 hover:text-red-400 rounded hover:bg-dark-600">
+                      <button onClick={() => remove(site.id)} className="p-1.5 text-gray-400 hover:text-red-400 rounded hover:bg-dark-600" title="Delete">
                         <FiTrash2 className="w-4 h-4" />
                       </button>
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Desktop / tablet table (visible ≥md) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-dark-700/50">
+                  <tr className="text-left text-gray-400">
+                    <th className="px-4 py-3">Title</th>
+                    <th className="px-4 py-3">Sub-domain</th>
+                    <th className="px-4 py-3">Domain</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Active</th>
+                    <th className="px-4 py-3 text-right">Visits</th>
+                    <th className="px-4 py-3 text-right">Clicks</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sites.map((site) => (
+                    <tr key={site.id} className="border-t border-dark-600">
+                      <td className="px-4 py-3 text-white font-medium">{site.title}</td>
+                      <td className="px-4 py-3 text-gray-300">
+                        <div className="flex items-center gap-2">
+                          <FiGlobe className="w-3 h-3 text-gray-500" />
+                          {site.sub_domain}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-400">{site.domain || '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded text-xs ${site.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                          {site.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {site.is_active
+                          ? <FiEye className="w-4 h-4 text-green-400" />
+                          : <FiEyeOff className="w-4 h-4 text-gray-500" />}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-200 font-mono text-xs">{site.visits ?? 0}</td>
+                      <td className="px-4 py-3 text-right text-gray-200 font-mono text-xs">{site.clicks ?? 0}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => openStats(site)}
+                            className="p-2 text-gray-400 hover:text-accent rounded hover:bg-dark-600"
+                            title="View tracking stats"
+                          >
+                            <FiBarChart2 className="w-4 h-4" />
+                          </button>
+                          {site.status === 'published' && (
+                            <>
+                              <a
+                                href={publishedUrl(site)} target="_blank" rel="noreferrer"
+                                className="p-2 text-gray-400 hover:text-accent rounded hover:bg-dark-600"
+                                title={publishedUrl(site)}
+                              >
+                                <FiExternalLink className="w-4 h-4" />
+                              </a>
+                              <button
+                                onClick={() => unpublish(site)}
+                                className="p-2 text-gray-400 hover:text-yellow-400 rounded hover:bg-dark-600"
+                                title="Unpublish"
+                              >
+                                <FiEyeOff className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                          {site.status !== 'published' && (
+                            <button
+                              onClick={() => publish(site)}
+                              className="p-2 text-gray-400 hover:text-green-400 rounded hover:bg-dark-600"
+                              title="Publish"
+                            >
+                              <FiPlay className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button onClick={() => startEdit(site)} className="p-2 text-gray-400 hover:text-white rounded hover:bg-dark-600">
+                            <FiEdit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => remove(site.id)} className="p-2 text-gray-400 hover:text-red-400 rounded hover:bg-dark-600">
+                            <FiTrash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-stretch justify-center p-2" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-stretch justify-center p-1 sm:p-2" onClick={() => setShowForm(false)}>
           <motion.div
             initial={{ scale: 0.97, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-dark-800 border border-dark-600 rounded-2xl w-full max-w-[1400px] flex flex-col"
+            className="bg-dark-800 border border-dark-600 rounded-xl sm:rounded-2xl w-full max-w-[1400px] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b border-dark-600">
-              <div className="flex items-center gap-3">
-                <h2 className="text-xl font-bold text-white">{editing ? 'Edit Website' : 'New Website'}</h2>
-                <span className={`px-2 py-0.5 rounded text-xs ${form.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+            <div className="flex items-center justify-between p-3 sm:p-4 border-b border-dark-600">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <h2 className="text-base sm:text-xl font-bold text-white truncate">{editing ? 'Edit Website' : 'New Website'}</h2>
+                <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] sm:text-xs ${form.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                   {form.status}
                 </span>
               </div>
-              <button onClick={() => setShowForm(false)} className="p-2 text-gray-400 hover:text-white rounded hover:bg-dark-700">
+              <button onClick={() => setShowForm(false)} className="shrink-0 p-1.5 sm:p-2 text-gray-400 hover:text-white rounded hover:bg-dark-700">
                 <FiX className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 border-b border-dark-600">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 p-3 sm:p-4 border-b border-dark-600">
               <div>
                 <label className="text-xs text-gray-400 block mb-1">Title</label>
                 <input
@@ -390,8 +474,9 @@ export default function AdminWebsites() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-0 flex-1 min-h-[60vh]">
-              {/* Left: Code Editor */}
-              <div className="flex flex-col border-r border-dark-600 min-h-0">
+              {/* Left: Code Editor — gets bottom border on mobile (when stacked),
+                  right border on desktop (when side-by-side). */}
+              <div className="flex flex-col border-b md:border-b-0 md:border-r border-dark-600 min-h-[40vh] md:min-h-0">
                 <div className="flex items-center justify-between px-2 py-2 bg-dark-700/50 border-b border-dark-600">
                   <div className="flex gap-1">
                     {['html', 'css', 'js', 'head_code'].map((tab) => (
@@ -445,7 +530,7 @@ export default function AdminWebsites() {
               </div>
 
               {/* Right: Live Preview */}
-              <div className="flex flex-col">
+              <div className="flex flex-col min-h-[40vh] md:min-h-0">
                 <div className="flex items-center justify-between px-2 py-2 bg-dark-700/50 border-b border-dark-600">
                   <span className="text-xs text-gray-400 font-mono">live preview</span>
                   <button
@@ -467,27 +552,31 @@ export default function AdminWebsites() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 p-4 border-t border-dark-600">
+            <div className="flex items-center justify-end flex-wrap gap-2 p-3 sm:p-4 border-t border-dark-600">
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="px-4 py-2 text-gray-300 hover:text-white rounded-lg hover:bg-dark-700"
+                className="px-3 sm:px-4 py-2 text-gray-300 hover:text-white rounded-lg hover:bg-dark-700 text-sm"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={(e) => submit(e, false)}
-                className="px-4 py-2 bg-dark-600 text-white font-semibold rounded-lg hover:bg-dark-500 flex items-center gap-2"
+                className="px-3 sm:px-4 py-2 bg-dark-600 text-white font-semibold rounded-lg hover:bg-dark-500 flex items-center gap-2 text-sm"
               >
-                <FiCheck className="w-4 h-4" /> Save Draft
+                <FiCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Save Draft</span>
+                <span className="sm:hidden">Draft</span>
               </button>
               <button
                 type="button"
                 onClick={(e) => submit(e, true)}
-                className="px-4 py-2 bg-accent text-dark-900 font-semibold rounded-lg hover:opacity-90 flex items-center gap-2"
+                className="px-3 sm:px-4 py-2 bg-accent text-dark-900 font-semibold rounded-lg hover:opacity-90 flex items-center gap-2 text-sm"
               >
-                <FiPlay className="w-4 h-4" /> Save & Publish
+                <FiPlay className="w-4 h-4" />
+                <span className="hidden sm:inline">Save &amp; Publish</span>
+                <span className="sm:hidden">Publish</span>
               </button>
             </div>
           </motion.div>
@@ -495,21 +584,22 @@ export default function AdminWebsites() {
       )}
 
       {statsFor && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setStatsFor(null)}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4" onClick={() => setStatsFor(null)}>
           <motion.div
             initial={{ scale: 0.97, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-dark-800 border border-dark-600 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+            className="bg-dark-800 border border-dark-600 rounded-xl sm:rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b border-dark-600">
-              <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <FiBarChart2 className="w-5 h-5 text-accent" /> {statsFor.title}
+            <div className="flex items-center justify-between gap-2 p-3 sm:p-4 border-b border-dark-600 sticky top-0 bg-dark-800 z-10">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base sm:text-xl font-bold text-white flex items-center gap-2">
+                  <FiBarChart2 className="w-5 h-5 text-accent shrink-0" />
+                  <span className="truncate">{statsFor.title}</span>
                 </h2>
-                <p className="text-xs text-gray-500 mt-0.5">{statsFor.sub_domain}</p>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{statsFor.sub_domain}</p>
               </div>
-              <button onClick={() => setStatsFor(null)} className="p-2 text-gray-400 hover:text-white rounded hover:bg-dark-700">
+              <button onClick={() => setStatsFor(null)} className="shrink-0 p-2 text-gray-400 hover:text-white rounded hover:bg-dark-700">
                 <FiX className="w-5 h-5" />
               </button>
             </div>
@@ -519,19 +609,19 @@ export default function AdminWebsites() {
             ) : !stats ? (
               <div className="p-12 text-center text-gray-500">No data</div>
             ) : (
-              <div className="p-5 space-y-6">
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-dark-700/60 rounded-lg p-4">
-                    <div className="text-xs text-gray-400">Total Visits</div>
-                    <div className="text-2xl font-bold text-white mt-1">{stats.totals.visits}</div>
+              <div className="p-3 sm:p-5 space-y-5 sm:space-y-6">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                  <div className="bg-dark-700/60 rounded-lg p-3 sm:p-4">
+                    <div className="text-[10px] sm:text-xs text-gray-400">Total Visits</div>
+                    <div className="text-lg sm:text-2xl font-bold text-white mt-1">{stats.totals.visits}</div>
                   </div>
-                  <div className="bg-dark-700/60 rounded-lg p-4">
-                    <div className="text-xs text-gray-400">Total Clicks</div>
-                    <div className="text-2xl font-bold text-white mt-1">{stats.totals.clicks}</div>
+                  <div className="bg-dark-700/60 rounded-lg p-3 sm:p-4">
+                    <div className="text-[10px] sm:text-xs text-gray-400">Total Clicks</div>
+                    <div className="text-lg sm:text-2xl font-bold text-white mt-1">{stats.totals.clicks}</div>
                   </div>
-                  <div className="bg-dark-700/60 rounded-lg p-4">
-                    <div className="text-xs text-gray-400">Unique Sessions</div>
-                    <div className="text-2xl font-bold text-white mt-1">{stats.totals.uniqueSessions}</div>
+                  <div className="bg-dark-700/60 rounded-lg p-3 sm:p-4">
+                    <div className="text-[10px] sm:text-xs text-gray-400">Unique</div>
+                    <div className="text-lg sm:text-2xl font-bold text-white mt-1">{stats.totals.uniqueSessions}</div>
                   </div>
                 </div>
 
