@@ -1684,7 +1684,8 @@ function Wallet() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="!mt-0 fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center px-4 pb-4"
+            style={{ top: 0, height: '100dvh' }}
             onClick={() => setShowWithdrawModal(false)}
           >
             <motion.div

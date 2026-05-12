@@ -1,25 +1,25 @@
 const db = require('../config/database');
 const crypto = require('crypto');
 
-// PredictionService — coordinates the "pre-roll & broadcast" feature for the
-// three card games (Shuffle Card, Mutka King, UNO King).
+// PredictionService — drives the daily Telegram broadcast schedule that the
+// admin configures from the Prediction page. There are 7 fixed time slots per
+// day (default 08, 10, 12, 14, 16, 18, 20 IST). When a slot fires:
 //
-//   Switch ON  → when a round opens for that (game, card_count_type), this
-//                service pre-rolls the cards immediately (cryptographically
-//                random, same logic the game would have used) and stashes
-//                them. The game service later uses these stashed cards for
-//                that round's reveal instead of rolling fresh.
-//   Telegram ON → 5 seconds after the round opens, the pre-rolled cards are
-//                pushed to the shared Daily-Winners Telegram channel
-//                (TELEGRAM_WINNERS_CHANNEL_ID — same credentials reused for
-//                consistency) along with the admin's custom message. After
-//                each successful push, the existing SMM-panel order step
-//                from dailyWinnersService is invoked so the post immediately
-//                queues views/reactions.
+//   1. A "get ready" text message is posted to the Telegram channel.
+//   2. After `getReadyLeadSeconds`, three prediction posts are sent — one per
+//      configured pick (game + card_count_type + per-pick message), spaced
+//      `predictionSpacingSeconds` apart. Each post renders a small card image
+//      with the pre-rolled cards and a caption.
+//   3. A final trailer text is posted.
+//   4. After `winnersDelaySeconds` (default 30 min), `dailyWinnersService`
+//      generates a fresh batch of 10–15 synthetic winners and pushes their
+//      payment screenshots to the same channel.
 //
-// The pre-rolled cards are kept in-memory keyed by `round_id` until the
-// round consumes them. A `prediction_log` row is written for every push so
-// the admin can audit history.
+// All knobs live in a single `settings.prediction_schedule_config` JSON row
+// — the source of truth for the cron handlers and the admin UI.
+//
+// Predictions here are pure broadcasts: they do NOT lock the real outcome of
+// any shuffle/mutka/uno round (the per-round pre-roll/push flow was removed).
 
 const SUPPORTED_GAMES = ['shuffle_card', 'mutka_king', 'uno_king'];
 const CARD_COUNT_TYPES = [1, 2, 3, 4];
@@ -30,40 +30,35 @@ const DECK_SIZES = {
   uno_king:     54,
 };
 
-const TELEGRAM_PUSH_DELAY_MS = 5_000;
-// Master switch (settings.setting_key) — when 0, no SMM orders are placed on
-// prediction posts regardless of individual game tiles. Defaults to ON.
 const SMM_MASTER_SETTING_KEY = 'prediction_smm_enabled';
-// Master switch for the "hype" follow-up sequence (Go-Go-Go + GIF posted at
-// +5s and +10s after each prediction). Defaults to ON.
-const HYPE_MASTER_SETTING_KEY = 'prediction_hype_enabled';
+const SCHEDULE_SETTING_KEY = 'prediction_schedule_config';
 
-// Delays for follow-up hype messages, measured from when the prediction was
-// posted. With the prediction landing at T=5s after round open, hype #1
-// posts at T=10s and hype #2 at T=15s — well inside the 50s betting window.
-const HYPE_DELAYS_MS = [5_000, 10_000];
+const DEFAULT_SCHEDULE_HOURS = [8, 10, 12, 14, 16, 18, 20];
 
-// Variant text for the hype messages — picked at random so a subscriber
-// scrolling the channel doesn't see the same phrase every round.
-const HYPE_TEXTS = [
-  '🚀 <b>GO GO GO!</b>\nBets are open — place yours now!',
-  '🔥 <b>HURRY!</b>\nDon\'t miss this round!',
-  '⚡ <b>BET NOW!</b>\nThe window is closing fast.',
-  '💰 <b>LOCK IT IN!</b>\nLast chance to back the call.',
-  '🎯 <b>SECONDS LEFT!</b>\nGet your bet on the table.',
-  '🏆 <b>LET\'S GO!</b>\nFortune favors the fast.',
-  '💎 <b>WINNERS ACT NOW!</b>\nThe round is heating up.',
-];
+const DEFAULT_SCHEDULE_CONFIG = {
+  enabled: true,
+  timezone: 'Asia/Kolkata',
+  getReadyMessage: '🔔 <b>Get ready!</b>\nNext prediction batch drops in a moment.',
+  getReadyLeadSeconds: 60,
+  predictionSpacingSeconds: 8,
+  trailerMessage: '💰 <b>Don\'t miss the next round!</b>',
+  trailerDelaySeconds: 5,
+  winnersDelaySeconds: 1800,
+  winnersMinCount: 10,
+  winnersMaxCount: 15,
+  slots: DEFAULT_SCHEDULE_HOURS.map((hour, i) => ({
+    hour,
+    enabled: true,
+    picks: [
+      { game: SUPPORTED_GAMES[i % 3],       cardCountType: ((i)     % 4) + 1, message: '' },
+      { game: SUPPORTED_GAMES[(i + 1) % 3], cardCountType: ((i + 1) % 4) + 1, message: '' },
+      { game: SUPPORTED_GAMES[(i + 2) % 3], cardCountType: ((i + 2) % 4) + 1, message: '' },
+    ],
+  })),
+};
 
-// Note: we used to send external Giphy/Tenor hype GIFs via Telegram's
-// sendAnimation, but Telegram's URL fetcher rejected them inconsistently
-// ("wrong type of the web page content" / "content not available"). The
-// service now generates its own hype banner via puppeteer (see
-// _renderHypeImagePng + buildHypeImageHTML below) — deterministic, no
-// third-party CDN, always works.
-
-function pickRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, Math.max(0, ms)));
 }
 
 function secureSample(range, count) {
@@ -90,7 +85,6 @@ function formatCardsForGame(game, cards) {
       const rank = UNO_RANK_LABELS[id % 13] || '?';
       return `${color} ${rank}`;
     }
-    // shuffle/mutka — 52-card deck
     return `${RANK_LABELS[cardRank(id)]}${SUIT_SYMBOLS[cardSuit(id)]}`;
   }).join('  ');
 }
@@ -106,7 +100,7 @@ function gameLabel(game) {
 // Renders a small HTML snippet that mimics the frontend's PlayingCard /
 // UnoCard look. Puppeteer rasterizes it to PNG for the Telegram photo.
 
-const SUIT_COLOR = ['#0f172a', '#dc2626', '#dc2626', '#0f172a']; // ♣ ♦ ♥ ♠
+const SUIT_COLOR = ['#0f172a', '#dc2626', '#dc2626', '#0f172a'];
 const UNO_COLOR_HEX = ['#dc2626', '#f5c518', '#16a34a', '#2563eb'];
 const UNO_COLOR_DARK = ['#7f1d1d', '#854d0e', '#14532d', '#1e3a8a'];
 
@@ -132,7 +126,6 @@ function renderStandardCardHTML(id) {
 }
 
 function renderUnoCardHTML(id) {
-  // Wild = 52 (★), Wild +4 = 53
   if (id >= 52) {
     const label = id === 53 ? '+4' : '★';
     return `
@@ -149,7 +142,6 @@ function renderUnoCardHTML(id) {
   const r = id % 13;
   const label = UNO_RANK_LABELS[r] || '?';
   const bg = `linear-gradient(160deg, ${UNO_COLOR_HEX[c]} 0%, ${UNO_COLOR_DARK[c]} 100%)`;
-  // Top-left + bottom-right corner labels for the classic UNO look.
   return `
     <div style="position:relative;width:62px;height:88px;border-radius:8px;background:${bg};
                 box-shadow:0 6px 14px rgba(0,0,0,0.55), inset 0 0 0 2px rgba(255,255,255,0.4);
@@ -171,43 +163,6 @@ function renderCardHTML(game, id) {
   return game === 'uno_king' ? renderUnoCardHTML(id) : renderStandardCardHTML(id);
 }
 
-// Punchy "GO GO GO" banner used as a fallback when Telegram can't fetch the
-// external hype GIF (Tenor/Giphy hot-link failure, blocked region, etc.).
-// Puppeteer rasterizes this to a colorful PNG that we send via sendPhoto.
-function buildHypeImageHTML(text) {
-  // Strip HTML tags from the hype text — the image is raster, not HTML.
-  const plain = String(text || '🚀 GO GO GO!').replace(/<[^>]+>/g, '');
-  return `
-    <!DOCTYPE html>
-    <html><head><meta charset="UTF-8">
-    <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { padding: 30px 50px; display: inline-block;
-             background: radial-gradient(circle at 20% 20%, #fde047 0%, transparent 50%),
-                         radial-gradient(circle at 80% 80%, #f97316 0%, transparent 50%),
-                         linear-gradient(135deg, #dc2626 0%, #b91c1c 50%, #7f1d1d 100%);
-             font-family: 'Arial Black', 'Helvetica', sans-serif; }
-      .wrap { display: flex; flex-direction: column; align-items: center; gap: 14px;
-              min-width: 420px; padding: 24px 40px;
-              background: rgba(0,0,0,0.35);
-              border: 3px solid rgba(255,255,255,0.9);
-              border-radius: 18px;
-              box-shadow: 0 12px 32px rgba(0,0,0,0.6),
-                          inset 0 0 0 1px rgba(0,0,0,0.4); }
-      .title { color: #ffffff; font-size: 48px; font-weight: 900;
-               font-style: italic; letter-spacing: 0.04em; line-height: 1.05;
-               text-align: center; white-space: pre-line;
-               text-shadow: -3px 0 0 #1a1208, 3px 3px 0 #fbbf24,
-                            6px 6px 0 rgba(0,0,0,0.55); }
-    </style></head><body>
-      <div class="wrap">
-        <div class="title">${plain}</div>
-      </div>
-    </body></html>`;
-}
-
-// Minimal image: just the row of cards on a clean dark background. All other
-// info (period, type, custom message) goes into the Telegram caption text.
 function buildPredictionImageHTML({ game, cards }) {
   const cardsHTML = cards.map((id) => renderCardHTML(game, id)).join('');
   return `
@@ -224,26 +179,102 @@ function buildPredictionImageHTML({ game, cards }) {
     </body></html>`;
 }
 
+function isValidPick(pick) {
+  return (
+    pick &&
+    SUPPORTED_GAMES.includes(pick.game) &&
+    CARD_COUNT_TYPES.includes(parseInt(pick.cardCountType, 10))
+  );
+}
+
+function normalizeConfig(raw) {
+  const cfg = { ...DEFAULT_SCHEDULE_CONFIG, ...(raw || {}) };
+  cfg.enabled = !!cfg.enabled;
+  cfg.timezone = String(cfg.timezone || DEFAULT_SCHEDULE_CONFIG.timezone);
+  cfg.getReadyMessage = String(cfg.getReadyMessage ?? '');
+  cfg.trailerMessage  = String(cfg.trailerMessage ?? '');
+  cfg.getReadyLeadSeconds       = clampInt(cfg.getReadyLeadSeconds,       0, 3600,  DEFAULT_SCHEDULE_CONFIG.getReadyLeadSeconds);
+  cfg.predictionSpacingSeconds  = clampInt(cfg.predictionSpacingSeconds,  0, 600,   DEFAULT_SCHEDULE_CONFIG.predictionSpacingSeconds);
+  cfg.trailerDelaySeconds       = clampInt(cfg.trailerDelaySeconds,       0, 600,   DEFAULT_SCHEDULE_CONFIG.trailerDelaySeconds);
+  cfg.winnersDelaySeconds       = clampInt(cfg.winnersDelaySeconds,       0, 21600, DEFAULT_SCHEDULE_CONFIG.winnersDelaySeconds);
+  cfg.winnersMinCount = clampInt(cfg.winnersMinCount, 1, 50, DEFAULT_SCHEDULE_CONFIG.winnersMinCount);
+  cfg.winnersMaxCount = clampInt(cfg.winnersMaxCount, cfg.winnersMinCount, 100, DEFAULT_SCHEDULE_CONFIG.winnersMaxCount);
+
+  // Always materialize 7 slots so the UI has a stable shape. Defaults fill in
+  // any missing slot from DEFAULT_SCHEDULE_CONFIG.
+  const incomingSlots = Array.isArray(cfg.slots) ? cfg.slots : [];
+  cfg.slots = DEFAULT_SCHEDULE_CONFIG.slots.map((def, i) => {
+    const s = incomingSlots[i] || {};
+    const hour = clampInt(s.hour, 0, 23, def.hour);
+    const enabled = s.enabled == null ? def.enabled : !!s.enabled;
+    const picksIn = Array.isArray(s.picks) ? s.picks : [];
+    const picks = [0, 1, 2].map((j) => {
+      const p = picksIn[j] || {};
+      const defPick = def.picks[j];
+      const game = SUPPORTED_GAMES.includes(p.game) ? p.game : defPick.game;
+      const cardCountType = CARD_COUNT_TYPES.includes(parseInt(p.cardCountType, 10))
+        ? parseInt(p.cardCountType, 10) : defPick.cardCountType;
+      return {
+        game,
+        cardCountType,
+        message: typeof p.message === 'string' ? p.message : '',
+      };
+    });
+    return { hour, enabled, picks };
+  });
+
+  return cfg;
+}
+
+function clampInt(v, lo, hi, fallback) {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(lo, Math.min(hi, n));
+}
+
 class PredictionService {
   constructor() {
-    // Pre-rolled cards keyed by round_id (number) → { game, type, cards, periodId }
-    this.predictedByRoundId = new Map();
-    // Pending telegram push timers keyed by round_id → setTimeout handle
-    this.pushTimers = new Map();
-    // Cached config map "game:type" → row, refreshed on demand
-    this.configCache = null;
-    this.configCacheAt = 0;
-    // Wired in from index.js so we can place SMM orders on every prediction
-    // post (reuses placeSmmOrdersForPost from dailyWinnersService).
+    // Wired in from index.js so we can reuse the SMM-order pipeline and the
+    // puppeteer card-image render path.
     this.dailyWinnersService = null;
+    // Wired in from index.js — used at slot fire to find the next open round
+    // for each picked (game, card_count_type) so we can pre-roll its cards
+    // and broadcast the real period_id, turning the post into a sure shot.
+    this.gameServices = {
+      shuffle_card: null,
+      mutka_king:   null,
+      uno_king:     null,
+    };
+    // Round-id → pre-rolled cards. Drained by the matching game service in
+    // its _completeRound; we only keep this populated for ~60s at a time.
+    this.predictedByRoundId = new Map();
+    // Timer handles for the in-flight delayed steps of each slot run, keyed
+    // by slotIndex — cleared when stop() is called so the process can exit
+    // cleanly during dev restarts.
+    this.pendingTimers = new Map();
   }
 
   setDailyWinnersService(svc) {
     this.dailyWinnersService = svc;
   }
 
+  setGameServices({ shuffleCardService, mutkaKingService, unoKingService } = {}) {
+    if (shuffleCardService) this.gameServices.shuffle_card = shuffleCardService;
+    if (mutkaKingService)   this.gameServices.mutka_king   = mutkaKingService;
+    if (unoKingService)     this.gameServices.uno_king     = unoKingService;
+  }
+
+  // Called by the matching game service inside _completeRound. Returns the
+  // stashed cards for `roundId` (and clears them) or null if none.
+  consumeCardsForRound(roundId) {
+    if (!this.predictedByRoundId.has(roundId)) return null;
+    const cards = this.predictedByRoundId.get(roundId);
+    this.predictedByRoundId.delete(roundId);
+    return cards;
+  }
+
   // Master SMM toggle — single row in `settings` so admin can flip it once
-  // for all 12 tiles. Defaults to enabled when no row exists.
+  // for the whole module. Defaults to enabled when no row exists.
   async getSmmEnabled() {
     try {
       const [rows] = await db.pool.query(
@@ -268,179 +299,264 @@ class PredictionService {
     return !!enabled;
   }
 
-  // Master toggle for the GO-GO-GO follow-up hype sequence (5s + 10s after
-  // every prediction push). Default ON when the settings row is missing.
-  async getHypeEnabled() {
+  getDefaultScheduleConfig() {
+    return JSON.parse(JSON.stringify(DEFAULT_SCHEDULE_CONFIG));
+  }
+
+  async getScheduleConfig() {
     try {
       const [rows] = await db.pool.query(
         'SELECT setting_value FROM settings WHERE setting_key = ?',
-        [HYPE_MASTER_SETTING_KEY]
+        [SCHEDULE_SETTING_KEY]
       );
-      if (!rows.length || rows[0].setting_value == null) return true;
-      const v = String(rows[0].setting_value).toLowerCase();
-      return v === '1' || v === 'true' || v === 'on' || v === 'yes';
-    } catch (_) {
-      return true;
+      if (!rows.length || !rows[0].setting_value) {
+        return normalizeConfig(null);
+      }
+      const raw = typeof rows[0].setting_value === 'string'
+        ? JSON.parse(rows[0].setting_value)
+        : rows[0].setting_value;
+      return normalizeConfig(raw);
+    } catch (err) {
+      console.error('[PRED] getScheduleConfig parse error:', err.message);
+      return normalizeConfig(null);
     }
   }
 
-  async setHypeEnabled(enabled) {
+  async setScheduleConfig(raw) {
+    const cfg = normalizeConfig(raw);
     await db.pool.query(
       `INSERT INTO settings (setting_key, setting_value, description)
-       VALUES (?, ?, 'Master switch: send Go-Go-Go hype GIFs after each prediction')
+       VALUES (?, ?, 'Prediction Module daily Telegram broadcast schedule')
        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-      [HYPE_MASTER_SETTING_KEY, enabled ? '1' : '0']
+      [SCHEDULE_SETTING_KEY, JSON.stringify(cfg)]
     );
-    return !!enabled;
+    return cfg;
   }
 
-  async _loadConfigs(force = false) {
-    const now = Date.now();
-    // Cache configs for 1s so a burst of rounds opening doesn't hammer the DB
-    if (!force && this.configCache && (now - this.configCacheAt) < 1000) {
-      return this.configCache;
+  // Entry point for the cron handlers. slotIndex is 0..6.
+  async runScheduledSlot(slotIndex, { manual = false } = {}) {
+    const cfg = await this.getScheduleConfig();
+    if (!cfg.enabled) {
+      console.log(`[PRED] Slot ${slotIndex + 1} skipped — master schedule disabled`);
+      return { skipped: true, reason: 'master_disabled' };
     }
-    const [rows] = await db.pool.query(
-      `SELECT id, game, card_count_type, enabled, telegram_enabled, telegram_message
-         FROM prediction_configs`
-    );
-    const map = new Map();
-    for (const r of rows) {
-      map.set(`${r.game}:${r.card_count_type}`, {
-        id: r.id,
-        game: r.game,
-        cardCountType: r.card_count_type,
-        enabled: !!r.enabled,
-        telegramEnabled: !!r.telegram_enabled,
-        telegramMessage: r.telegram_message || '',
-      });
+    const slot = cfg.slots[slotIndex];
+    if (!slot) {
+      console.warn(`[PRED] Slot ${slotIndex + 1} skipped — slot config missing`);
+      return { skipped: true, reason: 'no_slot' };
     }
-    this.configCache = map;
-    this.configCacheAt = now;
-    return map;
-  }
-
-  async getConfigs() {
-    const map = await this._loadConfigs(true);
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.game !== b.game) return SUPPORTED_GAMES.indexOf(a.game) - SUPPORTED_GAMES.indexOf(b.game);
-      return a.cardCountType - b.cardCountType;
-    });
-  }
-
-  async updateConfig(game, cardCountType, { enabled, telegramEnabled, telegramMessage }) {
-    if (!SUPPORTED_GAMES.includes(game)) throw new Error(`Unsupported game "${game}"`);
-    if (!CARD_COUNT_TYPES.includes(cardCountType)) throw new Error('card_count_type must be 1, 2, 3, or 4');
-
-    await db.pool.query(
-      `INSERT INTO prediction_configs (game, card_count_type, enabled, telegram_enabled, telegram_message)
-       VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         enabled = VALUES(enabled),
-         telegram_enabled = VALUES(telegram_enabled),
-         telegram_message = VALUES(telegram_message)`,
-      [
-        game,
-        cardCountType,
-        enabled ? 1 : 0,
-        telegramEnabled ? 1 : 0,
-        telegramMessage || null,
-      ]
-    );
-    // Invalidate cache so the next round open sees the new toggle.
-    this.configCache = null;
-    return { game, cardCountType, enabled: !!enabled, telegramEnabled: !!telegramEnabled, telegramMessage: telegramMessage || '' };
-  }
-
-  // Called by a game service when a round has just opened. If the matching
-  // config has `enabled=true`, this pre-rolls the cards immediately, returns
-  // them so the game service can stash them on the in-memory round, and (if
-  // telegram is enabled) schedules the 5s-after-open broadcast.
-  async preGenerateForRound({ game, cardCountType, roundId, periodId }) {
-    if (!SUPPORTED_GAMES.includes(game)) return null;
-    if (!CARD_COUNT_TYPES.includes(cardCountType)) return null;
-
-    const configs = await this._loadConfigs();
-    const cfg = configs.get(`${game}:${cardCountType}`);
-    if (!cfg || !cfg.enabled) return null;
-
-    const deckSize = DECK_SIZES[game];
-    const cards = secureSample(deckSize, cardCountType);
-
-    this.predictedByRoundId.set(roundId, { game, cardCountType, periodId, cards });
-
-    // Log the pre-roll (telegram_pushed will be flipped to 1 when push succeeds)
-    let logId = null;
-    try {
-      const [res] = await db.pool.query(
-        `INSERT INTO prediction_log (game, card_count_type, round_id, period_id, predicted_cards, telegram_pushed)
-         VALUES (?, ?, ?, ?, ?, 0)`,
-        [game, cardCountType, roundId, periodId, JSON.stringify(cards)]
-      );
-      logId = res.insertId;
-    } catch (err) {
-      console.error('[PRED] Failed to write prediction_log:', err.message);
+    if (!slot.enabled) {
+      console.log(`[PRED] Slot ${slotIndex + 1} (${slot.hour}:00) skipped — slot disabled`);
+      return { skipped: true, reason: 'slot_disabled' };
     }
 
-    if (cfg.telegramEnabled) {
-      this._schedulePush({
-        roundId,
-        game,
-        cardCountType,
-        periodId,
-        cards,
-        customMessage: cfg.telegramMessage,
-        logId,
-      });
+    const validPicks = (slot.picks || []).filter(isValidPick);
+    if (!validPicks.length) {
+      console.warn(`[PRED] Slot ${slotIndex + 1} has no valid picks — nothing to broadcast`);
+      return { skipped: true, reason: 'no_picks' };
     }
 
-    console.log(
-      `[PRED] Pre-rolled ${game}/${cardCountType} round ${periodId} → cards=[${cards.join(',')}]` +
-      (cfg.telegramEnabled ? ` (telegram push scheduled in ${TELEGRAM_PUSH_DELAY_MS}ms)` : '')
-    );
-
-    return cards;
-  }
-
-  // Called by the game service inside _completeRound. If we pre-rolled this
-  // round, returns the cached cards (and clears them). Returns null otherwise.
-  consumeCardsForRound(roundId) {
-    const entry = this.predictedByRoundId.get(roundId);
-    if (!entry) return null;
-    this.predictedByRoundId.delete(roundId);
-    return entry.cards;
-  }
-
-  _schedulePush({ roundId, game, cardCountType, periodId, cards, customMessage, logId }) {
-    // Clear any duplicate timer for the same round (shouldn't happen but
-    // defensive against pre-roll being called twice).
-    const existing = this.pushTimers.get(roundId);
-    if (existing) clearTimeout(existing);
-
-    const handle = setTimeout(async () => {
-      this.pushTimers.delete(roundId);
-      try {
-        await this._sendToTelegram({ game, cardCountType, periodId, cards, customMessage, logId });
-      } catch (err) {
-        console.error('[PRED] Telegram push failed:', err.message);
-        if (logId) {
-          db.pool
-            .query('UPDATE prediction_log SET telegram_error = ? WHERE id = ?', [err.message, logId])
-            .catch(() => {});
-        }
-      }
-    }, TELEGRAM_PUSH_DELAY_MS);
-    this.pushTimers.set(roundId, handle);
-  }
-
-  async _sendToTelegram({ game, cardCountType, periodId, cards, customMessage, logId }) {
-    // Reuse the Daily Winners credentials so the same bot + channel posts
-    // both predictions and winner broadcasts. No separate env var.
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_WINNERS_CHANNEL_ID;
     if (!token || !chatId) {
-      throw new Error('Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_WINNERS_CHANNEL_ID missing)');
+      console.warn('[PRED] Telegram not configured — slot run aborted');
+      return { skipped: true, reason: 'no_telegram' };
     }
+
+    const label = `slot ${slotIndex + 1} (${String(slot.hour).padStart(2, '0')}:00)${manual ? ' [manual]' : ''}`;
+    const startedAt = Date.now();
+    console.log(`[PRED] Running ${label} — ${validPicks.length} picks, get-ready lead ${cfg.getReadyLeadSeconds}s, spacing ${cfg.predictionSpacingSeconds}s`);
+
+    // Step 1: get-ready text (best-effort, doesn't abort the run)
+    if (cfg.getReadyMessage) {
+      try {
+        await this._sendTelegramText({ token, chatId, text: cfg.getReadyMessage });
+      } catch (err) {
+        console.error(`[PRED] ${label} get-ready send failed:`, err.message);
+      }
+    }
+
+    // Step 2: wait the lead time, then post each pick
+    if (cfg.getReadyLeadSeconds > 0) {
+      await sleep(cfg.getReadyLeadSeconds * 1000);
+    }
+
+    let pushed = 0;
+    for (let i = 0; i < validPicks.length; i++) {
+      const pick = validPicks[i];
+      let lockedRound = null;
+      try {
+        lockedRound = await this._sendPredictionPost({
+          token,
+          chatId,
+          game: pick.game,
+          cardCountType: pick.cardCountType,
+          message: pick.message || '',
+          slotHour: slot.hour,
+        });
+        pushed++;
+      } catch (err) {
+        console.error(`[PRED] ${label} pick ${i + 1} (${pick.game}/${pick.cardCountType}) failed:`, err.message);
+      }
+
+      // Between predictions: first wait for the locked round to complete so
+      // subscribers see the result of pick #N before pick #N+1 lands. If no
+      // real round was locked (fallback path), just use the spacing.
+      if (i < validPicks.length - 1) {
+        if (lockedRound && lockedRound.completeAt) {
+          const waitMs = Math.max(0, new Date(lockedRound.completeAt).getTime() - Date.now());
+          if (waitMs > 0) {
+            console.log(`[PRED] ${label} waiting ${Math.round(waitMs / 1000)}s for round ${lockedRound.roundId} (${lockedRound.periodId}) to complete before pick ${i + 2}`);
+            await sleep(waitMs);
+          }
+        }
+        if (cfg.predictionSpacingSeconds > 0) {
+          await sleep(cfg.predictionSpacingSeconds * 1000);
+        }
+      }
+    }
+
+    // Step 3: schedule the 30-min winners-screenshot batch, then the trailer
+    // text is sent at the very end (after the last payment screenshot lands).
+    if (this.dailyWinnersService && cfg.winnersDelaySeconds >= 0 && cfg.winnersMaxCount > 0) {
+      const delay = cfg.winnersDelaySeconds * 1000;
+      console.log(`[PRED] ${label} winners batch scheduled in ${cfg.winnersDelaySeconds}s (${cfg.winnersMinCount}-${cfg.winnersMaxCount} screenshots)`);
+      this._setSlotTimer(slotIndex, 'winners', delay, async () => {
+        // Re-read config inside the timeout so admin edits to trailerMessage
+        // or trailerDelaySeconds made during the 30-min wait apply.
+        let liveCfg = cfg;
+        try { liveCfg = await this.getScheduleConfig(); } catch (_) {}
+
+        console.log(`[PRED] ${label} winners batch firing`);
+        try {
+          const result = await this.dailyWinnersService.sendSyntheticWinnersBatch({
+            minCount: liveCfg.winnersMinCount,
+            maxCount: liveCfg.winnersMaxCount,
+            tag: `slot${slotIndex + 1}_${String(slot.hour).padStart(2, '0')}`,
+          });
+          console.log(`[PRED] ${label} winners batch done: ${result.screenshotsSent}/${result.winnersCount} screenshots, ${result.smmOrdersPlaced} SMM`);
+        } catch (err) {
+          console.error(`[PRED] ${label} winners batch failed:`, err.message);
+        }
+
+        await this._sendTrailer(label, token, chatId, liveCfg);
+      });
+    } else {
+      // No winners batch configured — still send the trailer (if set) after
+      // the configured delay so the slot ends with the closing message.
+      await this._sendTrailer(label, token, chatId, cfg);
+    }
+
+    console.log(`[PRED] ${label} finished in ${Date.now() - startedAt}ms — ${pushed}/${validPicks.length} predictions pushed`);
+    return { skipped: false, slotIndex, hour: slot.hour, pushed, total: validPicks.length };
+  }
+
+  // Admin "Test now" button — fire one slot immediately, regardless of schedule.
+  async triggerSlotNow(slotIndex) {
+    const idx = parseInt(slotIndex, 10);
+    if (!Number.isFinite(idx) || idx < 0 || idx > 6) {
+      throw new Error('slotIndex must be between 0 and 6');
+    }
+    return this.runScheduledSlot(idx, { manual: true });
+  }
+
+  _setSlotTimer(slotIndex, key, ms, fn) {
+    if (!this.pendingTimers.has(slotIndex)) this.pendingTimers.set(slotIndex, {});
+    const handles = this.pendingTimers.get(slotIndex);
+    clearTimeout(handles[key]);
+    handles[key] = setTimeout(async () => {
+      try { await fn(); }
+      finally { delete handles[key]; }
+    }, ms);
+  }
+
+  // Trailer is sent at the very end of a slot — after the winners batch
+  // (or right after the predictions if there's no winners step). Pulled into
+  // a helper so both branches share the same delay + retry behavior and so a
+  // failure here can't silently swallow the closing message.
+  async _sendTrailer(label, token, chatId, cfg) {
+    if (!cfg?.trailerMessage) {
+      console.log(`[PRED] ${label} no trailer message configured — skipping trailer`);
+      return;
+    }
+    const delay = Math.max(0, parseInt(cfg.trailerDelaySeconds, 10) || 0);
+    if (delay > 0) {
+      console.log(`[PRED] ${label} trailer scheduled in ${delay}s`);
+      await sleep(delay * 1000);
+    }
+    try {
+      await this._sendTelegramText({ token, chatId, text: cfg.trailerMessage });
+      console.log(`[PRED] ${label} trailer sent`);
+    } catch (err) {
+      console.error(`[PRED] ${label} trailer send failed:`, err.message);
+    }
+  }
+
+  async _sendTelegramText({ token, chatId, text }, { maxRetries = 3 } = {}) {
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+        }),
+      });
+      const body = await res.text();
+      if (res.ok) return body;
+      // 429 = flood-wait; respect Telegram's retry_after then try again.
+      if (res.status === 429 && attempt < maxRetries) {
+        let retryAfter = 1;
+        try {
+          const parsed = JSON.parse(body);
+          retryAfter = parsed.parameters?.retry_after || parsed.retry_after || 1;
+        } catch (_) {}
+        const waitMs = (Number(retryAfter) + 1) * 1000;
+        console.warn(`[PRED] Telegram 429 — sleeping ${waitMs}ms and retrying (${attempt}/${maxRetries})`);
+        await sleep(waitMs);
+        continue;
+      }
+      throw new Error(`Telegram sendMessage ${res.status}: ${body.slice(0, 200)}`);
+    }
+    throw new Error(`Telegram sendMessage failed after ${maxRetries} attempts`);
+  }
+
+  async _sendPredictionPost({ token, chatId, game, cardCountType, message, slotHour }) {
+    const deckSize = DECK_SIZES[game];
+    if (!deckSize) throw new Error(`Unsupported game "${game}"`);
+    const cards = secureSample(deckSize, cardCountType);
+
+    // Try to lock this prediction to the next real round so the game's reveal
+    // matches what we broadcast. Only valid while the round is still in
+    // `betting` — if it's already locked/completed the game won't pick our
+    // cards up and the broadcast falls back to a synthetic period id.
+    let roundId = 0;
+    let periodId = `SCHED-${String(slotHour).padStart(2, '0')}-${Date.now()}`;
+    let lockedRound = null;
+
+    const svc = this.gameServices[game];
+    if (svc && typeof svc.getCurrentRound === 'function') {
+      const round = svc.getCurrentRound(cardCountType);
+      if (round && round.status === 'betting') {
+        roundId = round.id;
+        periodId = round.periodId;
+        this.predictedByRoundId.set(round.id, cards);
+        lockedRound = round;
+        console.log(`[PRED] Locked ${game}/${cardCountType} → round ${round.id} (${round.periodId}), completes at ${round.completeAt}`);
+      } else {
+        console.warn(`[PRED] No betting round for ${game}/${cardCountType} — broadcasting synthetic prediction`);
+      }
+    }
+
+    const [logRes] = await db.pool.query(
+      `INSERT INTO prediction_log (game, card_count_type, round_id, period_id, predicted_cards, telegram_pushed)
+       VALUES (?, ?, ?, ?, ?, 0)`,
+      [game, cardCountType, roundId, periodId, JSON.stringify(cards)]
+    );
+    const logId = logRes.insertId;
 
     const cardsLine = formatCardsForGame(game, cards);
     const header =
@@ -448,12 +564,9 @@ class PredictionService {
       `<b>Single - (${cardCountType}C)</b>\n` +
       `Period: <b>${periodId}</b>\n` +
       `Cards: <b>${cardsLine}</b>`;
-    const body = customMessage ? `\n\n${customMessage}` : '';
+    const body = message ? `\n\n${message}` : '';
     const text = header + body;
 
-    // Try to render a small card-graphic PNG and send via sendPhoto so the
-    // Telegram post shows the actual cards. Falls back to plain sendMessage
-    // if puppeteer isn't available or anything in the render step throws.
     let png = null;
     if (this.dailyWinnersService) {
       try {
@@ -474,7 +587,11 @@ class PredictionService {
       form.append('photo', new Blob([png], { type: 'image/png' }), 'prediction.png');
       res = await fetch(url, { method: 'POST', body: form });
       respText = await res.text();
-      if (!res.ok) throw new Error(`Telegram sendPhoto ${res.status}: ${respText}`);
+      if (!res.ok) {
+        await db.pool.query('UPDATE prediction_log SET telegram_error = ? WHERE id = ?',
+          [`sendPhoto ${res.status}: ${respText.slice(0, 200)}`, logId]).catch(() => {});
+        throw new Error(`Telegram sendPhoto ${res.status}: ${respText.slice(0, 200)}`);
+      }
     } else {
       const url = `https://api.telegram.org/bot${token}/sendMessage`;
       res = await fetch(url, {
@@ -488,7 +605,11 @@ class PredictionService {
         }),
       });
       respText = await res.text();
-      if (!res.ok) throw new Error(`Telegram sendMessage ${res.status}: ${respText}`);
+      if (!res.ok) {
+        await db.pool.query('UPDATE prediction_log SET telegram_error = ? WHERE id = ?',
+          [`sendMessage ${res.status}: ${respText.slice(0, 200)}`, logId]).catch(() => {});
+        throw new Error(`Telegram sendMessage ${res.status}: ${respText.slice(0, 200)}`);
+      }
     }
 
     let messageId = null;
@@ -507,29 +628,18 @@ class PredictionService {
       }
     } catch (_) { /* non-JSON body */ }
 
-    console.log(`[PRED] Telegram pushed ${game}/${cardCountType} period ${periodId}${postUrl ? ` → ${postUrl}` : ''}`);
+    await db.pool.query(
+      `UPDATE prediction_log
+          SET telegram_pushed = 1,
+              telegram_message_id = ?,
+              telegram_post_url = ?,
+              pushed_at = NOW()
+        WHERE id = ?`,
+      [messageId, postUrl, logId]
+    ).catch(() => {});
 
-    if (logId) {
-      db.pool
-        .query(
-          `UPDATE prediction_log
-              SET telegram_pushed = 1,
-                  telegram_message_id = ?,
-                  telegram_post_url = ?,
-                  pushed_at = NOW()
-            WHERE id = ?`,
-          [messageId, postUrl, logId]
-        )
-        .catch(() => {});
-    }
+    console.log(`[PRED] Pushed ${game}/${cardCountType} ${periodId}${postUrl ? ` → ${postUrl}` : ''}`);
 
-    // After every successful Telegram push, queue SMM orders (views/reactions)
-    // for the post — same logic Daily Winners uses, reused via the wired
-    // dailyWinnersService reference. Gated by:
-    //   1. The master switch (settings.prediction_smm_enabled).
-    //   2. dailyWinnersService being wired in.
-    //   3. A usable postUrl having been derived.
-    //   4. The Daily Winners SMM panel config (apiKey, services, etc.).
     if (this.dailyWinnersService && postUrl) {
       const masterOn = await this.getSmmEnabled();
       if (!masterOn) {
@@ -547,101 +657,22 @@ class PredictionService {
       }
     }
 
-    // Hype follow-up sequence — GO-GO-GO messages with random GIFs at
-    // +5s and +10s after the prediction send. Each one is fire-and-forget so
-    // it never blocks the round flow. Gated by the master toggle.
-    const hypeOn = await this.getHypeEnabled();
-    if (hypeOn) {
-      for (const delay of HYPE_DELAYS_MS) {
-        setTimeout(() => {
-          this._sendHypeMessage({ token, chatId, game, cardCountType, periodId })
-            .catch(err => console.error('[PRED] Hype send failed:', err.message));
-        }, delay);
-      }
-      console.log(`[PRED] Hype sequence scheduled (+${HYPE_DELAYS_MS.join('ms +')}ms)`);
-    }
+    return {
+      logId,
+      messageId,
+      postUrl,
+      roundId,
+      periodId,
+      completeAt: lockedRound?.completeAt || null,
+    };
   }
 
-  // Hype delivery: we generate the image ourselves via puppeteer so the
-  // result is deterministic and doesn't depend on third-party CDNs (Giphy /
-  // Tenor URLs were being rejected by Telegram with "content not available"
-  // and "wrong type"). Falls back to plain text only if puppeteer fails.
-  async _sendHypeMessage({ token, chatId, game, cardCountType, periodId }) {
-    const text = pickRandom(HYPE_TEXTS);
-
-    // ── Primary: puppeteer-rendered hype banner via sendPhoto ──
-    if (this.dailyWinnersService) {
-      try {
-        const png = await this._renderHypeImagePng(text);
-        const form = new FormData();
-        form.append('chat_id', chatId);
-        form.append('caption', text);
-        form.append('parse_mode', 'HTML');
-        form.append('photo', new Blob([png], { type: 'image/png' }), 'hype.png');
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-          method: 'POST',
-          body: form,
-        });
-        if (res.ok) {
-          console.log(`[PRED] Hype image sent (${game}/${cardCountType} ${periodId})`);
-          return;
-        }
-        const body = await res.text();
-        console.warn(`[PRED] Hype sendPhoto ${res.status}: ${body.slice(0, 200)} — falling back to text.`);
-      } catch (err) {
-        console.warn('[PRED] Hype image render/send threw:', err.message, '— falling back to text.');
-      }
-    }
-
-    // ── Fallback: plain sendMessage ──
-    const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Telegram sendMessage ${res.status}: ${body.slice(0, 200)}`);
-    }
-    console.log(`[PRED] Hype text sent (${game}/${cardCountType} ${periodId})`);
-  }
-
-  // Puppeteer-renders a "GO GO GO" banner via the existing dailyWinnersService
-  // pipeline. Returns a PNG buffer; throws if puppeteer or the helper isn't
-  // available (caller catches and falls through to text).
-  async _renderHypeImagePng(text) {
-    if (!this.dailyWinnersService) throw new Error('dailyWinnersService not wired');
-    const html = buildHypeImageHTML(text);
-    const log = { info: () => {}, warn: () => {}, error: () => {} };
-    const browser = await this.dailyWinnersService.launchBrowser(log);
-    try {
-      return await this.dailyWinnersService.renderHtmlToPng(browser, html, {
-        width: 600,
-        height: 260,
-        mode: 'body',
-      });
-    } finally {
-      try { await browser.close(); } catch (_) {}
-    }
-  }
-
-  // Launch headless Chromium (via dailyWinnersService's helper) and rasterize
-  // the prediction-card HTML to a small PNG suitable for a Telegram photo.
-  // Returns a Buffer or throws on any puppeteer failure.
   async _renderCardsPng({ game, cardCountType, periodId, cards }) {
     if (!this.dailyWinnersService) throw new Error('dailyWinnersService not wired');
     const html = buildPredictionImageHTML({ game, cards });
     const log = this._createSmmLogger(game, cardCountType, periodId);
     const browser = await this.dailyWinnersService.launchBrowser(log);
     try {
-      // mode='body' lets the rendered image auto-size to the card row.
-      // Width covers up to 4 cards (62px each) + 3 gaps (8px) + 16px padding × 2.
       return await this.dailyWinnersService.renderHtmlToPng(browser, html, {
         width: 320,
         height: 140,
@@ -652,8 +683,6 @@ class PredictionService {
     }
   }
 
-  // Minimal logger shim so placeSmmOrdersForPost (which expects info/warn/error
-  // callbacks) gets a compatible object that prefixes our [PRED] tag.
   _createSmmLogger(game, type, periodId) {
     const prefix = `[PRED/${game}/${type} ${periodId}]`;
     return {
@@ -701,9 +730,10 @@ class PredictionService {
   }
 
   stop() {
-    for (const t of this.pushTimers.values()) clearTimeout(t);
-    this.pushTimers.clear();
-    this.predictedByRoundId.clear();
+    for (const handles of this.pendingTimers.values()) {
+      for (const k of Object.keys(handles)) clearTimeout(handles[k]);
+    }
+    this.pendingTimers.clear();
   }
 }
 

@@ -58,8 +58,9 @@ function secureSample(range, count) {
 class ShuffleCardService {
   constructor(io) {
     this.io = io;
-    // Wire-up done by index.js after construction so the round loop can ask
-    // the prediction service whether a round should use pre-rolled cards.
+    // Optional — when wired, the prediction module can stash pre-rolled cards
+    // by round.id and `_completeRound` will use them so the broadcasted
+    // prediction matches what the game actually reveals.
     this.predictionService = null;
     // Map<type, { id, periodId, status, startedAt, lockedAt, completeAt }>
     this.currentRounds = new Map();
@@ -68,8 +69,15 @@ class ShuffleCardService {
     this.running = false;
   }
 
-  setPredictionService(predictionService) {
-    this.predictionService = predictionService;
+  setPredictionService(svc) {
+    this.predictionService = svc;
+  }
+
+  // Public accessor used by predictionService.runScheduledSlot to find the
+  // currently-open round per type so its cards can be locked-in before the
+  // broadcast goes out.
+  getCurrentRound(type) {
+    return this.currentRounds.get(type) || null;
   }
 
   async start() {
@@ -167,15 +175,6 @@ class ShuffleCardService {
 
       console.log(`[SHUFFLE/${type}] Round opened ${periodId} (id=${result.insertId})`);
 
-      // Ask the prediction service if this round should use pre-rolled cards
-      // (admin's switch). If so, it stashes the cards keyed by round.id and
-      // schedules the 5s Telegram broadcast.
-      if (this.predictionService) {
-        this.predictionService
-          .preGenerateForRound({ game: 'shuffle_card', cardCountType: type, roundId: round.id, periodId })
-          .catch(err => console.error(`[SHUFFLE/${type}] preGenerateForRound error:`, err.message));
-      }
-
       if (this.io) {
         this.io.emit('shuffle:round:open', this._publicRoundState(type));
       }
@@ -220,8 +219,8 @@ class ShuffleCardService {
 
     try {
       // Each type draws exactly `type` cards from a 52-card deck. If the
-      // prediction service pre-rolled cards for this round (admin switch on),
-      // use those instead so they match the Telegram broadcast.
+      // prediction module stashed pre-rolled cards for this round at slot
+      // fire, use those so the reveal matches what was broadcast.
       let cards = this.predictionService?.consumeCardsForRound(round.id) || null;
       if (!cards || cards.length !== type) cards = secureSample(52, type);
       const cardSet = new Set(cards);

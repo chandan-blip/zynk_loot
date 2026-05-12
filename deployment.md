@@ -83,3 +83,6 @@ Other useful PM2 commands:
 pm2 status # check if backend is running
 pm2 restart loot-backend # restart after code changes
 pm2 monit # live CPU/memory monitor
+
+https://api.telegram.org/bot8357951833:AAH8waKoTRHvfBd68osFVEFArKEHWIQi8o0/getUpdates
+for recent tele bot - 

@@ -53,8 +53,12 @@ class MutkaKingService {
     this.running = false;
   }
 
-  setPredictionService(predictionService) {
-    this.predictionService = predictionService;
+  setPredictionService(svc) {
+    this.predictionService = svc;
+  }
+
+  getCurrentRound(type) {
+    return this.currentRounds.get(type) || null;
   }
 
   async start() {
@@ -145,12 +149,6 @@ class MutkaKingService {
 
       console.log(`[MUTKA/${type}] Round opened ${periodId} (id=${result.insertId})`);
 
-      if (this.predictionService) {
-        this.predictionService
-          .preGenerateForRound({ game: 'mutka_king', cardCountType: type, roundId: round.id, periodId })
-          .catch(err => console.error(`[MUTKA/${type}] preGenerateForRound error:`, err.message));
-      }
-
       if (this.io) this.io.emit('mutka:round:open', this._publicRoundState(type));
 
       this._setTimer(type, 'lock', BETTING_PHASE_MS, () =>
@@ -192,7 +190,6 @@ class MutkaKingService {
     if (!round) return;
 
     try {
-      // Use prediction-service pre-rolled cards if present (admin switch on).
       let cards = this.predictionService?.consumeCardsForRound(round.id) || null;
       if (!cards || cards.length !== type) cards = secureSample(52, type);
       const cardSet = new Set(cards);

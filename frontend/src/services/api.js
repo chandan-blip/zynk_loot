@@ -165,8 +165,11 @@ export const approveAllDrawWinners = (periodId) => api.post(`/admin/draws/${peri
 // Admin Daily Winners (synthetic display winners + Telegram broadcast)
 export const getAdminDailyWinners = (limit = 20) => api.get(`/admin/daily-winners?limit=${limit}`);
 export const getAdminDailyWinnersByDraw = (drawId) => api.get(`/admin/daily-winners/${drawId}`);
-export const triggerDailyWinners = (drawId = null) =>
-  api.post('/admin/daily-winners/trigger', drawId ? { drawId } : {});
+export const triggerDailyWinners = ({ minCount, maxCount } = {}) =>
+  api.post('/admin/daily-winners/trigger', {
+    ...(minCount != null ? { minCount } : {}),
+    ...(maxCount != null ? { maxCount } : {}),
+  });
 export const getDailyWinnersTemplate = () => api.get('/admin/daily-winners/template');
 export const saveDailyWinnersTemplate = (template) =>
   api.put('/admin/daily-winners/template', { template });
@@ -189,15 +192,14 @@ export const testTelegramMessage = (text, placeSmmOrders = true) =>
   api.post('/admin/daily-winners/test-telegram', { text, placeSmmOrders });
 
 // Prediction admin module
-export const getPredictionConfigs = () => api.get('/admin/predictions/configs');
-export const updatePredictionConfig = (config) =>
-  api.put('/admin/predictions/configs', config);
+export const getPredictionSchedule = () => api.get('/admin/predictions/schedule');
+export const updatePredictionSchedule = (config) =>
+  api.put('/admin/predictions/schedule', { config });
+export const testPredictionSlot = (slotIndex) =>
+  api.post(`/admin/predictions/schedule/test/${slotIndex}`);
 export const getPredictionSmmMaster = () => api.get('/admin/predictions/smm-master');
 export const setPredictionSmmMaster = (enabled) =>
   api.put('/admin/predictions/smm-master', { enabled });
-export const getPredictionHypeMaster = () => api.get('/admin/predictions/hype-master');
-export const setPredictionHypeMaster = (enabled) =>
-  api.put('/admin/predictions/hype-master', { enabled });
 export const getPredictionLog = (game = null, cardCountType = null, limit = 50) => {
   const params = new URLSearchParams();
   if (game) params.set('game', game);

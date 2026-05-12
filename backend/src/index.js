@@ -43,6 +43,7 @@ const gameRoutes = require('./routes/games');
 const notificationRoutes = require('./routes/notifications');
 const TrackingService = require('./services/trackingService');
 const DailyWinnersService = require('./services/dailyWinnersService');
+const TelegramDashService = require('./services/telegramDashService');
 const trackingRoutes = require('./routes/tracking');
 const websiteTrackingRoutes = require('./routes/websiteTracking');
 const enrollRoutes = require('./routes/enroll');
@@ -99,15 +100,19 @@ const shuffleCardService = new ShuffleCardService(io);
 const mutkaKingService = new MutkaKingService(io);
 const unoKingService = new UnoKingService(io);
 const predictionService = new PredictionService();
-// Hook prediction into the three card games so pre-rolled cards (when the
-// admin's switch is on) are used at reveal time and broadcast to Telegram.
+// Two-way wire so scheduled predictions can pre-roll the next real round of
+// each picked (game, card-count): predictionService asks the game for its
+// current round, and the game asks predictionService whether cards were
+// pre-rolled when it completes.
 shuffleCardService.setPredictionService(predictionService);
 mutkaKingService.setPredictionService(predictionService);
 unoKingService.setPredictionService(predictionService);
+predictionService.setGameServices({ shuffleCardService, mutkaKingService, unoKingService });
 const notificationService = new NotificationService(io);
 const bonusService = new BonusService();
 const trackingService = new TrackingService(io);
 const dailyWinnersService = new DailyWinnersService();
+const telegramDashService = new TelegramDashService();
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -118,9 +123,13 @@ cronService.setInvestService(investService);
 cronService.setTrackingService(trackingService);
 cronService.setDailyWinnersService(dailyWinnersService);
 // Reuse Daily Winners' SMM-panel order pipeline on every prediction Telegram
-// push (views/reactions go up automatically right after each broadcast).
-// Must come after dailyWinnersService is declared above.
+// push and let the prediction module trigger the 30-min winners screenshot
+// batch via dailyWinnersService.sendSyntheticWinnersBatch. Must come after
+// dailyWinnersService is declared above.
 predictionService.setDailyWinnersService(dailyWinnersService);
+// Cron handlers (one per slot) read schedule config and dispatch to
+// predictionService.runScheduledSlot.
+cronService.setPredictionService(predictionService);
 
 app.set('ticketService', ticketService);
 app.set('lotteryService', lotteryService);
@@ -138,6 +147,7 @@ app.set('notificationService', notificationService);
 app.set('bonusService', bonusService);
 app.set('trackingService', trackingService);
 app.set('dailyWinnersService', dailyWinnersService);
+app.set('telegramDashService', telegramDashService);
 app.set('io', io);
 
 // Socket authentication middleware

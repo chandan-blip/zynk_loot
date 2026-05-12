@@ -1246,9 +1246,11 @@ router.get('/daily-winners/:drawId', async (req, res) => {
   }
 });
 
-// Manually trigger the daily winners service.
-// Inserts 10–15 synthetic rows, renders the PNG card, pushes it to Telegram,
-// and returns full structured logs so the admin UI can display them.
+// Manually trigger a standalone synthetic-winners batch (no draw needed).
+// Inserts 10–15 synthetic rows with draw_id = NULL, renders one payment
+// screenshot per winner, pushes them to Telegram, follows with the prediction
+// schedule's trailer message (after trailerDelaySeconds), and returns
+// structured logs so the admin UI can display them.
 router.post('/daily-winners/trigger', async (req, res) => {
   try {
     const dailyWinnersService = req.app.get('dailyWinnersService');
@@ -1256,29 +1258,33 @@ router.post('/daily-winners/trigger', async (req, res) => {
       return res.status(500).json({ success: false, message: 'dailyWinnersService not available' });
     }
 
-    let draw;
-    if (req.body && req.body.drawId) {
-      const [rows] = await db.pool.query('SELECT * FROM daily_draws WHERE id = ?', [req.body.drawId]);
-      if (rows.length === 0) {
-        return res.status(404).json({ success: false, message: 'Draw not found' });
-      }
-      draw = rows[0];
-    } else {
-      const [rows] = await db.pool.query(
-        `SELECT * FROM daily_draws ORDER BY created_at DESC LIMIT 1`
-      );
-      if (rows.length === 0) {
-        return res.status(404).json({ success: false, message: 'No draws found' });
-      }
-      draw = rows[0];
-    }
+    const { minCount, maxCount } = req.body || {};
+    const result = await dailyWinnersService.sendSyntheticWinnersBatch({
+      ...(minCount != null ? { minCount: parseInt(minCount, 10) } : {}),
+      ...(maxCount != null ? { maxCount: parseInt(maxCount, 10) } : {}),
+      tag: 'manual',
+    });
 
-    const result = await dailyWinnersService.processDrawComplete(draw);
+    // After the screenshots, send the trailer message (same config the
+    // scheduled slots use) so the manual run ends like a scheduled run.
+    const predictionService = req.app.get('predictionService');
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_WINNERS_CHANNEL_ID;
+    if (predictionService && token && chatId) {
+      try {
+        const cfg = await predictionService.getScheduleConfig();
+        await predictionService._sendTrailer('[manual]', token, chatId, cfg);
+      } catch (err) {
+        console.error('Manual trailer send failed:', err.message);
+        result.logs = result.logs || [];
+        result.logs.push({ ts: new Date().toISOString(), level: 'error', msg: `Trailer send failed: ${err.message}` });
+      }
+    }
 
     res.json({
       success: result.success,
       message: result.success
-        ? `Daily winners processed for draw ${draw.period_id}`
+        ? `Winners batch sent — ${result.screenshotsSent}/${result.winnersCount} screenshots, ${result.durationMs}ms`
         : `Failed: ${result.error}`,
       result,
     });
@@ -3259,35 +3265,48 @@ router.get('/tracking/realtime', async (req, res) => {
   }
 });
 
-// ── Prediction (admin pre-roll + Telegram push module) ──
+// ── Prediction (admin schedule + Telegram broadcast module) ──
 
-router.get('/predictions/configs', async (req, res) => {
+router.get('/predictions/schedule', async (req, res) => {
   try {
     const svc = req.app.get('predictionService');
     if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const configs = await svc.getConfigs();
-    res.json({ success: true, data: { configs } });
+    const [config, defaults] = await Promise.all([
+      svc.getScheduleConfig(),
+      Promise.resolve(svc.getDefaultScheduleConfig()),
+    ]);
+    res.json({ success: true, data: { config, defaults } });
   } catch (error) {
-    console.error('Get prediction configs error:', error);
+    console.error('Get prediction schedule error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-router.put('/predictions/configs', async (req, res) => {
+router.put('/predictions/schedule', async (req, res) => {
   try {
     const svc = req.app.get('predictionService');
     if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const { game, cardCountType, enabled, telegramEnabled, telegramMessage } = req.body || {};
-    if (!game) return res.status(400).json({ success: false, message: 'game required' });
-    if (!cardCountType) return res.status(400).json({ success: false, message: 'cardCountType required' });
-    const updated = await svc.updateConfig(game, parseInt(cardCountType, 10), {
-      enabled: !!enabled,
-      telegramEnabled: !!telegramEnabled,
-      telegramMessage: telegramMessage || null,
-    });
-    res.json({ success: true, data: updated });
+    const saved = await svc.setScheduleConfig(req.body?.config || req.body || {});
+    res.json({ success: true, data: { config: saved } });
   } catch (error) {
-    console.error('Update prediction config error:', error);
+    console.error('Save prediction schedule error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/predictions/schedule/test/:slotIndex', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const idx = parseInt(req.params.slotIndex, 10);
+    // Fire and forget — the slot run includes async waits up to ~minute. We
+    // ack immediately so the UI doesn't hang; logs trace progress.
+    svc.triggerSlotNow(idx).catch((err) => {
+      console.error(`[PRED] Manual trigger of slot ${idx} failed:`, err.message);
+    });
+    res.json({ success: true, data: { slotIndex: idx, queued: true } });
+  } catch (error) {
+    console.error('Trigger prediction slot error:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -3313,31 +3332,6 @@ router.put('/predictions/smm-master', async (req, res) => {
     res.json({ success: true, data: { enabled: saved } });
   } catch (error) {
     console.error('Set prediction SMM master error:', error);
-    res.status(400).json({ success: false, message: error.message });
-  }
-});
-
-router.get('/predictions/hype-master', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const enabled = await svc.getHypeEnabled();
-    res.json({ success: true, data: { enabled } });
-  } catch (error) {
-    console.error('Get prediction hype master error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.put('/predictions/hype-master', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const { enabled } = req.body || {};
-    const saved = await svc.setHypeEnabled(!!enabled);
-    res.json({ success: true, data: { enabled: saved } });
-  } catch (error) {
-    console.error('Set prediction hype master error:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });

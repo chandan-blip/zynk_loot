@@ -39,6 +39,10 @@ class CronService {
     this.dailyWinnersService = svc;
   }
 
+  setPredictionService(svc) {
+    this.predictionService = svc;
+  }
+
   // Load configuration from database
   async loadConfig() {
     try {
@@ -669,15 +673,10 @@ class CronService {
 
       await this.processWinners(draw);
 
-      if (this.dailyWinnersService) {
-        this.dailyWinnersService.processDrawComplete(draw).then(result => {
-          if (!result.success) {
-            console.error('[CRON] dailyWinnersService failed:', result.error);
-          }
-        }).catch(err => {
-          console.error('[CRON] dailyWinnersService.processDrawComplete error:', err);
-        });
-      }
+      // The post-draw fake-winners broadcast is now driven by the Prediction
+      // Module's scheduled slots (see predictionService.runScheduledSlot →
+      // dailyWinnersService.sendSyntheticWinnersBatch) rather than firing
+      // here on every lottery completion.
 
       console.log(`[CRON] Draw completed - Period: ${draw.period_id}, Session: ${draw.session_number}, Winning: ${draw.winning_number}`);
 
@@ -1113,6 +1112,36 @@ class CronService {
       }, { timezone })
     );
     console.log('[CRON] Winners cleanup job scheduled at 01:00 daily');
+
+    // Register and schedule Prediction Module slot broadcasts (7 daily slots).
+    // The hour for each slot is sourced from settings.prediction_schedule_config
+    // at scheduling time; the cron handler re-reads the config when it fires.
+    if (this.predictionService) {
+      try {
+        const predCfg = await this.predictionService.getScheduleConfig();
+        for (let i = 0; i < 7; i++) {
+          const slot = predCfg.slots[i];
+          if (!slot) continue;
+          const slotIndex = i;
+          const slotCron = `0 ${slot.hour} * * *`;
+          const jobName = `prediction_slot_${i + 1}`;
+          await this.registerJob(jobName, 'prediction_broadcast', slotCron, null, {
+            description: `Prediction Module slot ${i + 1} (${String(slot.hour).padStart(2, '0')}:00) Telegram broadcast`,
+            slotIndex,
+          });
+          this.scheduledJobs.push(
+            cron.schedule(slotCron, async () => {
+              await this.executeWithLogging(jobName, async () => {
+                return await this.predictionService.runScheduledSlot(slotIndex);
+              });
+            }, { timezone })
+          );
+        }
+        console.log(`[CRON] Prediction Module slot jobs scheduled: ${predCfg.slots.map(s => `${String(s.hour).padStart(2, '0')}:00`).join(', ')}`);
+      } catch (err) {
+        console.error('[CRON] Failed to schedule prediction slot jobs:', err.message);
+      }
+    }
 
     // Register and schedule Tracking Aggregation & Cleanup (02:00 daily)
     if (this.trackingService) {

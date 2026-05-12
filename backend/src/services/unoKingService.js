@@ -57,8 +57,12 @@ class UnoKingService {
     this.running = false;
   }
 
-  setPredictionService(predictionService) {
-    this.predictionService = predictionService;
+  setPredictionService(svc) {
+    this.predictionService = svc;
+  }
+
+  getCurrentRound(type) {
+    return this.currentRounds.get(type) || null;
   }
 
   async start() {
@@ -149,12 +153,6 @@ class UnoKingService {
 
       console.log(`[UNO/${type}] Round opened ${periodId} (id=${result.insertId})`);
 
-      if (this.predictionService) {
-        this.predictionService
-          .preGenerateForRound({ game: 'uno_king', cardCountType: type, roundId: round.id, periodId })
-          .catch(err => console.error(`[UNO/${type}] preGenerateForRound error:`, err.message));
-      }
-
       if (this.io) this.io.emit('uno:round:open', this._publicRoundState(type));
 
       this._setTimer(type, 'lock', BETTING_PHASE_MS, () =>
@@ -196,7 +194,6 @@ class UnoKingService {
     if (!round) return;
 
     try {
-      // Use prediction-service pre-rolled cards if present (admin switch on).
       let cards = this.predictionService?.consumeCardsForRound(round.id) || null;
       if (!cards || cards.length !== type) cards = secureSample(UNO_DECK_SIZE, type);
       const cardSet = new Set(cards);

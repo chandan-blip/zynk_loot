@@ -615,6 +615,8 @@ function AdminDailyWinners() {
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [minCount, setMinCount] = useState(10);
+  const [maxCount, setMaxCount] = useState(15);
   const [expandedDrawId, setExpandedDrawId] = useState(null);
   const [expandedRows, setExpandedRows] = useState({});
   const [loadingDrawId, setLoadingDrawId] = useState(null);
@@ -643,7 +645,7 @@ function AdminDailyWinners() {
     setLastResult(null);
     const toastId = toast.loading('Triggering daily winners service…');
     try {
-      const res = await triggerDailyWinners();
+      const res = await triggerDailyWinners({ minCount, maxCount });
       const result = res.data.result || {};
       setLastResult(result);
       if (res.data.success) {
@@ -709,6 +711,28 @@ function AdminDailyWinners() {
             <FiRefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </motion.button>
+          <div className="flex items-center gap-1 px-2 py-1 bg-dark-800 border border-dark-600 rounded-lg">
+            <label className="text-[10px] uppercase tracking-wider text-gray-500 font-bold pl-1">Count</label>
+            <input
+              type="number"
+              value={minCount}
+              min={1}
+              max={100}
+              onChange={(e) => setMinCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              className="w-12 bg-dark-900 border border-dark-700 rounded p-1 text-xs text-white text-center focus:border-accent outline-none"
+              title="Min count"
+            />
+            <span className="text-gray-500 text-xs">–</span>
+            <input
+              type="number"
+              value={maxCount}
+              min={minCount}
+              max={100}
+              onChange={(e) => setMaxCount(Math.max(minCount, parseInt(e.target.value, 10) || minCount))}
+              className="w-12 bg-dark-900 border border-dark-700 rounded p-1 text-xs text-white text-center focus:border-accent outline-none"
+              title="Max count"
+            />
+          </div>
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}

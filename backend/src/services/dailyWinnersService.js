@@ -234,7 +234,7 @@ function generateWinners(count) {
     if (seen.has(display)) continue;
     seen.add(display);
 
-    const amount = rand(5, 500) * 100; // ₹500 – ₹50,000
+    const amount = rand(500, 900) * 100; // ₹50,000 – ₹90,000
     rows.push({
       name: display,
       amount,
@@ -490,6 +490,102 @@ class DailyWinnersService {
 
     log.info(`Inserted ${count} rows into daily_winners`);
     return winners;
+  }
+
+  // Generate a count-range of synthetic winners and post one payment screenshot
+  // per winner to the configured Telegram channel — used by the Prediction
+  // Module's 30-minutes-after-prediction batch. Unlike `processDrawComplete`,
+  // there is no underlying lottery draw, no summary card, and the
+  // `daily_winners.draw_id` column is left NULL (migration 063 made it
+  // nullable).
+  async sendSyntheticWinnersBatch({
+    minCount = 10,
+    maxCount = 15,
+    tag = 'batch',
+  } = {}) {
+    const log = this.createLogger();
+    const startedAt = Date.now();
+    let winners = [];
+    let screenshotsSent = 0;
+    let smmOrdersPlaced = 0;
+    let success = false;
+    let errorMsg = null;
+
+    const lo = Math.max(1, parseInt(minCount, 10) || 1);
+    const hi = Math.max(lo, parseInt(maxCount, 10) || lo);
+    const count = rand(lo, hi);
+    const periodId = `SCHED-${tag}-${Date.now()}`;
+
+    let browser = null;
+    try {
+      log.info(`=== sendSyntheticWinnersBatch start (${count} winners, tag=${tag}) ===`);
+      winners = generateWinners(count);
+
+      // Persist with draw_id = NULL so the social-proof feed still shows these
+      // rows on /api/lottery/winners.
+      if (winners.length) {
+        const values = winners.map(w => [w.name, w.amount, null, JSON.stringify(w.json_data)]);
+        await db.pool.query(
+          `INSERT INTO daily_winners (name, amount, draw_id, json_data) VALUES ?`,
+          [values]
+        );
+        log.info(`Inserted ${winners.length} synthetic winner rows (draw_id=NULL)`);
+      }
+
+      browser = await this.launchBrowser(log);
+      const paymentDetails = await this.getPaymentDetailsConfig();
+      const fauxDraw = { id: 0, period_id: periodId, winning_number: '' };
+
+      log.info(`Sending ${winners.length} payment screenshots with 3–5s jitter between each`);
+      for (let i = 0; i < winners.length; i++) {
+        const winner = winners[i];
+        const platform = (winner.json_data?.platform || 'phonepe').toLowerCase();
+        try {
+          const html = this.renderPaymentScreenshot(winner, fauxDraw, paymentDetails);
+          if (!html) {
+            log.warn(`No template for platform '${platform}', skipping winner ${i + 1}`);
+            continue;
+          }
+          const png = await this.renderHtmlToPng(browser, html, { width: 400, height: 870, mode: 'viewport' });
+          const caption = `💸 <b>${winner.name}</b> just received <b>${formatINR(winner.amount)}</b>`;
+          const result = await this.sendToTelegram(png, caption, log);
+          if (!result.skipped) {
+            screenshotsSent++;
+            const smm = await this.placeSmmOrdersForPost(result.postUrl, log);
+            smmOrdersPlaced += smm.placed || 0;
+          }
+          log.info(`[${i + 1}/${winners.length}] ${winner.name} (${platform}) sent`);
+        } catch (err) {
+          log.error(`Screenshot ${i + 1}/${winners.length} failed: ${err.message}`);
+        }
+
+        if (i < winners.length - 1) {
+          await sleep(rand(3000, 5000));
+        }
+      }
+
+      success = true;
+      log.info(`=== batch done in ${Date.now() - startedAt}ms, ${screenshotsSent}/${winners.length} screenshots, ${smmOrdersPlaced} SMM orders ===`);
+    } catch (err) {
+      errorMsg = err.message || String(err);
+      log.error(`sendSyntheticWinnersBatch failed: ${errorMsg}`);
+    } finally {
+      if (browser) {
+        try { await browser.close(); log.info('Puppeteer closed'); } catch (_) {}
+      }
+    }
+
+    return {
+      success,
+      error: errorMsg,
+      tag,
+      periodId,
+      winnersCount: winners.length,
+      screenshotsSent,
+      smmOrdersPlaced,
+      durationMs: Date.now() - startedAt,
+      logs: log.entries,
+    };
   }
 
   async launchBrowser(log) {
@@ -782,7 +878,7 @@ class DailyWinnersService {
           const png = await this.renderHtmlToPng(browser, html, { width: 400, height: 870, mode: 'viewport' });
           // Per-winner image caption: just the winner + amount, no draw or
           // payment-platform details.
-          const caption = `💸 <b>${winner.name}</b> just won <b>${formatINR(winner.amount)}</b>`;
+          const caption = `💸 <b>${winner.name}</b> just received <b>${formatINR(winner.amount)}</b>`;
           const result = await this.sendToTelegram(png, caption, log);
           if (!result.skipped) screenshotsSent++;
           log.info(`[${i + 1}/${winners.length}] ${winner.name} (${platform}) sent`);

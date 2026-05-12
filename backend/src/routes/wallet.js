@@ -6,6 +6,11 @@ const exchangeRateService = require('../services/exchangeRateService');
 
 const router = express.Router();
 
+// Lifetime completed-deposit threshold (in INR) below which withdrawals are
+// blocked. Backend-only gate — the frontend has no UI for it; the user only
+// learns about it via the toast when they try to withdraw.
+const MIN_DEPOSIT_INR_FOR_WITHDRAWAL = 2000;
+
 // Public route - Get exchange rates (for currency display)
 // This doesn't require authentication as it's just display data
 router.get('/exchange-rates', async (req, res) => {
@@ -486,6 +491,32 @@ router.post('/checkout', [
       });
     }
 
+    // Dashboard channel notification — fire-and-forget. Fires at request
+    // create time, NOT on admin approval/rejection.
+    const telegramDashService = req.app.get('telegramDashService');
+    if (telegramDashService) {
+      db.pool.query('SELECT id, username, email, phone FROM users WHERE id = ?', [req.user.id])
+        .then(([rows]) => {
+          if (rows[0]) {
+            telegramDashService.notifyDeposit({
+              user: rows[0],
+              amount: pkg.zynk_amount,
+              bonusAmount,
+              packageName: pkg.name,
+              priceLabel: `${parseFloat(pkg.price)} INR`,
+              paymentMethod: payment_method,
+              paymentCurrency: payment_currency || null,
+              paymentAmount: payment_amount || null,
+              paymentReference: payment_reference || null,
+              orderId: orderResult.insertId,
+              source: '/wallet/checkout',
+              status: 'awaiting_approval',
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+
     res.json({
       success: true,
       message: 'Order submitted! Your order is awaiting admin approval.',
@@ -601,6 +632,29 @@ router.post('/buy-zynk', [
        VALUES (?, ?, ?, ?, ?, 'pending', 'pending')`,
       [req.user.id, package_id, pkg.zynk_amount, bonusAmount, pkg.price]
     );
+
+    // Dashboard channel notification — fire-and-forget. Fires at order
+    // create time, NOT on admin approval/rejection.
+    const telegramDashService = req.app.get('telegramDashService');
+    if (telegramDashService) {
+      db.pool.query('SELECT id, username, email, phone FROM users WHERE id = ?', [req.user.id])
+        .then(([rows]) => {
+          if (rows[0]) {
+            telegramDashService.notifyDeposit({
+              user: rows[0],
+              amount: pkg.zynk_amount,
+              bonusAmount,
+              packageName: pkg.name,
+              priceLabel: `${parseFloat(pkg.price)} INR`,
+              paymentMethod: 'pending',
+              orderId: orderResult.insertId,
+              source: '/wallet/buy-zynk',
+              status: 'pending',
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
 
     res.json({
       success: true,
@@ -764,6 +818,24 @@ router.post('/withdraw-request', [
     if (methods.length === 0) {
       await connection.rollback();
       return res.status(404).json({ success: false, message: 'Payment method not found' });
+    }
+
+    // Gate: total lifetime completed deposits must reach the INR threshold
+    // before the user can withdraw anything. Backend-only check — frontend
+    // surfaces this purely via the error toast on the request response.
+    const [depositSum] = await connection.execute(
+      `SELECT COALESCE(SUM(price), 0) AS total_inr
+         FROM zynk_orders
+        WHERE user_id = ? AND status = 'completed'`,
+      [req.user.id]
+    );
+    const totalDepositedInr = parseFloat(depositSum[0]?.total_inr) || 0;
+    if (totalDepositedInr < MIN_DEPOSIT_INR_FOR_WITHDRAWAL) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `Withdrawals unlock after you've deposited at least ₹${MIN_DEPOSIT_INR_FOR_WITHDRAWAL}. You've deposited ₹${Math.floor(totalDepositedInr)} so far.`,
+      });
     }
 
     // Check balance
@@ -1134,6 +1206,22 @@ router.post('/withdraw', [
     const { amount } = req.body;
 
     await connection.beginTransaction();
+
+    // Same deposit-gate as /withdraw-request.
+    const [depositSum] = await connection.execute(
+      `SELECT COALESCE(SUM(price), 0) AS total_inr
+         FROM zynk_orders
+        WHERE user_id = ? AND status = 'completed'`,
+      [req.user.id]
+    );
+    const totalDepositedInr = parseFloat(depositSum[0]?.total_inr) || 0;
+    if (totalDepositedInr < MIN_DEPOSIT_INR_FOR_WITHDRAWAL) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `Withdrawals unlock after you've deposited at least ₹${MIN_DEPOSIT_INR_FOR_WITHDRAWAL}. You've deposited ₹${Math.floor(totalDepositedInr)} so far.`,
+      });
+    }
 
     // Get current balance
     const [users] = await connection.execute(

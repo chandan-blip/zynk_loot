@@ -125,6 +125,28 @@ router.post('/register', [
       }).catch(() => {});
     }
 
+    // Fire-and-forget dashboard notification — broadcasts the new user's
+    // details to the ops Telegram channel.
+    const telegramDashService = req.app.get('telegramDashService');
+    if (telegramDashService) {
+      let referrerName = null;
+      if (referrerId) {
+        try {
+          const [refRows] = await db.pool.query('SELECT username FROM users WHERE id = ?', [referrerId]);
+          referrerName = refRows[0]?.username || null;
+        } catch (_) {}
+      }
+      telegramDashService.notifyRegistration({
+        user: {
+          id: result.insertId,
+          username,
+          email: normalizedEmail,
+          phone: normalizedPhone,
+        },
+        referrer: referrerName,
+      }).catch(() => {});
+    }
+
     res.status(201).json({
       success: true,
       message: 'Registration successful',
