@@ -72,6 +72,7 @@ function CountdownLabel({ targetIso }) {
 function BonusCard({ tier, status, onClaim, claiming, formatCurrency }) {
   const { Icon } = tier;
   const ready = status?.claimable;
+  const needsDeposit = status?.requiresDeposit;
   const amount = Number(status?.amount ?? 0);
   return (
     <motion.div
@@ -108,6 +109,10 @@ function BonusCard({ tier, status, onClaim, claiming, formatCurrency }) {
               <p className="text-sm font-bold text-emerald-300 inline-flex items-center gap-1">
                 <FiCheckCircle className="w-4 h-4" /> Ready
               </p>
+            ) : needsDeposit ? (
+              <p className="text-sm font-bold text-amber-300 inline-flex items-center gap-1">
+                Deposit required
+              </p>
             ) : (
               <p className="text-sm font-bold text-gray-300 inline-flex items-center gap-1">
                 <FiClock className="w-4 h-4" />
@@ -129,7 +134,13 @@ function BonusCard({ tier, status, onClaim, claiming, formatCurrency }) {
               : 'bg-dark-700/60 border-white/5 text-gray-500 cursor-not-allowed'
           }`}
         >
-          {claiming ? 'Claiming…' : ready ? `Claim ${formatCurrency(amount)}` : 'Locked'}
+          {claiming
+            ? 'Claiming…'
+            : ready
+              ? `Claim ${formatCurrency(amount)}`
+              : needsDeposit
+                ? 'Deposit to unlock'
+                : 'Locked'}
         </motion.button>
       </div>
     </motion.div>

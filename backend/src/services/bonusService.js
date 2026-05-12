@@ -50,6 +50,14 @@ class BonusService {
     return rows[0]?.created_at ? new Date(rows[0].created_at) : null;
   }
 
+  async _hasCompletedDeposit(userId) {
+    const [rows] = await db.pool.query(
+      `SELECT 1 FROM zynk_orders WHERE user_id = ? AND status = 'completed' LIMIT 1`,
+      [userId]
+    );
+    return rows.length > 0;
+  }
+
   // Weekly/monthly are gated by a full cooldown after registration so a
   // brand-new account can't grab the long-cycle bonuses on day zero. Daily
   // remains claimable immediately on signup.
@@ -62,25 +70,26 @@ class BonusService {
     const amount = await this._getNumberSetting(cfg.amountKey, 0);
     const cooldownHours = await this._getNumberSetting(cfg.cooldownKey, cfg.defaultCooldown);
     const last = await this._lastClaimAt(userId, type);
+    const hasDeposit = await this._hasCompletedDeposit(userId);
 
     let anchor = last;
     if (!anchor && this._hasRegistrationDelay(type)) {
       anchor = await this._userCreatedAt(userId);
     }
 
-    if (!anchor) {
-      return { type, amount, claimable: amount > 0, lastClaimedAt: null, nextClaimAt: null, cooldownHours };
-    }
+    const cooldownReady = !anchor || Date.now() >= anchor.getTime() + cooldownHours * 3600 * 1000;
+    const claimable = cooldownReady && amount > 0 && hasDeposit;
 
-    const nextMs = anchor.getTime() + cooldownHours * 3600 * 1000;
-    const claimable = Date.now() >= nextMs && amount > 0;
     return {
       type,
       amount,
       claimable,
       lastClaimedAt: last ? last.toISOString() : null,
-      nextClaimAt: claimable ? null : new Date(nextMs).toISOString(),
+      nextClaimAt: !anchor || cooldownReady
+        ? null
+        : new Date(anchor.getTime() + cooldownHours * 3600 * 1000).toISOString(),
       cooldownHours,
+      requiresDeposit: !hasDeposit,
     };
   }
 
@@ -143,6 +152,16 @@ class BonusService {
         [userId]
       );
       if (users.length === 0) throw new Error('User not found');
+
+      // Bonus is gated on at least one completed deposit — keeps the recurring
+      // bonuses tied to real funded users instead of pure signups.
+      const [deposits] = await conn.execute(
+        `SELECT 1 FROM zynk_orders WHERE user_id = ? AND status = 'completed' LIMIT 1`,
+        [userId]
+      );
+      if (deposits.length === 0) {
+        throw new Error('Make at least one deposit to unlock bonus claims');
+      }
 
       let anchor = lastAt;
       if (!anchor && this._hasRegistrationDelay(type)) {
