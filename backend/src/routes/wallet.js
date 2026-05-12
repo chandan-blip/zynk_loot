@@ -824,12 +824,20 @@ router.post('/withdraw-request', [
     // before the user can withdraw anything. Backend-only check — frontend
     // surfaces this purely via the error toast on the request response.
     const [depositSum] = await connection.execute(
-      `SELECT COALESCE(SUM(price), 0) AS total_inr
+      `SELECT COUNT(*) AS deposit_count, COALESCE(SUM(price), 0) AS total_inr
          FROM zynk_orders
         WHERE user_id = ? AND status = 'completed'`,
       [req.user.id]
     );
+    const depositCount = parseInt(depositSum[0]?.deposit_count, 10) || 0;
     const totalDepositedInr = parseFloat(depositSum[0]?.total_inr) || 0;
+    if (depositCount === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `You haven't made any deposits yet. Add funds first to unlock withdrawals.`,
+      });
+    }
     if (totalDepositedInr < MIN_DEPOSIT_INR_FOR_WITHDRAWAL) {
       await connection.rollback();
       return res.status(400).json({
@@ -1209,12 +1217,20 @@ router.post('/withdraw', [
 
     // Same deposit-gate as /withdraw-request.
     const [depositSum] = await connection.execute(
-      `SELECT COALESCE(SUM(price), 0) AS total_inr
+      `SELECT COUNT(*) AS deposit_count, COALESCE(SUM(price), 0) AS total_inr
          FROM zynk_orders
         WHERE user_id = ? AND status = 'completed'`,
       [req.user.id]
     );
+    const depositCount = parseInt(depositSum[0]?.deposit_count, 10) || 0;
     const totalDepositedInr = parseFloat(depositSum[0]?.total_inr) || 0;
+    if (depositCount === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `You haven't made any deposits yet. Add funds first to unlock withdrawals.`,
+      });
+    }
     if (totalDepositedInr < MIN_DEPOSIT_INR_FOR_WITHDRAWAL) {
       await connection.rollback();
       return res.status(400).json({

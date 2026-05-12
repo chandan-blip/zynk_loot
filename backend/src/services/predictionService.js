@@ -96,6 +96,45 @@ function gameLabel(game) {
   return game;
 }
 
+// Hype stickers — sent at random after each prediction pick to build channel
+// energy. Each entry only needs `file_id` (Telegram's reusable sticker handle);
+// the other fields are kept for human reference. Add/remove freely — an empty
+// array disables the hype step.
+const HYPE_STICKERS = [
+  { file_id: 'CAACAgUAAyEFAATdYERoAAIFQ2oCxf9Te4m_XoeXv1fScpqF5ExdAAJQDwACZFEBVUyoQXBywDFIOwQ', emoji: '👍', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAAM7agNty6V2N0-tTFhPW1hBOOLeG9EAAi8NAAKiL6BVTjb7jO0ByFo7BA', emoji: '💯', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAAM8agNt84KrJxfGOD8URtKT3I4LTdAAAmQRAALGtblVViPacs6fZ447BA', emoji: '📣', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAAM9agNt9yQSrkQ9j3ivpjV0CSMjb2EAAjIRAAKn9QFV9_pzbOcdufE7BA', emoji: '☺️', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAAM-agNuBc3ikdO19Z3aA7pvwlYoOTYAAjkOAAJR4elVY1kywGhUHGc7BA', emoji: '🔥', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAAM_agNuDleY8ccrUpLdM15oaeu_70UAAvYNAAIQLFhW3wO80-FLyR87BA', emoji: '🤑', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAANAagNuET6AjfZwULrodr0K-bJLVOsAAmANAAJ2nvFV4CtZiFyOHZ47BA', emoji: '🦘', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAANBagNuEuEM1XurSZy6Fh38GiFZkWkAAtILAAL2GvBVOzclhK2q9ec7BA', emoji: '🦆', set_name: 'Bharat_no1' },
+];
+
+// Slot-start sticker — single fixed sticker sent at the very top of every slot
+// run, before the get-ready text. Set to '' to disable.
+const SLOT_START_STICKER_FILE_ID = 'CAACAgUAAyEFAATuMWxaAAM6agNtb9fVRpCILTdz9ebXshvFpPEAAhUPAAI7hAABVTwClcxvv6zFOwQ';
+
+function pickRandomHypeSticker() {
+  if (!HYPE_STICKERS.length) return null;
+  return HYPE_STICKERS[crypto.randomInt(0, HYPE_STICKERS.length)];
+}
+
+// Result stickers — sent at random the moment a locked round finishes, so the
+// channel gets a celebratory beat right after the game reveals its cards.
+const RESULT_STICKERS = [
+  { file_id: 'CAACAgUAAyEFAATuMWxaAANCagNwbn1bUz7o3skBGD-XE5kj950AAtcPAALz26hVdbNjogca2XI7BA', emoji: '😍', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAANDagNwb02DqY0Rut7cWyU39hwcxvMAAi4OAAIaa6FVT_oQjJm0Xmk7BA', emoji: '🏆', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAANEagNwcctOj-KVmyH3F1N_rpEN80gAAmsOAALfDqFVAWtcvAJteY07BA', emoji: '🙂', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAANFagNwevt5aQi2IVCbgILmdC5bR18AAvsQAAKOhjlWVIojkSEdjgw7BA', emoji: '🐯', set_name: 'Bharat_no1' },
+  { file_id: 'CAACAgUAAyEFAATuMWxaAANGagNwipLuh9HIrnPtXsjZJNEMO7sAAp4RAAILMvBVhpIj0XtD2ng7BA', emoji: '🦉', set_name: 'Bharat_no1' },
+];
+
+function pickRandomResultSticker() {
+  if (!RESULT_STICKERS.length) return null;
+  return RESULT_STICKERS[crypto.randomInt(0, RESULT_STICKERS.length)];
+}
+
 // ── Server-side card visuals ─────────────────────────────────────────────────
 // Renders a small HTML snippet that mimics the frontend's PlayingCard /
 // UnoCard look. Puppeteer rasterizes it to PNG for the Telegram photo.
@@ -367,6 +406,16 @@ class PredictionService {
     const startedAt = Date.now();
     console.log(`[PRED] Running ${label} — ${validPicks.length} picks, get-ready lead ${cfg.getReadyLeadSeconds}s, spacing ${cfg.predictionSpacingSeconds}s`);
 
+    // Step 0: slot-start hype sticker (best-effort) — sets the tone before the
+    // get-ready text drops. Disabled when SLOT_START_STICKER_FILE_ID is empty.
+    if (SLOT_START_STICKER_FILE_ID) {
+      try {
+        await this._sendTelegramSticker({ token, chatId, fileId: SLOT_START_STICKER_FILE_ID });
+      } catch (err) {
+        console.error(`[PRED] ${label} slot-start sticker send failed:`, err.message);
+      }
+    }
+
     // Step 1: get-ready text (best-effort, doesn't abort the run)
     if (cfg.getReadyMessage) {
       try {
@@ -399,22 +448,49 @@ class PredictionService {
         console.error(`[PRED] ${label} pick ${i + 1} (${pick.game}/${pick.cardCountType}) failed:`, err.message);
       }
 
-      // Between predictions: first wait for the locked round to complete so
-      // subscribers see the result of pick #N before pick #N+1 lands. If no
-      // real round was locked (fallback path), just use the spacing.
-      if (i < validPicks.length - 1) {
-        if (lockedRound && lockedRound.completeAt) {
-          const waitMs = Math.max(0, new Date(lockedRound.completeAt).getTime() - Date.now());
-          if (waitMs > 0) {
-            console.log(`[PRED] ${label} waiting ${Math.round(waitMs / 1000)}s for round ${lockedRound.roundId} (${lockedRound.periodId}) to complete before pick ${i + 2}`);
-            await sleep(waitMs);
-          }
-        }
-        if (cfg.predictionSpacingSeconds > 0) {
-          await sleep(cfg.predictionSpacingSeconds * 1000);
+      // After each pick: drop a random hype sticker (best-effort) so the
+      // channel feels alive between cards. No-op if HYPE_STICKERS is empty.
+      const hype = pickRandomHypeSticker();
+      if (hype && hype.file_id) {
+        try {
+          await this._sendTelegramSticker({ token, chatId, fileId: hype.file_id });
+        } catch (err) {
+          console.error(`[PRED] ${label} hype sticker send failed:`, err.message);
         }
       }
+
+      // Wait for the locked round to complete so the next beat (result sticker
+      // and, if there's another pick, the next prediction) lands AFTER the
+      // game reveals its cards. Runs for every pick including the last one.
+      if (lockedRound && lockedRound.completeAt) {
+        const waitMs = Math.max(0, new Date(lockedRound.completeAt).getTime() - Date.now());
+        if (waitMs > 0) {
+          console.log(`[PRED] ${label} waiting ${Math.round(waitMs / 1000)}s for round ${lockedRound.roundId} (${lockedRound.periodId}) to complete`);
+          await sleep(waitMs);
+        }
+      }
+
+      // Result sticker — fires right after the round reveal. Best-effort.
+      const result = pickRandomResultSticker();
+      if (result && result.file_id) {
+        try {
+          await this._sendTelegramSticker({ token, chatId, fileId: result.file_id });
+        } catch (err) {
+          console.error(`[PRED] ${label} result sticker send failed:`, err.message);
+        }
+      }
+
+      // Spacing wait — only between picks, not after the last one.
+      if (i < validPicks.length - 1 && cfg.predictionSpacingSeconds > 0) {
+        await sleep(cfg.predictionSpacingSeconds * 1000);
+      }
     }
+
+    // Trailer after the last pick — same delay rules as the post-winners
+    // trailer so the channel always gets a closing message even if the 30-min
+    // winners timer dies (server restart, manual re-trigger, etc.). A second
+    // trailer also fires after the winners batch lands below.
+    await this._sendTrailer(label, token, chatId, cfg);
 
     // Step 3: schedule the 30-min winners-screenshot batch, then the trailer
     // text is sent at the very end (after the last payment screenshot lands).
@@ -522,6 +598,30 @@ class PredictionService {
       throw new Error(`Telegram sendMessage ${res.status}: ${body.slice(0, 200)}`);
     }
     throw new Error(`Telegram sendMessage failed after ${maxRetries} attempts`);
+  }
+
+  async _sendTelegramSticker({ token, chatId, fileId }, { maxRetries = 2 } = {}) {
+    const url = `https://api.telegram.org/bot${token}/sendSticker`;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, sticker: fileId }),
+      });
+      const body = await res.text();
+      if (res.ok) return body;
+      if (res.status === 429 && attempt < maxRetries) {
+        let retryAfter = 1;
+        try {
+          const parsed = JSON.parse(body);
+          retryAfter = parsed.parameters?.retry_after || parsed.retry_after || 1;
+        } catch (_) {}
+        await sleep((Number(retryAfter) + 1) * 1000);
+        continue;
+      }
+      throw new Error(`Telegram sendSticker ${res.status}: ${body.slice(0, 200)}`);
+    }
+    throw new Error(`Telegram sendSticker failed after ${maxRetries} attempts`);
   }
 
   async _sendPredictionPost({ token, chatId, game, cardCountType, message, slotHour }) {
