@@ -380,6 +380,10 @@ export const adminUploadBannerImage = (file) => {
 export const adminGetWebsites = () => api.get('/admin/websites');
 export const adminGetWebsite = (id) => api.get(`/admin/websites/${id}`);
 export const adminGetWebsiteStats = (id) => api.get(`/admin/websites/${id}/stats`);
+export const adminGetWebsitesDashboard = (range = 'today') => api.get(`/admin/websites/dashboard?range=${encodeURIComponent(range)}`);
+export const adminGetDepositsDashboard = (range = 'today') => api.get(`/admin/deposits/dashboard?range=${encodeURIComponent(range)}`);
+export const adminGetUsersDashboard = (range = 'today') => api.get(`/admin/users/dashboard?range=${encodeURIComponent(range)}`);
+export const adminGetSiteTrafficDashboard = (range = 'today') => api.get(`/admin/site-traffic/dashboard?range=${encodeURIComponent(range)}`);
 export const adminCreateWebsite = (data) => api.post('/admin/websites', data);
 export const adminUpdateWebsite = (id, data) => api.put(`/admin/websites/${id}`, data);
 export const adminPublishWebsite = (id) => api.post(`/admin/websites/${id}/publish`);

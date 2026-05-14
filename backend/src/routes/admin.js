@@ -110,6 +110,140 @@ router.use(authenticateToken);
 router.use(requireAdmin);
 
 // Get dashboard stats
+// Main-site traffic aggregate for the admin dashboard with a today/yesterday/
+// lifetime window. Sources: user_sessions + user_events (the main app's
+// tracking, not the landing-page `website_events` table).
+router.get('/site-traffic/dashboard', async (req, res) => {
+  try {
+    const range = String(req.query.range || 'today').toLowerCase();
+    let sessionFilter = '';
+    let eventFilter = '';
+    if (range === 'today') {
+      sessionFilter = 'WHERE started_at >= CURDATE()';
+      eventFilter = 'WHERE created_at >= CURDATE()';
+    } else if (range === 'yesterday') {
+      sessionFilter = 'WHERE started_at >= (CURDATE() - INTERVAL 1 DAY) AND started_at < CURDATE()';
+      eventFilter = 'WHERE created_at >= (CURDATE() - INTERVAL 1 DAY) AND created_at < CURDATE()';
+    } else if (range === 'lifetime') {
+      sessionFilter = '';
+      eventFilter = '';
+    } else {
+      return res.status(400).json({ success: false, message: 'range must be today, yesterday, or lifetime' });
+    }
+
+    const [[sessions]] = await db.pool.query(
+      `SELECT
+         COUNT(*) AS total_sessions,
+         COUNT(DISTINCT user_id) AS unique_users,
+         COALESCE(SUM(duration_seconds), 0) AS total_duration,
+         COALESCE(AVG(NULLIF(duration_seconds, 0)), 0) AS avg_duration,
+         COUNT(CASE WHEN device_type = 'mobile'  THEN 1 END) AS mobile_sessions,
+         COUNT(CASE WHEN device_type = 'desktop' THEN 1 END) AS desktop_sessions,
+         COUNT(CASE WHEN device_type = 'tablet'  THEN 1 END) AS tablet_sessions
+       FROM user_sessions
+       ${sessionFilter}`
+    );
+
+    const [[events]] = await db.pool.query(
+      `SELECT
+         COUNT(CASE WHEN event_type = 'page_view'  THEN 1 END) AS page_views,
+         COUNT(CASE WHEN event_type = 'click'      THEN 1 END) AS clicks,
+         COUNT(CASE WHEN event_type = 'login'      THEN 1 END) AS logins,
+         COUNT(CASE WHEN event_type = 'game_play'  THEN 1 END) AS game_plays,
+         COUNT(*) AS total_events
+       FROM user_events
+       ${eventFilter}`
+    );
+
+    // Live count comes from socket.io's in-memory connection state, NOT the
+    // DB. `user_sessions.is_active` only flips after the client explicitly
+    // closes / heartbeats out, so it lags real presence by minutes; socket
+    // connections drop instantly when the tab/window closes.
+    const io = req.app.get('io');
+    let activeSockets = 0;
+    let activeUsers = 0;
+    if (io) {
+      activeSockets = io.engine?.clientsCount || io.sockets.sockets.size || 0;
+      const uniqueUserIds = new Set();
+      for (const socket of io.sockets.sockets.values()) {
+        if (socket.userId) uniqueUserIds.add(socket.userId);
+      }
+      activeUsers = uniqueUserIds.size;
+    }
+    const live = {
+      active_sessions: activeSockets,
+      active_users: activeUsers,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        range,
+        sessions: Number(sessions.total_sessions) || 0,
+        uniqueUsers: Number(sessions.unique_users) || 0,
+        totalDuration: Number(sessions.total_duration) || 0,
+        avgDuration: Math.round(Number(sessions.avg_duration) || 0),
+        pageViews: Number(events.page_views) || 0,
+        clicks: Number(events.clicks) || 0,
+        logins: Number(events.logins) || 0,
+        gamePlays: Number(events.game_plays) || 0,
+        totalEvents: Number(events.total_events) || 0,
+        devices: {
+          mobile:  Number(sessions.mobile_sessions)  || 0,
+          desktop: Number(sessions.desktop_sessions) || 0,
+          tablet:  Number(sessions.tablet_sessions)  || 0,
+        },
+        live: {
+          activeSessions: Number(live.active_sessions) || 0,
+          activeUsers: Number(live.active_users) || 0,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Site traffic dashboard error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load site traffic dashboard' });
+  }
+});
+
+// Users aggregate for the admin dashboard with a today/yesterday/lifetime
+// window. "Total Users" = users registered in window (regular users only).
+// "User Balances" = sum of current balances for those same users.
+router.get('/users/dashboard', async (req, res) => {
+  try {
+    const range = String(req.query.range || 'today').toLowerCase();
+    let dateFilter = '';
+    if (range === 'today') {
+      dateFilter = 'AND created_at >= CURDATE()';
+    } else if (range === 'yesterday') {
+      dateFilter = 'AND created_at >= (CURDATE() - INTERVAL 1 DAY) AND created_at < CURDATE()';
+    } else if (range === 'lifetime') {
+      dateFilter = '';
+    } else {
+      return res.status(400).json({ success: false, message: 'range must be today, yesterday, or lifetime' });
+    }
+
+    const [[row]] = await db.pool.query(
+      `SELECT
+         COUNT(*) AS user_count,
+         COALESCE(SUM(balance), 0) AS total_balance
+       FROM users
+       WHERE is_admin = 0 ${dateFilter}`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        range,
+        userCount: Number(row.user_count) || 0,
+        totalBalance: parseFloat(row.total_balance) || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Users dashboard error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load users dashboard' });
+  }
+});
+
 router.get('/dashboard', async (req, res) => {
   try {
     const [userStats] = await db.pool.query(
@@ -1622,6 +1756,68 @@ router.get('/websites', async (req, res) => {
   }
 });
 
+// Cross-website dashboard: per-site visit/click counts for a given window.
+// Used by the admin Dashboard page (filter: today | yesterday | lifetime).
+router.get('/websites/dashboard', async (req, res) => {
+  try {
+    const range = String(req.query.range || 'today').toLowerCase();
+    let dateFilter = '';
+    if (range === 'today') {
+      dateFilter = 'AND we.created_at >= CURDATE()';
+    } else if (range === 'yesterday') {
+      dateFilter = 'AND we.created_at >= (CURDATE() - INTERVAL 1 DAY) AND we.created_at < CURDATE()';
+    } else if (range === 'lifetime') {
+      dateFilter = '';
+    } else {
+      return res.status(400).json({ success: false, message: 'range must be today, yesterday, or lifetime' });
+    }
+
+    const [rows] = await db.pool.query(
+      `SELECT
+         w.id, w.title, w.sub_domain, w.domain, w.status, w.is_active,
+         COALESCE(SUM(we.event_type='visit'), 0) AS visits,
+         COALESCE(SUM(we.event_type='click'), 0) AS clicks,
+         COUNT(DISTINCT we.session_id) AS unique_sessions,
+         MAX(we.created_at) AS last_event_at
+       FROM websites w
+       LEFT JOIN website_events we
+         ON we.website_id = w.id ${dateFilter}
+       GROUP BY w.id
+       ORDER BY visits DESC, clicks DESC, w.id DESC`
+    );
+
+    const totals = rows.reduce((acc, r) => {
+      acc.visits += Number(r.visits) || 0;
+      acc.clicks += Number(r.clicks) || 0;
+      acc.sessions += Number(r.unique_sessions) || 0;
+      return acc;
+    }, { visits: 0, clicks: 0, sessions: 0, sites: rows.length });
+
+    res.json({
+      success: true,
+      data: {
+        range,
+        totals,
+        sites: rows.map(r => ({
+          id: r.id,
+          title: r.title,
+          sub_domain: r.sub_domain,
+          domain: r.domain,
+          status: r.status,
+          is_active: !!r.is_active,
+          visits: Number(r.visits) || 0,
+          clicks: Number(r.clicks) || 0,
+          unique_sessions: Number(r.unique_sessions) || 0,
+          last_event_at: r.last_event_at,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Websites dashboard error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load websites dashboard' });
+  }
+});
+
 // Per-website tracking stats: totals + 30-day daily series + top click targets + top referrers.
 router.get('/websites/:id/stats', async (req, res) => {
   try {
@@ -1892,6 +2088,53 @@ router.get('/transactions', async (req, res) => {
 });
 
 // ============ DEPOSITS MANAGEMENT (Zynk Orders) ============
+
+// Aggregate deposits stats for the admin dashboard.
+// range = today | yesterday | lifetime — uses created_at for windowing.
+// Returns: total count (all statuses), completed count+amount, pending count.
+router.get('/deposits/dashboard', async (req, res) => {
+  try {
+    const range = String(req.query.range || 'today').toLowerCase();
+    let dateFilter = '';
+    if (range === 'today') {
+      dateFilter = 'WHERE created_at >= CURDATE()';
+    } else if (range === 'yesterday') {
+      dateFilter = 'WHERE created_at >= (CURDATE() - INTERVAL 1 DAY) AND created_at < CURDATE()';
+    } else if (range === 'lifetime') {
+      dateFilter = '';
+    } else {
+      return res.status(400).json({ success: false, message: 'range must be today, yesterday, or lifetime' });
+    }
+
+    const [[row]] = await db.pool.query(
+      `SELECT
+         COUNT(*) AS total_count,
+         COUNT(CASE WHEN status IN ('approved','completed') THEN 1 END) AS completed_count,
+         COUNT(CASE WHEN status IN ('pending','awaiting_approval') THEN 1 END) AS pending_count,
+         COUNT(CASE WHEN status = 'rejected' THEN 1 END) AS rejected_count,
+         COALESCE(SUM(CASE WHEN status IN ('approved','completed') THEN price END), 0) AS completed_amount,
+         COALESCE(SUM(CASE WHEN status IN ('approved','completed') THEN zynk_amount + COALESCE(bonus_amount, 0) END), 0) AS zynk_delivered
+       FROM zynk_orders
+       ${dateFilter}`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        range,
+        totalCount: Number(row.total_count) || 0,
+        completedCount: Number(row.completed_count) || 0,
+        pendingCount: Number(row.pending_count) || 0,
+        rejectedCount: Number(row.rejected_count) || 0,
+        completedAmount: parseFloat(row.completed_amount) || 0,
+        zynkDelivered: Number(row.zynk_delivered) || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Deposits dashboard error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load deposits dashboard' });
+  }
+});
 
 // Get all deposits (with filters)
 router.get('/deposits', async (req, res) => {

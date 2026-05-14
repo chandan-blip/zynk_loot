@@ -238,7 +238,7 @@ function SmmPanelEditor() {
     }
     if (field.secret) {
       return (
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <input
             type={showKey ? 'text' : 'password'}
             value={v ?? ''}
@@ -412,7 +412,7 @@ function CaptionTemplateEditor() {
             HTML allowed (Telegram HTML parse mode). Max 1024 characters. Click a variable below to insert it.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={handleResetToDefault}
             className="flex items-center gap-1 px-3 py-2 bg-dark-700 hover:bg-dark-600 text-gray-300 text-sm rounded-lg border border-dark-600"
@@ -532,30 +532,30 @@ function DrawRow({ group, onExpand, expanded, rows, loadingRows }) {
     <div className="bg-dark-800 border border-dark-600 rounded-lg overflow-hidden">
       <button
         onClick={() => onExpand(group.draw_id)}
-        className="w-full flex items-center justify-between p-4 hover:bg-dark-700 transition-colors text-left"
+        className="w-full flex items-center justify-between gap-3 p-3 sm:p-4 hover:bg-dark-700 transition-colors text-left"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           {expanded ? (
-            <FiChevronDown className="w-5 h-5 text-accent" />
+            <FiChevronDown className="w-5 h-5 text-accent shrink-0" />
           ) : (
-            <FiChevronRight className="w-5 h-5 text-gray-500" />
+            <FiChevronRight className="w-5 h-5 text-gray-500 shrink-0" />
           )}
-          <div>
-            <div className="font-bold text-white">Draw #{group.period_id || group.draw_id}</div>
-            <div className="text-xs text-gray-500">
+          <div className="min-w-0">
+            <div className="font-bold text-white truncate">Draw #{group.period_id || group.draw_id}</div>
+            <div className="text-xs text-gray-500 truncate">
               {group.generated_at && new Date(group.generated_at).toLocaleString()}
               {group.winning_number ? ` · winning: ${group.winning_number}` : ''}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 sm:gap-6 shrink-0">
           <div className="text-right">
-            <div className="text-xs text-gray-500">Winners</div>
-            <div className="font-bold text-white">{group.winners_count}</div>
+            <div className="text-[10px] sm:text-xs text-gray-500">Winners</div>
+            <div className="font-bold text-white text-sm sm:text-base">{group.winners_count}</div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-gray-500">Total Payout</div>
-            <div className="font-bold text-emerald-400">
+            <div className="text-[10px] sm:text-xs text-gray-500">Total Payout</div>
+            <div className="font-bold text-emerald-400 text-sm sm:text-base whitespace-nowrap">
               ₹{totalPayout.toLocaleString('en-IN')}
             </div>
           </div>
@@ -700,7 +700,7 @@ function AdminDailyWinners() {
             Synthetic display winners shown on /api/lottery/winners and broadcast to Telegram as a PNG card.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}

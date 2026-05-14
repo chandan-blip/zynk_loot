@@ -109,7 +109,7 @@ export function validatePhone(number) {
     }
   }
 
-  // Also try with country code even without + (e.g. user typed 919876543210)
+  // Also try with country code even without + (e.g. user typed 919909912345)
   if (!country) {
     const sorted = Object.entries(COUNTRY_DATA).sort((a, b) => b[1].code.length - a[1].code.length);
     for (const [code, data] of sorted) {

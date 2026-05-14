@@ -272,8 +272,8 @@ function Layout() {
         </AnimatePresence>
 
         {/* Header */}
-        <header className="h-16 sticky top-0 z-30 border-b bg-dark-400 border-dark-200/5">
-          <div className="h-full flex items-center justify-between px-4">
+        <header className="min-h-16 pt-safe sticky top-0 z-30 border-b bg-dark-400 border-dark-200/5">
+          <div className="h-16 flex items-center justify-between px-4">
             <div className="flex items-center gap-3">
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -399,11 +399,11 @@ function Layout() {
         {/* Page Content */}
         <main className="py-2 px-3 2xl:px-0 sm:px-4 sm:py-4 min-h-[calc(100vh-4rem)]">
           <Outlet />
-          {!location.pathname.startsWith('/games/') && <div className="h-22"></div>}
+          {!location.pathname.startsWith('/games/') && <div className="h-[calc(5.5rem+env(safe-area-inset-bottom))]"></div>}
         </main>
 
         {/* Mobile Bottom Navigation — hidden inside game pages */}
-        <nav className={`fixed bottom-0 left-0 right-0 z-40 lg:hidden ${location.pathname.startsWith('/games/') ? 'hidden' : ''}`}>
+        <nav className={`fixed bottom-0 left-0 right-0 z-40 pb-safe lg:hidden ${location.pathname.startsWith('/games/') ? 'hidden' : ''}`}>
           <div className="max-w-[1400px] mx-auto">
             <div className="glass-strong border-t border-white/5 mx-2 mb-2 rounded-lg overflow-hidden">
               <div className="flex items-center justify-around h-16">

@@ -86,16 +86,16 @@ export default function AdminSocialLinks() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Floating Social Links</h1>
-          <p className="text-gray-400 text-sm mt-1">Icons shown on the home page (draggable & clickable for users)</p>
+      <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Floating Social Links</h1>
+          <p className="text-gray-400 text-xs sm:text-sm mt-1">Icons shown on the home page (draggable & clickable for users)</p>
         </div>
         <button
           onClick={startCreate}
-          className="flex items-center gap-2 px-4 py-2 bg-accent text-dark-900 font-semibold rounded-lg hover:opacity-90"
+          className="shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2 bg-accent text-dark-900 font-semibold rounded-lg hover:opacity-90 text-sm sm:text-base"
         >
-          <FiPlus className="w-4 h-4" /> Add Link
+          <FiPlus className="w-4 h-4" /> <span className="hidden xs:inline">Add Link</span><span className="xs:hidden">Add</span>
         </button>
       </div>
 
@@ -105,7 +105,8 @@ export default function AdminSocialLinks() {
         ) : links.length === 0 ? (
           <div className="p-8 text-center text-gray-500">No social links yet. Add one to make it appear on the home page.</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead className="bg-dark-700/50">
               <tr className="text-left text-gray-400">
                 <th className="px-4 py-3">Icon</th>
@@ -159,6 +160,7 @@ export default function AdminSocialLinks() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

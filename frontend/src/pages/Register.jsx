@@ -165,7 +165,7 @@ function Register() {
                     maxLength={11}
                     onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 11); setPhone(v); }}
                     className="input w-full pl-12 pr-4 py-3 bg-transparent border border-dark-200 rounded-lg outline-none"
-                    placeholder="98765 43210"
+                    placeholder="99099 12345"
                   />
                 </div>
               </div>

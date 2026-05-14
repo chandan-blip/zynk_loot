@@ -177,21 +177,27 @@ function AdminLayout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-60">
+      {/* `min-w-0 overflow-x-clip` fixes the flexbox-with-wide-content gotcha
+         (tables/long URLs forcing <main> wider than the viewport) WITHOUT
+         creating a scroll context — `overflow-x-hidden` would, and that
+         breaks position:sticky on the header below. `clip` clips overflow
+         without becoming a scrolling ancestor, so the sticky topbar still
+         anchors to the viewport. */}
+      <main className="flex-1 min-w-0 overflow-x-clip lg:ml-60">
         {/* Top Bar */}
-        <header className="h-16 bg-dark-800 border-b border-dark-400 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
-          <div className="flex items-center gap-3">
+        <header className="min-h-16 pt-safe bg-dark-800 border-b border-dark-400 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
+          <div className="flex items-center gap-3 min-w-0">
             <button
-              className="lg:hidden p-2 text-gray-400 hover:text-white"
+              className="lg:hidden p-2 text-gray-400 hover:text-white shrink-0"
               onClick={() => setSidebarOpen(true)}
             >
               <FiMenu className="w-6 h-6" />
             </button>
-            <h2 className="font-semibold text-white">
+            <h2 className="font-semibold text-white truncate">
               {navItems.find(item => item.path === location.pathname)?.label || 'Admin'}
             </h2>
           </div>
-          <div className="text-sm text-gray-500 hidden sm:block">
+          <div className="text-sm text-gray-500 hidden sm:block shrink-0">
             {new Date().toLocaleDateString('en-US', {
               weekday: 'long',
               year: 'numeric',
@@ -202,7 +208,7 @@ function AdminLayout() {
         </header>
 
         {/* Page Content */}
-        <div className="p-4 lg:p-6">
+        <div className="p-4 lg:p-6 min-w-0">
           <Outlet />
         </div>
       </main>

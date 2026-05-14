@@ -23,7 +23,20 @@
       radial-gradient(ellipse 80% 80% at 50% -20%, rgba(0, 212, 170, 0.08), transparent),
       radial-gradient(ellipse 60% 40% at 100% 0%, rgba(139, 92, 246, 0.05), transparent);
     background-attachment: fixed;
-    filter: saturate(1.6) !important;
+  }
+
+  /* Global saturation boost.
+     Using a fixed backdrop-filter overlay (not `filter` on body) so we don't
+     break the containing block for position: fixed descendants — modals,
+     toasts, sticky headers, etc. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    backdrop-filter: saturate(1.6);
+    -webkit-backdrop-filter: saturate(1.6);
+    z-index: 2147483646;
   }
 
   ::selection {
@@ -380,6 +393,17 @@
     display: none;
   }
 
+  /* iOS PWA safe areas — use these on sticky/fixed chrome so the iPhone
+     status bar (top) and home indicator (bottom) stop overlapping the UI
+     when the site is installed to the home screen. env() is 0 in normal
+     browsers, so applying these everywhere is harmless. */
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pl-safe { padding-left: env(safe-area-inset-left); }
+  .pr-safe { padding-right: env(safe-area-inset-right); }
+  .mt-safe { margin-top: env(safe-area-inset-top); }
+  .mb-safe { margin-bottom: env(safe-area-inset-bottom); }
+
   .perspective-1000 {
     perspective: 1000px;
   }
@@ -474,8 +498,4 @@
 .page-exit-active {
   opacity: 0;
   transition: opacity 200ms;
-}
-
-*{
-  /* border-radius: 2px !important; */
 }
