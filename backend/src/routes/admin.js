@@ -1,9 +1,48 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const multer = require('multer');
 const db = require('../config/database');
 const { authenticateToken, requireAdmin, generateToken } = require('../middleware/auth');
 
 const router = express.Router();
+
+// ===== Image upload (banners and other admin assets) =====
+const UPLOAD_ROOT = path.join(__dirname, '..', '..', 'uploads');
+const BANNER_DIR = path.join(UPLOAD_ROOT, 'banners');
+fs.mkdirSync(BANNER_DIR, { recursive: true });
+
+const ALLOWED_IMAGE_MIME = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
+]);
+const EXT_BY_MIME = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/svg+xml': '.svg',
+};
+
+const bannerStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, BANNER_DIR),
+  filename: (_req, file, cb) => {
+    const ext = EXT_BY_MIME[file.mimetype] || path.extname(file.originalname) || '';
+    cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
+  },
+});
+
+const bannerUpload = multer({
+  storage: bannerStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB, matches frontend cap
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) {
+      return cb(new Error('Only image files are allowed'));
+    }
+    cb(null, true);
+  },
+});
 
 // Admin-only login (no auth middleware - public endpoint)
 router.post('/login', async (req, res) => {
@@ -1458,6 +1497,26 @@ router.delete('/website-leads/:id', async (req, res) => {
     console.error('Delete website lead error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete lead' });
   }
+});
+
+// Upload a banner/admin image; returns a public URL hosted by this API.
+// The frontend stores the returned URL in banners.image_url (or anywhere else
+// it needs a reusable image link).
+router.post('/upload/banner', (req, res) => {
+  bannerUpload.single('image')(req, res, (err) => {
+    if (err) {
+      const msg = err.code === 'LIMIT_FILE_SIZE'
+        ? 'Image must be under 5 MB'
+        : (err.message || 'Upload failed');
+      return res.status(400).json({ success: false, message: msg });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file received (expected field "image")' });
+    }
+    const relative = `/uploads/banners/${req.file.filename}`;
+    const absolute = `${req.protocol}://${req.get('host')}${relative}`;
+    res.json({ success: true, data: { url: absolute, path: relative, filename: req.file.filename } });
+  });
 });
 
 // ===== Banners (home page carousel) =====

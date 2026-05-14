@@ -1,26 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheck, FiEye, FiEyeOff, FiUpload, FiImage } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheck, FiEye, FiEyeOff, FiUpload, FiImage, FiCopy } from 'react-icons/fi';
 import {
   adminGetBanners,
   adminCreateBanner,
   adminUpdateBanner,
   adminDeleteBanner,
+  adminUploadBannerImage,
 } from '../../services/api';
 
 const emptyForm = { title: '', image_url: '', link_url: '', sort_order: 0, is_active: true };
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5MB
-
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function AdminBanners() {
   const [banners, setBanners] = useState([]);
@@ -70,12 +62,25 @@ export default function AdminBanners() {
     }
     setUploading(true);
     try {
-      const dataUrl = await readFileAsDataURL(file);
-      setForm((f) => ({ ...f, image_url: dataUrl }));
-    } catch {
-      toast.error('Could not read file');
+      const res = await adminUploadBannerImage(file);
+      const url = res.data?.data?.url;
+      if (!url) throw new Error('No URL returned');
+      setForm((f) => ({ ...f, image_url: url }));
+      toast.success('Image uploaded');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const copyUrl = async (url) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('URL copied');
+    } catch {
+      toast.error('Could not copy');
     }
   };
 
@@ -178,6 +183,14 @@ export default function AdminBanners() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => copyUrl(banner.image_url)}
+                        title="Copy image URL"
+                        disabled={!banner.image_url || banner.image_url.startsWith('data:')}
+                        className="p-2 text-gray-400 hover:text-accent rounded hover:bg-dark-600 disabled:opacity-30 disabled:hover:text-gray-400"
+                      >
+                        <FiCopy className="w-4 h-4" />
+                      </button>
                       <button onClick={() => startEdit(banner)} className="p-2 text-gray-400 hover:text-white rounded hover:bg-dark-600">
                         <FiEdit2 className="w-4 h-4" />
                       </button>

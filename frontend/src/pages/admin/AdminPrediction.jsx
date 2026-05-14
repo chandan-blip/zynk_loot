@@ -517,6 +517,20 @@ function AdminPrediction() {
               hint="After a prediction's round completes, wait this long before sending the next prediction. Each pick already waits for its locked game round to finish first."
             />
             <NumberField
+              label="Hype Sticker Delay (seconds)"
+              value={schedule.hypeStickerDelaySeconds}
+              onChange={(v) => updateField({ hypeStickerDelaySeconds: v })}
+              min={0} max={120}
+              hint="Wait this long after each prediction text before sending the hype sticker. Default 3s."
+            />
+            <NumberField
+              label="Result Sticker Delay (seconds)"
+              value={schedule.resultStickerDelaySeconds}
+              onChange={(v) => updateField({ resultStickerDelaySeconds: v })}
+              min={0} max={120}
+              hint="Wait this long after the round reveal before sending the win sticker. Default 3s."
+            />
+            <NumberField
               label="Trailer Delay (seconds)"
               value={schedule.trailerDelaySeconds}
               onChange={(v) => updateField({ trailerDelaySeconds: v })}

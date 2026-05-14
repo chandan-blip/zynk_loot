@@ -368,6 +368,13 @@ export const adminGetBanners = () => api.get('/admin/banners');
 export const adminCreateBanner = (data) => api.post('/admin/banners', data);
 export const adminUpdateBanner = (id, data) => api.put(`/admin/banners/${id}`, data);
 export const adminDeleteBanner = (id) => api.delete(`/admin/banners/${id}`);
+export const adminUploadBannerImage = (file) => {
+  const fd = new FormData();
+  fd.append('image', file);
+  return api.post('/admin/upload/banner', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
 
 // Websites (landing pages)
 export const adminGetWebsites = () => api.get('/admin/websites');

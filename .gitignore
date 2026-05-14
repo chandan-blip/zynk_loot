@@ -43,3 +43,7 @@ docker-compose.override.yml
 # Docs
 deployment.md
 ADMIN_API_DOCS.md
+
+# Uploaded files (banners, etc.)
+backend/uploads/*
+!backend/uploads/.gitkeep

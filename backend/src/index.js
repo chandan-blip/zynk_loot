@@ -91,7 +91,8 @@ const io = new Server(server, {
 const ticketService = new TicketService(io);
 const lotteryService = new LotteryService(io, ticketService);
 const cronService = new CronService(io, ticketService);
-const supportService = new SupportService(io);
+const telegramDashService = new TelegramDashService();
+const supportService = new SupportService(io, telegramDashService);
 const referralService = new ReferralService();
 const investService = new InvestService(io);
 const activityService = new ActivityService(io);
@@ -112,7 +113,6 @@ const notificationService = new NotificationService(io);
 const bonusService = new BonusService();
 const trackingService = new TrackingService(io);
 const dailyWinnersService = new DailyWinnersService();
-const telegramDashService = new TelegramDashService();
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -249,6 +249,12 @@ app.use(cors({
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve uploaded images (banners, etc.)
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), {
+  maxAge: '7d',
+  fallthrough: true,
+}));
 
 // Rate limiters
 const authLimiter = rateLimit({

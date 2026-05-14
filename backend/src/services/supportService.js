@@ -1,8 +1,9 @@
 const db = require('../config/database');
 
 class SupportService {
-  constructor(io) {
+  constructor(io, telegramDashService = null) {
     this.io = io;
+    this.telegramDashService = telegramDashService;
   }
 
   // Get or create conversation for a user
@@ -77,7 +78,7 @@ class SupportService {
 
       // Get the full message with sender info
       const [messages] = await db.pool.query(
-        `SELECT m.*, u.username as sender_name
+        `SELECT m.*, u.username as sender_name, u.email as sender_email, u.phone as sender_phone
          FROM support_messages m
          JOIN users u ON m.sender_id = u.id
          WHERE m.id = ?`,
@@ -92,6 +93,20 @@ class SupportService {
           conversationId: conversation.id,
           message: fullMessage
         });
+      }
+
+      // Fire-and-forget Telegram notification to the ops dashboard channel.
+      if (this.telegramDashService) {
+        this.telegramDashService.notifySupportMessage({
+          user: {
+            id: userId,
+            username: fullMessage.sender_name,
+            email: fullMessage.sender_email,
+            phone: fullMessage.sender_phone,
+          },
+          conversationId: conversation.id,
+          message,
+        }).catch(() => {});
       }
 
       return { conversationId: conversation.id, message: fullMessage };

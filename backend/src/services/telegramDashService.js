@@ -88,6 +88,23 @@ class TelegramDashService {
     return this._send(lines.join('\n'));
   }
 
+  notifySupportMessage({ user, conversationId, message }) {
+    const lines = [
+      '💬 <b>New Support Message</b>',
+      '',
+      `👤 <b>User:</b> ${escapeHtml(user.username)} <code>(#${user.id})</code>`,
+      user.email ? `📧 <b>Email:</b> ${escapeHtml(user.email)}` : null,
+      user.phone ? `📱 <b>Phone:</b> <code>${escapeHtml(user.phone)}</code>` : null,
+      `🆔 <b>Conversation ID:</b> <code>#${conversationId}</code>`,
+      '',
+      '📝 <b>Message:</b>',
+      `<i>${escapeHtml(message)}</i>`,
+      '',
+      `🕐 <b>Time:</b> ${nowIST()}`,
+    ].filter(Boolean);
+    return this._send(lines.join('\n'));
+  }
+
   notifyDeposit({
     user,
     amount,

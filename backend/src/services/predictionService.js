@@ -41,6 +41,8 @@ const DEFAULT_SCHEDULE_CONFIG = {
   getReadyMessage: '🔔 <b>Get ready!</b>\nNext prediction batch drops in a moment.',
   getReadyLeadSeconds: 60,
   predictionSpacingSeconds: 8,
+  hypeStickerDelaySeconds: 3,
+  resultStickerDelaySeconds: 3,
   trailerMessage: '💰 <b>Don\'t miss the next round!</b>',
   trailerDelaySeconds: 5,
   winnersDelaySeconds: 1800,
@@ -234,6 +236,8 @@ function normalizeConfig(raw) {
   cfg.trailerMessage  = String(cfg.trailerMessage ?? '');
   cfg.getReadyLeadSeconds       = clampInt(cfg.getReadyLeadSeconds,       0, 3600,  DEFAULT_SCHEDULE_CONFIG.getReadyLeadSeconds);
   cfg.predictionSpacingSeconds  = clampInt(cfg.predictionSpacingSeconds,  0, 600,   DEFAULT_SCHEDULE_CONFIG.predictionSpacingSeconds);
+  cfg.hypeStickerDelaySeconds   = clampInt(cfg.hypeStickerDelaySeconds,   0, 120,   DEFAULT_SCHEDULE_CONFIG.hypeStickerDelaySeconds);
+  cfg.resultStickerDelaySeconds = clampInt(cfg.resultStickerDelaySeconds, 0, 120,   DEFAULT_SCHEDULE_CONFIG.resultStickerDelaySeconds);
   cfg.trailerDelaySeconds       = clampInt(cfg.trailerDelaySeconds,       0, 600,   DEFAULT_SCHEDULE_CONFIG.trailerDelaySeconds);
   cfg.winnersDelaySeconds       = clampInt(cfg.winnersDelaySeconds,       0, 21600, DEFAULT_SCHEDULE_CONFIG.winnersDelaySeconds);
   cfg.winnersMinCount = clampInt(cfg.winnersMinCount, 1, 50, DEFAULT_SCHEDULE_CONFIG.winnersMinCount);
@@ -450,8 +454,14 @@ class PredictionService {
 
       // After each pick: drop a random hype sticker (best-effort) so the
       // channel feels alive between cards. No-op if HYPE_STICKERS is empty.
+      // hypeStickerDelaySeconds gives the prediction text room to breathe
+      // before the sticker lands — without it the two messages arrive in the
+      // same instant and the hype beat is lost.
       const hype = pickRandomHypeSticker();
       if (hype && hype.file_id) {
+        if (cfg.hypeStickerDelaySeconds > 0) {
+          await sleep(cfg.hypeStickerDelaySeconds * 1000);
+        }
         try {
           await this._sendTelegramSticker({ token, chatId, fileId: hype.file_id });
         } catch (err) {
@@ -470,9 +480,14 @@ class PredictionService {
         }
       }
 
-      // Result sticker — fires right after the round reveal. Best-effort.
+      // Result sticker — fires after the round reveal. Best-effort.
+      // resultStickerDelaySeconds keeps it from landing on top of the
+      // game-result message so the win moment reads as a distinct beat.
       const result = pickRandomResultSticker();
       if (result && result.file_id) {
+        if (cfg.resultStickerDelaySeconds > 0) {
+          await sleep(cfg.resultStickerDelaySeconds * 1000);
+        }
         try {
           await this._sendTelegramSticker({ token, chatId, fileId: result.file_id });
         } catch (err) {
