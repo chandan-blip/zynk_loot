@@ -1,7 +1,18 @@
 const db = require('../config/database');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const DailyWinnersTemplate = require('./dailyWinnersTemplate');
+
+// Per-SMM-order pacing — every order placed against the panel waits a random
+// 3–5s first so cheap panels don't drop bursts. Applied inside placeSmmOrder
+// so every caller (predictions, winners batch, etc.) gets the same pacing.
+const SMM_ORDER_DELAY_MIN_MS = 3000;
+const SMM_ORDER_DELAY_MAX_MS = 5000;
+function randomSmmOrderDelayMs() {
+  return SMM_ORDER_DELAY_MIN_MS
+    + crypto.randomInt(0, SMM_ORDER_DELAY_MAX_MS - SMM_ORDER_DELAY_MIN_MS + 1);
+}
 
 const PAYMENT_TEMPLATES_DIR = path.join(__dirname, 'paymentTemplates');
 const paymentTemplateCache = {};
@@ -341,6 +352,7 @@ class DailyWinnersService {
   }
 
   async placeSmmOrder(cfg, { serviceId, quantity, link, kind, log }) {
+    await sleep(randomSmmOrderDelayMs());
     const body = new URLSearchParams({
       key: cfg.apiKey,
       action: 'add',
@@ -348,19 +360,41 @@ class DailyWinnersService {
       link,
       quantity: String(quantity),
     });
-    const res = await fetch(cfg.apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    const text = await res.text();
-    let parsed;
-    try { parsed = JSON.parse(text); } catch (_) { parsed = { raw: text }; }
-    if (!res.ok || parsed.error) {
-      throw new Error(`SMM ${kind} order failed: ${res.status} ${parsed.error || text}`);
+    // Retry once on transient panel errors (429, 5xx, network blip). Cheap
+    // SMM panels frequently drop a request under burst load.
+    const maxAttempts = 2;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch(cfg.apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+        const text = await res.text();
+        let parsed;
+        try { parsed = JSON.parse(text); } catch (_) { parsed = { raw: text }; }
+        if (!res.ok || parsed.error) {
+          const errMsg = `SMM ${kind} order failed: ${res.status} ${parsed.error || text}`;
+          const transient = res.status === 429 || res.status >= 500;
+          if (transient && attempt < maxAttempts) {
+            await sleep(2000);
+            continue;
+          }
+          throw new Error(errMsg);
+        }
+        log.info(`SMM ${kind} order placed: id=${parsed.order || '?'} qty=${quantity} link=${link}`);
+        return { orderId: parsed.order || null, response: parsed };
+      } catch (err) {
+        lastErr = err;
+        if (attempt < maxAttempts && !/SMM .* order failed:/.test(err.message)) {
+          await sleep(2000);
+          continue;
+        }
+        throw err;
+      }
     }
-    log.info(`SMM ${kind} order placed: id=${parsed.order || '?'} qty=${quantity} link=${link}`);
-    return { orderId: parsed.order || null, response: parsed };
+    throw lastErr || new Error(`SMM ${kind} order failed after ${maxAttempts} attempts`);
   }
 
   async placeSmmOrdersForPost(postUrl, log) {

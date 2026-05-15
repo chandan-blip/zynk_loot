@@ -63,6 +63,15 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, Math.max(0, ms)));
 }
 
+// Per-send jitter — Telegram flood-protection is friendlier when consecutive
+// posts to the same channel are spaced out. 3–5s of randomized pacing also
+// makes the broadcast feel more organic than instant back-to-back messages.
+const SEND_DELAY_MIN_MS = 3000;
+const SEND_DELAY_MAX_MS = 5000;
+function randomSendDelayMs() {
+  return SEND_DELAY_MIN_MS + crypto.randomInt(0, SEND_DELAY_MAX_MS - SEND_DELAY_MIN_MS + 1);
+}
+
 function secureSample(range, count) {
   if (count > range) throw new Error('Sample size exceeds range');
   const picked = new Set();
@@ -438,6 +447,7 @@ class PredictionService {
     for (let i = 0; i < validPicks.length; i++) {
       const pick = validPicks[i];
       let lockedRound = null;
+      let pickSkipped = false;
       try {
         lockedRound = await this._sendPredictionPost({
           token,
@@ -447,10 +457,18 @@ class PredictionService {
           message: pick.message || '',
           slotHour: slot.hour,
         });
-        pushed++;
+        if (!lockedRound) {
+          // No betting round available — skip the whole pick (no stickers,
+          // no waits) so the slot moves on cleanly to the next pick.
+          pickSkipped = true;
+        } else {
+          pushed++;
+        }
       } catch (err) {
         console.error(`[PRED] ${label} pick ${i + 1} (${pick.game}/${pick.cardCountType}) failed:`, err.message);
       }
+
+      if (pickSkipped) continue;
 
       // After each pick: drop a random hype sticker (best-effort) so the
       // channel feels alive between cards. No-op if HYPE_STICKERS is empty.
@@ -584,6 +602,7 @@ class PredictionService {
   }
 
   async _sendTelegramText({ token, chatId, text }, { maxRetries = 3 } = {}) {
+    await sleep(randomSendDelayMs());
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const res = await fetch(url, {
@@ -616,6 +635,7 @@ class PredictionService {
   }
 
   async _sendTelegramSticker({ token, chatId, fileId }, { maxRetries = 2 } = {}) {
+    await sleep(randomSendDelayMs());
     const url = `https://api.telegram.org/bot${token}/sendSticker`;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const res = await fetch(url, {
@@ -644,26 +664,37 @@ class PredictionService {
     if (!deckSize) throw new Error(`Unsupported game "${game}"`);
     const cards = secureSample(deckSize, cardCountType);
 
-    // Try to lock this prediction to the next real round so the game's reveal
-    // matches what we broadcast. Only valid while the round is still in
-    // `betting` — if it's already locked/completed the game won't pick our
-    // cards up and the broadcast falls back to a synthetic period id.
+    // Lock this prediction to the next real round so the game's reveal matches
+    // what we broadcast. Only valid while the round is still in `betting` —
+    // each game cycles ~50s betting → ~10s locked → ~3.5s gap → next betting.
+    // If we fire during the locked/gap window we wait up to ~18s for a betting
+    // round to open. If none opens in time, the pick is skipped entirely
+    // (no synthetic broadcast, no Telegram post) so users never see a card
+    // set that the game won't actually reveal.
     let roundId = 0;
-    let periodId = `SCHED-${String(slotHour).padStart(2, '0')}-${Date.now()}`;
+    let periodId = null;
     let lockedRound = null;
 
     const svc = this.gameServices[game];
     if (svc && typeof svc.getCurrentRound === 'function') {
-      const round = svc.getCurrentRound(cardCountType);
+      let round = svc.getCurrentRound(cardCountType);
+      const waitDeadline = Date.now() + 18_000;
+      while ((!round || round.status !== 'betting') && Date.now() < waitDeadline) {
+        await sleep(500);
+        round = svc.getCurrentRound(cardCountType);
+      }
       if (round && round.status === 'betting') {
         roundId = round.id;
         periodId = round.periodId;
         this.predictedByRoundId.set(round.id, cards);
         lockedRound = round;
         console.log(`[PRED] Locked ${game}/${cardCountType} → round ${round.id} (${round.periodId}), completes at ${round.completeAt}`);
-      } else {
-        console.warn(`[PRED] No betting round for ${game}/${cardCountType} — broadcasting synthetic prediction`);
       }
+    }
+
+    if (!lockedRound) {
+      console.warn(`[PRED] No betting round for ${game}/${cardCountType} after wait — skipping pick`);
+      return null;
     }
 
     const [logRes] = await db.pool.query(
@@ -674,12 +705,19 @@ class PredictionService {
     const logId = logRes.insertId;
 
     const cardsLine = formatCardsForGame(game, cards);
+    const CARD_TYPE_LABELS = { 1: 'Single', 2: 'Double', 3: 'Triple', 4: 'Quadruple' };
+    const cardType = CARD_TYPE_LABELS[cardCountType] || 'Single';
+    // Period ids are `YYYYMMDDTTNNNNN` — strip the YYYYMMDD prefix so the
+    // broadcast only shows the slot/sequence suffix (`TTNNNNN`). Leave
+    // synthetic/non-standard ids untouched.
+    const shortPeriod = /^\d{8}/.test(periodId) ? periodId.slice(8) : periodId;
     const header =
-      `🎯 <b>Sure Shot: ${gameLabel(game)}</b>\n` +
-      `<b>Single - (${cardCountType}C)</b>\n` +
-      `Period: <b>${periodId}</b>\n` +
+      `🎯<b>Sure Shot</b>🎯\n` +
+      `<b>${gameLabel(game)} (${cardCountType}C)</b>\n` +
+      `<b>${cardType} Cards</b>\n` +
+      `Period: <b>${shortPeriod}</b>\n` +
       `Cards: <b>${cardsLine}</b>`;
-    const body = message ? `\n\n${message}` : '';
+    const body = message ? `\n${message}` : '';
     const text = header + body;
 
     let png = null;
@@ -693,6 +731,7 @@ class PredictionService {
 
     let res;
     let respText;
+    await sleep(randomSendDelayMs());
     if (png) {
       const url = `https://api.telegram.org/bot${token}/sendPhoto`;
       const form = new FormData();

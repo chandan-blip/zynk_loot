@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiX } from 'react-icons/fi';
@@ -22,12 +22,24 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
   const isWin = result?.isWin;
   const isDemo = result?.isDemo;
 
+  // Sound + autoclose: parent re-renders rebuild `result` and `onClose` every
+  // tick (the countdown effect renders every 200ms), so keeping them in the
+  // deps array used to replay the sound and reset the timer on every render —
+  // the multi-sound and modal-skip bug. We key the effect on a primitive
+  // fingerprint of the actual data so it only re-runs when the result really
+  // changes (e.g. a new settled event arrives while the modal is still up).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const fingerprint = show && result
+    ? `${result.isWin ? 1 : 0}|${result.betAmount ?? ''}|${result.winAmount ?? ''}|${result.result ?? ''}`
+    : '';
   useEffect(() => {
-    if (!show || !result) return;
+    if (!fingerprint) return;
     isWin ? sounds.win() : sounds.lose();
-    const timer = setTimeout(onClose, autoCloseMs);
+    const timer = setTimeout(() => onCloseRef.current?.(), autoCloseMs);
     return () => clearTimeout(timer);
-  }, [show, result, isWin, onClose, autoCloseMs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fingerprint, autoCloseMs]);
 
   // Pre-compute random particle / coin trajectories per open so each summon
   // feels different but doesn't reshuffle during the animation.
