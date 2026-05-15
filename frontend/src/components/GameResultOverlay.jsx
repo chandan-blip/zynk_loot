@@ -196,6 +196,17 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
             />
           ))}
 
+          {/* Close button — fixed to the viewport corner so it doesn't shift
+              the perceived vertical centre of the modal content. */}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="fixed top-4 right-4 z-10 w-9 h-9 rounded-full flex items-center justify-center bg-black/40 hover:bg-black/60 border backdrop-blur-sm transition-colors"
+            style={{ borderColor: `${palette.gold}77`, color: palette.goldLight }}
+          >
+            <FiX className="w-4 h-4" />
+          </button>
+
           {/* CONTENT — floating, no solid container */}
           <motion.div
             initial={{ scale: 0.6, opacity: 0, y: 20 }}
@@ -205,16 +216,6 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
             className="relative text-center max-w-[92vw]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Close button — floating chip */}
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="absolute -top-12 right-0 w-9 h-9 rounded-full flex items-center justify-center bg-black/40 hover:bg-black/60 border backdrop-blur-sm transition-colors"
-              style={{ borderColor: `${palette.gold}77`, color: palette.goldLight }}
-            >
-              <FiX className="w-4 h-4" />
-            </button>
-
             {/* Crown medallion — floats above everything */}
             <motion.div
               initial={{ scale: 0.4, opacity: 0, y: -10 }}

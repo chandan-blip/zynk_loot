@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { inc as loadInc, dec as loadDec } from '../utils/loadingTracker';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -9,19 +10,28 @@ const api = axios.create({
   },
 });
 
-// Add token to requests
+// Add token + bump the global in-flight counter. The counter is read by
+// RouteLoader so the branded overlay stays up while pages fetch data.
+// Set `config.silent = true` on background polling calls (e.g. unread
+// counts, heartbeat) to skip the counter and avoid keeping the overlay
+// permanently visible.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  if (!config.silent) loadInc();
   return config;
 });
 
-// Handle response errors
+// Decrement on both success and error so failures don't pin the overlay.
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (!response.config?.silent) loadDec();
+    return response;
+  },
   (error) => {
+    if (!error.config?.silent) loadDec();
     const isAuthRoute = error.config?.url?.startsWith('/auth/');
     if (error.response?.status === 401 && localStorage.getItem('token') && !isAuthRoute) {
       localStorage.removeItem('token');

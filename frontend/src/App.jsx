@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import useStore from './store/useStore';
@@ -64,6 +64,8 @@ import AdminWebsites from './pages/admin/AdminWebsites';
 import AdminBanners from './pages/admin/AdminBanners';
 import AdminWebsiteLeads from './pages/admin/AdminWebsiteLeads';
 import useTracking from './hooks/useTracking';
+import AppLoader from './components/AppLoader';
+import { subscribe as subscribePending, getPending, reset as resetPending } from './utils/loadingTracker';
 
 function PublicRoute({ children }) {
   const { isAuthenticated, isLoading } = useStore();
@@ -121,6 +123,102 @@ function ScrollToTop() {
   return null;
 }
 
+// Shows the branded overlay loader on every route change AND on initial app
+// boot. No fixed timer — the loader stays visible until ALL of:
+//   1. The browser reports `document.readyState === 'complete'`
+//      (initial mount only — covers scripts/images/fonts).
+//   2. The new route has actually painted at least one frame
+//      (double-RAF after the location change).
+//   3. Every HTTP request initiated by the new route has settled — the
+//      axios interceptors push/pop a global counter (`loadingTracker`).
+//      Mark a request as `{ silent: true }` to skip the counter (use for
+//      background polls so the overlay never sticks forever).
+//
+// `SETTLE_DELAY_MS` is a tiny debounce after `pending` reaches 0 so the
+// loader doesn't flash off between two back-to-back requests where the
+// gap is shorter than a frame.
+const SETTLE_DELAY_MS = 120;
+
+function RouteLoader() {
+  const { pathname } = useLocation();
+  const [show, setShow] = useState(true);
+  const initialLoadDone = useRef(false);
+  const paintedRef = useRef(false);
+  const settleTimerRef = useRef(null);
+
+  useEffect(() => {
+    setShow(true);
+    paintedRef.current = false;
+    // Drop any stale in-flight counter from the previous route — prevents
+    // an aborted/orphaned request from pinning the overlay.
+    resetPending();
+    if (settleTimerRef.current) {
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+
+    let raf1, raf2;
+    let cancelled = false;
+
+    const tryHide = () => {
+      if (cancelled) return;
+      if (!paintedRef.current) return;       // not painted yet
+      if (getPending() > 0) return;          // requests still in flight
+      // All clear. Debounce briefly to absorb back-to-back requests.
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = setTimeout(() => {
+        if (!cancelled && paintedRef.current && getPending() === 0) {
+          setShow(false);
+        }
+      }, SETTLE_DELAY_MS);
+    };
+
+    // Re-check whenever the pending count changes.
+    const unsubscribe = subscribePending(() => tryHide());
+
+    // Once the new page has painted, mark it and re-check.
+    const markPainted = () => {
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          if (cancelled) return;
+          paintedRef.current = true;
+          tryHide();
+        });
+      });
+    };
+
+    if (!initialLoadDone.current && document.readyState !== 'complete') {
+      // First mount + document still loading. Wait for window 'load',
+      // then start counting paint frames.
+      const onLoad = () => {
+        initialLoadDone.current = true;
+        markPainted();
+      };
+      window.addEventListener('load', onLoad, { once: true });
+      return () => {
+        cancelled = true;
+        unsubscribe();
+        window.removeEventListener('load', onLoad);
+        if (raf1) cancelAnimationFrame(raf1);
+        if (raf2) cancelAnimationFrame(raf2);
+        if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      };
+    }
+
+    initialLoadDone.current = true;
+    markPainted();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    };
+  }, [pathname]);
+
+  return <AppLoader show={show} />;
+}
+
 function TrackingInit() {
   useTracking();
   return null;
@@ -159,6 +257,7 @@ function App() {
       />
       <ScrollToTop />
       <TrackingInit />
+      <RouteLoader />
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
