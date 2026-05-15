@@ -52,16 +52,28 @@ function formatPeriodId(periodId) {
   return String(periodId);
 }
 
+// Suit → on-dark tone pair. Used by CardChipMini and the slip-target suit chip
+// so the whole page reads in the same dark accent palette.
+function suitChipTone(suitIdx) {
+  switch (suitIdx) {
+    case 0: return { bg: 'bg-slate-700/60', border: 'border-slate-500/40', fg: 'text-slate-100' };   // ♣
+    case 1: return { bg: 'bg-red-500/15',   border: 'border-red-500/40',   fg: 'text-red-300' };     // ♦
+    case 2: return { bg: 'bg-rose-500/15',  border: 'border-rose-500/40',  fg: 'text-rose-300' };    // ♥
+    case 3: return { bg: 'bg-slate-900/70', border: 'border-slate-600/50', fg: 'text-slate-100' };   // ♠
+    default: return { bg: 'bg-dark-700',    border: 'border-dark-500',     fg: 'text-gray-200' };
+  }
+}
+
 function CardChipMini({ id }) {
-  const { rank, suit } = decodeCard(id);
+  const { rank, suit, suitIdx } = decodeCard(id);
+  const tone = suitChipTone(suitIdx);
   return (
     <span
-      className="inline-flex flex-col items-center justify-center w-7 h-9 rounded bg-white border border-gray-300 font-bold text-[11px] leading-none"
-      style={{ color: suit.color }}
+      className={`inline-flex flex-col items-center justify-center w-6 h-7 rounded border font-bold text-[9px] leading-none ${tone.bg} ${tone.border} ${tone.fg}`}
       title={`${rank}${suit.symbol}`}
     >
       <span>{rank}</span>
-      <span className="text-[10px]">{suit.symbol}</span>
+      <span className="text-[8px] -mt-0.5">{suit.symbol}</span>
     </span>
   );
 }
@@ -69,26 +81,24 @@ function CardChipMini({ id }) {
 function SlipTarget({ slip }) {
   if (slip.kind === 'cards') {
     return (
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-0.5">
         {slip.cards.map((cid) => <CardChipMini key={cid} id={cid} />)}
       </div>
     );
   }
   if (slip.kind === 'rank') {
     return (
-      <span className="inline-flex items-center px-2 h-9 rounded bg-white border border-gray-300 font-bold text-xs text-gray-900">
+      <span className="inline-flex items-center px-1.5 h-6 rounded border bg-amber-500/15 border-amber-500/40 text-amber-300 font-bold text-[10px]">
         Rank {RANK_LABELS[slip.rank]}
       </span>
     );
   }
   if (slip.kind === 'suit') {
     const s = SUITS[slip.suit];
+    const tone = suitChipTone(slip.suit);
     return (
-      <span
-        className="inline-flex items-center gap-1 px-2 h-9 rounded bg-white border border-gray-300 font-bold text-xs"
-        style={{ color: s.color }}
-      >
-        <span className="text-base leading-none">{s.symbol}</span>
+      <span className={`inline-flex items-center gap-1 px-1.5 h-6 rounded border font-bold text-[10px] ${tone.bg} ${tone.border} ${tone.fg}`}>
+        <span className="text-xs leading-none">{s.symbol}</span>
         <span className="capitalize">{s.name}</span>
       </span>
     );
@@ -96,8 +106,8 @@ function SlipTarget({ slip }) {
   if (slip.kind === 'color') {
     const isRed = slip.color === 'red';
     return (
-      <span className={`inline-flex items-center px-3 h-9 rounded border font-bold text-xs capitalize ${
-        isRed ? 'bg-red-500/15 border-red-500/40 text-red-300' : 'bg-gray-700/40 border-gray-500/40 text-gray-200'
+      <span className={`inline-flex items-center px-2 h-6 rounded border font-bold text-[10px] capitalize ${
+        isRed ? 'bg-red-500/15 border-red-500/40 text-red-300' : 'bg-slate-700/50 border-slate-500/40 text-slate-200'
       }`}>
         {slip.color}
       </span>
@@ -1384,9 +1394,9 @@ export default function ShuffleCard() {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[9px] text-gray-300 uppercase font-bold shrink-0">
+                          {/* <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[9px] text-gray-300 uppercase font-bold shrink-0">
                             {kindChip}
-                          </span>
+                          </span> */}
                           <SlipTarget slip={slip} />
                         </div>
                       </td>

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import useStore from './store/useStore';
-import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
+import { CurrencyProvider } from './contexts/CurrencyContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import Home from './pages/Home';
@@ -33,7 +33,6 @@ import AdminDailyWinners from './pages/admin/AdminDailyWinners';
 import AdminPaymentTemplates from './pages/admin/AdminPaymentTemplates';
 import AdminPrediction from './pages/admin/AdminPrediction';
 import AdminPackages from './pages/admin/AdminPackages';
-import AdminCurrency from './pages/admin/AdminCurrency';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminPayments from './pages/admin/AdminPayments';
 import AdminSupport from './pages/admin/AdminSupport';
@@ -116,20 +115,6 @@ function AdminRoute({ children }) {
   return children;
 }
 
-// Syncs user's preferred currency from backend into CurrencyContext
-function CurrencySync() {
-  const { user } = useStore();
-  const { initFromUser } = useCurrency();
-
-  useEffect(() => {
-    if (user?.preferredCurrency) {
-      initFromUser(user.preferredCurrency);
-    }
-  }, [user?.preferredCurrency, initFromUser]);
-
-  return null;
-}
-
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
@@ -150,7 +135,6 @@ function App() {
 
   return (
     <CurrencyProvider>
-      <CurrencySync />
       <Toaster
         position="top-right"
         toastOptions={{
@@ -191,7 +175,6 @@ function App() {
           <Route path="prediction" element={<AdminPrediction />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="packages" element={<AdminPackages />} />
-          <Route path="currency" element={<AdminCurrency />} />
           <Route path="orders" element={<AdminOrders />} />
           <Route path="payments" element={<AdminPayments />} />
           <Route path="deposits" element={<AdminDeposits />} />

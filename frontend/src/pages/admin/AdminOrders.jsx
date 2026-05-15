@@ -80,14 +80,14 @@ export default function AdminOrders() {
   };
 
   const handleApprove = async (order) => {
-    if (!confirm(`Approve order #${order.id}? This will credit ${order.zynk_amount + (order.bonus_amount || 0)} Zynk to ${order.username}.`)) {
+    if (!confirm(`Approve order #${order.id}? This will credit ₹${order.zynk_amount + (order.bonus_amount || 0)} to ${order.username}.`)) {
       return;
     }
 
     setProcessing(order.id);
     try {
       await approveOrder(order.id, 'Approved by admin');
-      toast.success(`Order approved! ${order.zynk_amount + (order.bonus_amount || 0)} Zynk credited.`);
+      toast.success(`Order approved! ₹${order.zynk_amount + (order.bonus_amount || 0)} credited.`);
       fetchOrders();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to approve order');
@@ -290,7 +290,7 @@ export default function AdminOrders() {
                       </td>
                       <td className="text-right">
                         <div>
-                          <p className="text-accent font-semibold text-sm lg:text-base">{totalZynk.toLocaleString()} Z</p>
+                          <p className="text-accent font-semibold text-sm lg:text-base">₹{totalZynk.toLocaleString()}</p>
                           <p className="text-gray-500 text-xs">
                             {order.payment_currency && order.payment_amount
                               ? `${order.payment_currency === 'INR' ? '₹' : ''}${parseFloat(order.payment_amount).toLocaleString()} ${order.payment_currency !== 'INR' ? order.payment_currency : ''}`
@@ -480,12 +480,12 @@ export default function AdminOrders() {
                   </div>
                   <div className="flex justify-between mt-1">
                     <span className="text-gray-300">Base Amount</span>
-                    <span className="text-white">{selectedOrder.zynk_amount?.toLocaleString()} Z</span>
+                    <span className="text-white">₹{selectedOrder.zynk_amount?.toLocaleString()}</span>
                   </div>
                   {selectedOrder.bonus_amount > 0 && (
                     <div className="flex justify-between mt-1">
                       <span className="text-gray-300">Bonus</span>
-                      <span className="text-green-400">+{selectedOrder.bonus_amount?.toLocaleString()} Z</span>
+                      <span className="text-green-400">+₹{selectedOrder.bonus_amount?.toLocaleString()}</span>
                     </div>
                   )}
                   <div className="flex justify-between mt-2 pt-2 border-t border-dark-600">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import {
@@ -18,8 +18,6 @@ import {
   FiAward,
   FiDownload,
   FiSearch,
-  FiChevronLeft,
-  FiChevronRight,
   FiUser,
   FiGift,
   FiTarget,
@@ -29,7 +27,8 @@ import {
   FiArrowUp,
   FiArrowDown
 } from 'react-icons/fi';
-import { SiBitcoin, SiEthereum } from 'react-icons/si';
+import { SiBitcoin, SiEthereum, SiPaytm, SiGooglepay, SiPhonepe } from 'react-icons/si';
+import { GiTwoCoins } from 'react-icons/gi';
 import { BsBank2, BsTrophy, BsLightning, BsStars } from 'react-icons/bs';
 import {
   AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar,
@@ -93,10 +92,26 @@ function Wallet() {
   usePageTitle('Wallet');
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { updateBalance } = useStore();
   const { selectedCurrency, formatCurrency } = useCurrency();
   const ACHIEVEMENTS = buildAchievements(formatCurrency);
-  const [activeTab, setActiveTab] = useState('buy');
+
+  // Allow other pages to deep-link into a specific tab via `?tab=<id>`.
+  // Recognized ids match the tabs list below (buy, deposits, withdrawals,
+  // methods, transfer, analytics, rewards). The query is stripped after we
+  // pick it up so the URL stays clean.
+  const TAB_IDS = ['buy', 'deposits', 'withdrawals', 'methods', 'transfer', 'analytics', 'rewards'];
+  const initialTab = TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'buy';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  useEffect(() => {
+    if (searchParams.get('tab')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [loading, setLoading] = useState(true);
   const [balance, setBalance] = useState({ balance: 0, totalSpent: 0, totalEarned: 0 });
   const [packages, setPackages] = useState([]);
@@ -110,8 +125,6 @@ function Wallet() {
   const [paymentType, setPaymentType] = useState('upi');
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showTransferConfirm, setShowTransferConfirm] = useState(false);
-  const [showTransactionDetail, setShowTransactionDetail] = useState(null);
-
   // Form states
   const [upiForm, setUpiForm] = useState({ upi_id: '', label: '' });
   const [cryptoForm, setCryptoForm] = useState({ wallet_address: '', wallet_type: 'BTC', label: '' });
@@ -131,12 +144,6 @@ function Wallet() {
   // Analytics states
   const [analyticsRange, setAnalyticsRange] = useState('30');
 
-  // History filter states
-  const [historyFilter, setHistoryFilter] = useState('all');
-  const [historySearch, setHistorySearch] = useState('');
-  const [historyPage, setHistoryPage] = useState(1);
-  const historyPageSize = 10;
-
   // Rewards states
   const [unlockedAchievements, setUnlockedAchievements] = useState([]);
 
@@ -150,36 +157,46 @@ function Wallet() {
 
   const fetchData = async () => {
     setLoading(true);
-    try {
-      const [balanceRes, packagesRes, methodsRes, withdrawalsRes, transactionsRes, ordersRes] = await Promise.all([
-        getWalletBalance(),
-        getZynkPackages(),
-        getPaymentMethods(),
-        getWithdrawals(),
-        getTransactions(),
-        getUserOrders()
-      ]);
+    // Each endpoint is fetched independently — a single failure (e.g. a
+    // backend route that errors out) must not blank out the rest of the
+    // wallet, since they're rendered in different tabs. Without this guard,
+    // a bad /wallet/orders or /wallet/withdrawals call would also wipe out
+    // the History tab's transactions list and the filter would have nothing
+    // to filter against.
+    const results = await Promise.allSettled([
+      getWalletBalance(),
+      getZynkPackages(),
+      getPaymentMethods(),
+      getWithdrawals(),
+      getTransactions(),
+      getUserOrders(),
+    ]);
 
-      setBalance(balanceRes.data.data);
-      setPackages(packagesRes.data.data);
-      setPaymentMethods(methodsRes.data.data);
-      setWithdrawals(withdrawalsRes.data.data.withdrawals);
-      setTransactions(transactionsRes.data.data.transactions);
-      setOrders(ordersRes.data.data.orders || []);
+    const [balanceRes, packagesRes, methodsRes, withdrawalsRes, transactionsRes, ordersRes] = results;
 
-      // Try to load transfers
-      try {
-        const transfersRes = await getTransferHistory();
-        setTransfers(transfersRes.data.data.transfers || []);
-      } catch {
-        // API may not exist yet, use mock data
-        setTransfers([]);
-      }
-    } catch (error) {
-      toast.error('Failed to load wallet data');
-    } finally {
-      setLoading(false);
+    if (balanceRes.status === 'fulfilled')      setBalance(balanceRes.value.data.data);
+    if (packagesRes.status === 'fulfilled')     setPackages(packagesRes.value.data.data);
+    if (methodsRes.status === 'fulfilled')      setPaymentMethods(methodsRes.value.data.data);
+    if (withdrawalsRes.status === 'fulfilled')  setWithdrawals(withdrawalsRes.value.data.data.withdrawals || []);
+    if (transactionsRes.status === 'fulfilled') setTransactions(transactionsRes.value.data.data.transactions || []);
+    if (ordersRes.status === 'fulfilled')       setOrders(ordersRes.value.data.data.orders || []);
+
+    const failed = results
+      .map((r, i) => ({ r, name: ['balance','packages','methods','withdrawals','transactions','orders'][i] }))
+      .filter(({ r }) => r.status === 'rejected');
+    if (failed.length) {
+      console.error('[Wallet] partial fetch failure:', failed.map(({ r, name }) => `${name}: ${r.reason?.message || r.reason}`));
+      toast.error(`Some wallet data couldn't load (${failed.map(f => f.name).join(', ')})`);
     }
+
+    try {
+      const transfersRes = await getTransferHistory();
+      setTransfers(transfersRes.data.data.transfers || []);
+    } catch {
+      setTransfers([]);
+    }
+
+    setLoading(false);
   };
 
   const loadAchievements = () => {
@@ -285,37 +302,6 @@ function Wallet() {
     const progress = spent - currentTier.min;
     return Math.min(100, (progress / range) * 100);
   }, [balance.totalSpent, currentTier, nextTier]);
-
-  // Filter history
-  const filteredTransactions = useMemo(() => {
-    let result = [...transactions];
-
-    // Filter by type
-    if (historyFilter !== 'all') {
-      result = result.filter(t => t.type === historyFilter);
-    }
-
-    // Filter by search
-    if (historySearch) {
-      const search = historySearch.toLowerCase();
-      result = result.filter(t =>
-        t.description?.toLowerCase().includes(search) ||
-        t.type.toLowerCase().includes(search)
-      );
-    }
-
-    // Sort by date (newest first)
-    result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    return result;
-  }, [transactions, historyFilter, historySearch]);
-
-  const paginatedTransactions = useMemo(() => {
-    const start = (historyPage - 1) * historyPageSize;
-    return filteredTransactions.slice(start, start + historyPageSize);
-  }, [filteredTransactions, historyPage, historyPageSize]);
-
-  const totalHistoryPages = Math.ceil(filteredTransactions.length / historyPageSize);
 
   // Filtered transfers
   const filteredTransfers = useMemo(() => {
@@ -479,28 +465,6 @@ function Wallet() {
     }
   };
 
-  // Export to CSV
-  const handleExportCSV = () => {
-    const headers = ['Date', 'Type', 'Amount', 'Description', 'Balance After'];
-    const rows = filteredTransactions.map(t => [
-      new Date(t.created_at).toLocaleString(),
-      t.type,
-      t.amount,
-      t.description || '',
-      t.balance_after || ''
-    ]);
-
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('CSV exported successfully');
-  };
-
   const getStatusBadge = (status) => {
     const styles = {
       pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
@@ -612,7 +576,6 @@ function Wallet() {
           { id: 'transfer', label: 'Transfer', icon: FiSend },
           { id: 'analytics', label: 'Analytics', icon: FiTrendingUp },
           { id: 'rewards', label: 'Rewards', icon: FiAward },
-          { id: 'history', label: 'History', icon: FiClock },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -638,41 +601,93 @@ function Wallet() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+            className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
           >
-            {packages.map((pkg) => (
-              <motion.div
-                key={pkg.id}
-                whileHover={{ scale: 1.02 }}
-                className={`relative p-3 rounded-xl border transition-all ${
-                  pkg.bonus_percent > 0
-                    ? 'bg-gradient-to-br from-accent/10 to-dark-700 border-accent/30'
-                    : 'bg-dark-700 border-dark-600'
-                }`}
-              >
-                {pkg.bonus_percent > 0 && (
-                  <div className="absolute -top-2 -right-2 px-2 py-1 border border-accent bg-accent/40 text-white text-[9px] font-bold rounded-full">
-                    +{pkg.bonus_percent}% BONUS
-                  </div>
-                )}
-                <h3 className="text-lg font-semibold text-white mb-1">{pkg.name}</h3>
-                <div className="flex items-baseline gap-1 mb-3">
-                  <span className="text-3xl font-bold text-accent">{formatCurrency(pkg.zynk_amount)}</span>
-                </div>
-                {pkg.bonus_percent > 0 && (
-                  <p className="text-xs text-green-400 mb-3">
-                    Get {formatCurrency(Math.floor(pkg.zynk_amount * pkg.bonus_percent / 100))} extra!
-                  </p>
-                )}
-                <button
-                  onClick={() => handleBuyPackage(pkg)}
-                  disabled={processingPackage === pkg.id}
-                  className="w-full py-2 rounded-lg bg-accent hover:bg-accent-600 text-dark-900 font-medium transition-colors disabled:opacity-50"
+            {packages.map((pkg, idx) => {
+              const hasBonus = pkg.bonus_percent > 0;
+              const bonusAmount = hasBonus
+                ? Math.floor(pkg.zynk_amount * pkg.bonus_percent / 100)
+                : 0;
+              const total = pkg.zynk_amount + bonusAmount;
+              return (
+                <motion.div
+                  key={pkg.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.04 }}
+                  whileHover={{ y: -3 }}
+                  className={`relative overflow-hidden rounded-2xl border transition-all shadow-lg ${
+                    hasBonus
+                      ? 'bg-gradient-to-br from-accent/15 via-dark-800 to-dark-900 border-accent/40 hover:border-accent/70 hover:shadow-accent/20'
+                      : 'bg-gradient-to-br from-dark-700 to-dark-800 border-dark-600 hover:border-accent/30'
+                  }`}
                 >
-                  {processingPackage === pkg.id ? 'Processing...' : 'Deposit'}
-                </button>
-              </motion.div>
-            ))}
+                  {/* Ambient glow */}
+                  <div className={`absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl pointer-events-none ${
+                    hasBonus ? 'bg-accent/25' : 'bg-accent/10'
+                  }`} />
+
+                  {hasBonus && (
+                    <div className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-gold-light to-amber-400 text-dark-900 shadow shadow-amber-500/40">
+                      +{pkg.bonus_percent}%
+                    </div>
+                  )}
+
+                  <div className="relative p-4">
+                    {/* Header */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                        hasBonus ? 'bg-accent/25' : 'bg-dark-600'
+                      }`}>
+                        <GiTwoCoins className={`w-5 h-5 ${hasBonus ? 'text-gold-light' : 'text-accent'}`} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white leading-tight">{pkg.name}</h3>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">Package</p>
+                      </div>
+                    </div>
+
+                    {/* Amount */}
+                    <div className="mb-2">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-accent to-emerald-400 bg-clip-text text-transparent">
+                          {formatCurrency(pkg.zynk_amount)}
+                        </span>
+                      </div>
+                      {hasBonus ? (
+                        <p className="text-[11px] text-gold-light font-semibold mt-0.5">
+                          +{formatCurrency(bonusAmount)} bonus → {formatCurrency(total)}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 mt-0.5">Standard package</p>
+                      )}
+                    </div>
+
+                    {/* UPI / payment icons strip */}
+                    <div className="flex items-center gap-2 py-2 px-2 my-2 rounded-lg bg-dark-900/40 border border-white/5">
+                      <span className="text-[9px] text-gray-500 uppercase tracking-wider mr-auto">Accepts</span>
+                      <SiGooglepay className="w-5 h-5 text-white/80" title="Google Pay" />
+                      <SiPhonepe className="w-4 h-4 text-purple-400" title="PhonePe" />
+                      <SiPaytm className="w-5 h-5 text-blue-400" title="Paytm" />
+                      <BsBank2 className="w-3.5 h-3.5 text-gray-400" title="Bank Transfer" />
+                    </div>
+
+                    {/* CTA */}
+                    <button
+                      onClick={() => handleBuyPackage(pkg)}
+                      disabled={processingPackage === pkg.id}
+                      className={`w-full mt-1 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                        hasBonus
+                          ? 'bg-gradient-to-r from-accent to-emerald-400 text-dark-900 hover:shadow-lg hover:shadow-accent/30'
+                          : 'bg-accent text-dark-900 hover:bg-accent/90'
+                      }`}
+                    >
+                      {processingPackage === pkg.id ? 'Processing…' : 'Deposit Now'}
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
           </motion.div>
         )}
 
@@ -699,18 +714,11 @@ function Wallet() {
               ) : (
                 <div className="space-y-2">
                   {orders.map((order) => {
-                    const currencySymbols = { INR: '₹', USD: '$', BTC: '₿', ETH: 'Ξ', USDT: '$' };
-                    const payCurr = order.payment_currency || 'USD';
-                    const paySymbol = currencySymbols[payCurr] || '';
-                    const payAmount = order.payment_amount != null
-                      ? parseFloat(order.payment_amount)
-                      : parseFloat(order.price);
-                    const isCrypto = ['BTC', 'ETH'].includes(payCurr);
-                    const formattedAmount = isCrypto
-                      ? `${payAmount.toFixed(8)} ${payCurr}`
-                      : payCurr === 'USDT'
-                        ? `${payAmount.toFixed(2)} USDT`
-                        : `${paySymbol}${payAmount.toLocaleString(payCurr === 'INR' ? 'en-IN' : 'en-US', { maximumFractionDigits: 2 })}`;
+                    // INR-only display. Old rows may still have payment_amount
+                    // in a foreign currency, but we treat the package price
+                    // as the canonical INR figure.
+                    const payAmount = parseFloat(order.price) || 0;
+                    const formattedAmount = formatCurrency(payAmount);
                     return (
                     <div key={order.id} className="flex items-center justify-between p-4 bg-dark-800 rounded-lg hover:bg-dark-600/50 transition-colors">
                       <div className="flex items-center gap-4">
@@ -1337,148 +1345,6 @@ function Wallet() {
           </motion.div>
         )}
 
-        {/* History Tab (Enhanced) */}
-        {activeTab === 'history' && (
-          <motion.div
-            key="history"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-4"
-          >
-            {/* Filters */}
-            <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex items-center gap-3 flex-1">
-                  <select
-                    value={historyFilter}
-                    onChange={(e) => { setHistoryFilter(e.target.value); setHistoryPage(1); }}
-                    className="input-premium text-sm py-2 px-3"
-                  >
-                    <option value="all">All Types</option>
-                    <option value="deposit">Deposit</option>
-                    <option value="withdrawal">Withdrawal</option>
-                    <option value="purchase">Purchase</option>
-                    <option value="sale">Sale</option>
-                    <option value="prize">Prize</option>
-                    <option value="transfer_in">Transfer In</option>
-                    <option value="transfer_out">Transfer Out</option>
-                    <option value="vote">Vote</option>
-                    <option value="refund">Refund</option>
-                  </select>
-                  <div className="relative flex-1 max-w-xs">
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                    <input
-                      type="text"
-                      value={historySearch}
-                      onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1); }}
-                      placeholder="Search..."
-                      className="input-premium w-full text-sm py-2 pl-9 pr-3"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <span>{filteredTransactions.length} transactions</span>
-                  {(historyFilter !== 'all' || historySearch) && (
-                    <button
-                      onClick={() => { setHistoryFilter('all'); setHistorySearch(''); setHistoryPage(1); }}
-                      className="text-accent hover:text-accent-400"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Transactions Table */}
-            <div className="bg-dark-700 rounded-xl border border-dark-600 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-dark-600">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Type</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Description</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-400">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedTransactions.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                          No transactions found
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedTransactions.map((t) => (
-                        <tr
-                          key={t.id}
-                          className="border-b border-dark-600 hover:bg-dark-600/50 cursor-pointer"
-                          onClick={() => setShowTransactionDetail(t)}
-                        >
-                          <td className="px-4 py-3 text-sm text-gray-400">
-                            {new Date(t.created_at).toLocaleDateString()}
-                            <span className="text-xs ml-1 text-gray-600">
-                              {new Date(t.created_at).toLocaleTimeString()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
-                              ['deposit', 'prize', 'sale', 'refund'].includes(t.type)
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-red-500/20 text-red-400'
-                            }`}>
-                              {t.type.charAt(0).toUpperCase() + t.type.slice(1)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-white max-w-xs truncate">
-                            {t.description ? rewriteAmounts(t.description, selectedCurrency) : '-'}
-                          </td>
-                          <td className={`px-4 py-3 text-sm text-right font-medium ${
-                            ['deposit', 'prize', 'sale', 'refund'].includes(t.type) ? 'text-green-400' : 'text-red-400'
-                          }`}>
-                            {['deposit', 'prize', 'sale', 'refund'].includes(t.type) ? '+' : '-'}
-                            {formatCurrency(parseFloat(t.amount))}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              {totalHistoryPages > 1 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-dark-600">
-                  <span className="text-sm text-gray-400">
-                    Showing {((historyPage - 1) * historyPageSize) + 1}-{Math.min(historyPage * historyPageSize, filteredTransactions.length)} of {filteredTransactions.length}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
-                      disabled={historyPage === 1}
-                      className="p-1 rounded hover:bg-dark-600 disabled:opacity-50"
-                    >
-                      <FiChevronLeft className="w-5 h-5 text-gray-400" />
-                    </button>
-                    <span className="text-sm text-white px-2">
-                      {historyPage} / {totalHistoryPages}
-                    </span>
-                    <button
-                      onClick={() => setHistoryPage(p => Math.min(totalHistoryPages, p + 1))}
-                      disabled={historyPage >= totalHistoryPages}
-                      className="p-1 rounded hover:bg-dark-600 disabled:opacity-50"
-                    >
-                      <FiChevronRight className="w-5 h-5 text-gray-400" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </motion.div>
-        )}
       </AnimatePresence>
 
       {/* Add Payment Method Modal */}
@@ -1821,80 +1687,6 @@ function Wallet() {
         )}
       </AnimatePresence>
 
-      {/* Transaction Detail Modal */}
-      <AnimatePresence>
-        {showTransactionDetail && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowTransactionDetail(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-dark-800 rounded-2xl border border-dark-600 p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-white">Transaction Details</h3>
-                <button
-                  onClick={() => setShowTransactionDetail(null)}
-                  className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-dark-700"
-                >
-                  <FiX className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Type</span>
-                  <span className={`font-medium ${
-                    ['deposit', 'prize', 'sale', 'refund'].includes(showTransactionDetail.type)
-                      ? 'text-green-400' : 'text-red-400'
-                  }`}>
-                    {showTransactionDetail.type.charAt(0).toUpperCase() + showTransactionDetail.type.slice(1)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Amount</span>
-                  <span className={`font-bold ${
-                    ['deposit', 'prize', 'sale', 'refund'].includes(showTransactionDetail.type)
-                      ? 'text-green-400' : 'text-red-400'
-                  }`}>
-                    {['deposit', 'prize', 'sale', 'refund'].includes(showTransactionDetail.type) ? '+' : '-'}
-                    {formatCurrency(parseFloat(showTransactionDetail.amount))}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Date</span>
-                  <span className="text-white">{new Date(showTransactionDetail.created_at).toLocaleString()}</span>
-                </div>
-                {showTransactionDetail.description && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Description</span>
-                    <span className="text-white text-right max-w-[200px]">{rewriteAmounts(showTransactionDetail.description, selectedCurrency)}</span>
-                  </div>
-                )}
-                {showTransactionDetail.balance_after && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Balance After</span>
-                    <span className="text-white">{formatCurrency(parseFloat(showTransactionDetail.balance_after))}</span>
-                  </div>
-                )}
-                {showTransactionDetail.reference && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Reference</span>
-                    <span className="text-white font-mono text-sm">{showTransactionDetail.reference}</span>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

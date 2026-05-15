@@ -1,10 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FiPlus, FiEdit2, FiTrash2, FiCheck, FiPercent, FiGlobe } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiCheck, FiPercent } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
-import { getAdminPackages, createPackage, updatePackage, deletePackage, getZynkRate, getExchangeRates } from '../../services/api';
+import { getAdminPackages, createPackage, updatePackage, deletePackage } from '../../services/api';
+import { formatAmount } from '../../utils/formatAmount';
 
+// INR-only package admin. Package `amount` is the raw INR value the user pays
+// and receives in their wallet. `bonus_percent` adds a free top-up on top.
+// The DB still has separate zynk_amount + price columns for legacy reasons,
+// so we send the same value for both.
 function AdminPackages() {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,8 +17,6 @@ function AdminPackages() {
   const [editingPackage, setEditingPackage] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
-  const [zynkToUsd, setZynkToUsd] = useState(1.0);
-  const [exchangeRates, setExchangeRates] = useState([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -29,15 +32,8 @@ function AdminPackages() {
   const fetchPackages = async () => {
     setLoading(true);
     try {
-      const [packagesRes, zynkRes, ratesRes] = await Promise.all([
-        getAdminPackages(),
-        getZynkRate(),
-        getExchangeRates()
-      ]);
-      setPackages(packagesRes.data.data);
-      setZynkToUsd(parseFloat(zynkRes.data.data.zynkToUsd));
-      const rates = ratesRes.data.data.rates || [];
-      setExchangeRates(rates.filter(r => r.is_active));
+      const res = await getAdminPackages();
+      setPackages(res.data.data);
     } catch (error) {
       console.error('Fetch error:', error);
       toast.error('Failed to load packages');
@@ -46,37 +42,8 @@ function AdminPackages() {
     }
   };
 
-  // Calculate Zynk value in different currencies
-  const currencyConversions = useMemo(() => {
-    const amount = parseInt(formData.zynk_amount) || 0;
-    if (amount <= 0 || exchangeRates.length === 0) return [];
-
-    // Use rate_from_zynk directly (how many units of currency = 1 Zynk)
-    const topCurrencies = ['USD', 'INR', 'EUR', 'GBP', 'AED'];
-
-    return topCurrencies.map(code => {
-      const rate = exchangeRates.find(r => r.currency_code === code);
-      if (!rate) return null;
-
-      const converted = amount * rate.rate_from_zynk;
-      const precision = rate.decimal_precision || 2;
-
-      return {
-        code,
-        symbol: rate.currency_symbol,
-        value: converted.toFixed(precision),
-        type: rate.currency_type
-      };
-    }).filter(Boolean);
-  }, [formData.zynk_amount, exchangeRates]);
-
   const resetForm = () => {
-    setFormData({
-      name: '',
-      zynk_amount: '',
-      bonus_percent: '0',
-      is_active: true
-    });
+    setFormData({ name: '', zynk_amount: '', bonus_percent: '0', is_active: true });
     setEditingPackage(null);
   };
 
@@ -98,24 +65,20 @@ function AdminPackages() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!formData.name || !formData.zynk_amount) {
       toast.error('Please fill all required fields');
       return;
     }
-
     setSaving(true);
     try {
-      // Calculate price in USD (zynk_amount × zynkToUsd)
-      const calculatedPrice = parseInt(formData.zynk_amount) * zynkToUsd;
+      const amount = parseInt(formData.zynk_amount);
       const data = {
         name: formData.name,
-        zynk_amount: parseInt(formData.zynk_amount),
-        price: calculatedPrice,
+        zynk_amount: amount,
+        price: amount, // INR-only: price mirrors the amount
         bonus_percent: parseInt(formData.bonus_percent) || 0,
         is_active: formData.is_active
       };
-
       if (editingPackage) {
         await updatePackage(editingPackage.id, data);
         toast.success('Package updated successfully');
@@ -123,7 +86,6 @@ function AdminPackages() {
         await createPackage(data);
         toast.success('Package created successfully');
       }
-
       setShowModal(false);
       resetForm();
       fetchPackages();
@@ -135,10 +97,7 @@ function AdminPackages() {
   };
 
   const handleDelete = async (pkg) => {
-    if (!window.confirm(`Are you sure you want to delete "${pkg.name}"?`)) {
-      return;
-    }
-
+    if (!window.confirm(`Are you sure you want to delete "${pkg.name}"?`)) return;
     setDeleting(pkg.id);
     try {
       const response = await deletePackage(pkg.id);
@@ -161,20 +120,12 @@ function AdminPackages() {
     }
   };
 
-  // Helper to get price in a currency
-  const getPriceInCurrency = (zynkAmount, currencyCode) => {
-    const rate = exchangeRates.find(r => r.currency_code === currencyCode);
-    if (!rate) return null;
-    return zynkAmount * rate.rate_from_zynk;
-  };
-
   return (
     <div className="space-y-3">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Zynk Packages</h1>
-          <p className="text-gray-500">Manage purchase packages for users (1 Z = ${zynkToUsd})</p>
+          <h1 className="text-2xl font-bold text-white">Packages</h1>
+          <p className="text-gray-500">Manage purchase packages for users (INR)</p>
         </div>
         <motion.button
           onClick={openCreateModal}
@@ -187,7 +138,6 @@ function AdminPackages() {
         </motion.button>
       </div>
 
-      {/* Packages Grid */}
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="w-12 h-12 border-3 border-accent border-t-transparent rounded-full animate-spin" />
@@ -204,46 +154,33 @@ function AdminPackages() {
                 pkg.is_active ? 'border-dark-600' : 'border-gray-700 opacity-60'
               }`}
             >
-              {/* Status Badge */}
               <div className="absolute top-3 right-3">
                 <button
                   onClick={() => toggleActive(pkg)}
                   className={`px-2 py-1 rounded text-xs font-medium ${
-                    pkg.is_active
-                      ? 'bg-green-500/20 text-green-400'
-                      : 'bg-gray-500/20 text-gray-400'
+                    pkg.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
                   }`}
                 >
                   {pkg.is_active ? 'Active' : 'Inactive'}
                 </button>
               </div>
 
-              {/* Package Icon */}
               <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${
                 pkg.bonus_percent > 0 ? 'bg-gold/20' : 'bg-accent/20'
               }`}>
                 <GiTwoCoins className={`w-7 h-7 ${pkg.bonus_percent > 0 ? 'text-gold-light' : 'text-accent'}`} />
               </div>
 
-              {/* Package Info */}
               <h3 className="text-lg font-bold text-white mb-1">{pkg.name}</h3>
               <div className="space-y-2 mb-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Zynk Amount</span>
-                  <span className="text-accent font-semibold">{pkg.zynk_amount.toLocaleString()} Z</span>
+                  <span className="text-gray-500">Amount</span>
+                  <span className="text-accent font-semibold">{formatAmount(pkg.zynk_amount)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Price (USD)</span>
-                  <span className="text-white font-semibold">${(pkg.zynk_amount * zynkToUsd).toFixed(2)}</span>
+                  <span className="text-gray-500">Price</span>
+                  <span className="text-white font-semibold">{formatAmount(pkg.zynk_amount)}</span>
                 </div>
-                {getPriceInCurrency(pkg.zynk_amount, 'INR') && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Price (INR)</span>
-                    <span className="text-gray-400 font-semibold">
-                      ₹{getPriceInCurrency(pkg.zynk_amount, 'INR').toLocaleString(undefined, {maximumFractionDigits: 2})}
-                    </span>
-                  </div>
-                )}
                 {pkg.bonus_percent > 0 && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">Bonus</span>
@@ -252,7 +189,6 @@ function AdminPackages() {
                 )}
               </div>
 
-              {/* Stats */}
               <div className="pt-3 border-t border-dark-600 mb-4">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-gray-500">Purchases</span>
@@ -260,11 +196,10 @@ function AdminPackages() {
                 </div>
                 <div className="flex items-center justify-between text-xs mt-1">
                   <span className="text-gray-500">Total Sold</span>
-                  <span className="text-accent">{(pkg.totalZynkSold || 0).toLocaleString()} Z</span>
+                  <span className="text-accent">{formatAmount(pkg.totalZynkSold || 0)}</span>
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-2">
                 <button
                   onClick={() => openEditModal(pkg)}
@@ -292,7 +227,7 @@ function AdminPackages() {
         <div className="text-center py-20 bg-dark-800 rounded-xl border border-dark-600">
           <GiTwoCoins className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-white mb-2">No Packages Yet</h3>
-          <p className="text-gray-500 mb-6">Create your first Zynk package to get started</p>
+          <p className="text-gray-500 mb-6">Create your first package to get started</p>
           <button
             onClick={openCreateModal}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-all"
@@ -303,7 +238,6 @@ function AdminPackages() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
       {showModal && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -322,11 +256,8 @@ function AdminPackages() {
             </h3>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Package Name *
-                </label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Package Name *</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -336,13 +267,10 @@ function AdminPackages() {
                 />
               </div>
 
-              {/* Zynk Amount */}
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Zynk Amount *
-                </label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Amount (₹) *</label>
                 <div className="relative">
-                  <GiTwoCoins className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" />
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-accent font-bold">₹</span>
                   <input
                     type="number"
                     value={formData.zynk_amount}
@@ -354,11 +282,8 @@ function AdminPackages() {
                 </div>
               </div>
 
-              {/* Bonus Percent */}
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Bonus Percent
-                </label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Bonus Percent</label>
                 <div className="relative">
                   <FiPercent className="absolute left-4 top-1/2 -translate-y-1/2 text-gold-light" />
                   <input
@@ -372,11 +297,10 @@ function AdminPackages() {
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Extra Zynk given as bonus (e.g. 10% = 100 bonus on 1000 Zynk)
+                  Extra amount given as bonus (e.g. 10% = ₹100 bonus on ₹1000)
                 </p>
               </div>
 
-              {/* Active Toggle */}
               <div className="flex items-center justify-between py-3 px-4 bg-dark-700 rounded-lg">
                 <span className="text-white font-medium">Active</span>
                 <button
@@ -394,7 +318,6 @@ function AdminPackages() {
                 </button>
               </div>
 
-              {/* Preview */}
               {formData.zynk_amount && (
                 <div className="p-4 bg-dark-700 rounded-lg">
                   <p className="text-sm text-gray-400 mb-2">Preview</p>
@@ -402,49 +325,21 @@ function AdminPackages() {
                     <div>
                       <p className="text-white font-semibold">{formData.name || 'Package'}</p>
                       <p className="text-accent text-lg font-bold">
-                        {parseInt(formData.zynk_amount).toLocaleString()} Z
+                        {formatAmount(parseInt(formData.zynk_amount))}
                         {parseInt(formData.bonus_percent) > 0 && (
                           <span className="text-gold-light text-sm ml-2">
-                            +{Math.round(parseInt(formData.zynk_amount) * parseInt(formData.bonus_percent) / 100)} bonus
+                            +{formatAmount(Math.round(parseInt(formData.zynk_amount) * parseInt(formData.bonus_percent) / 100))} bonus
                           </span>
                         )}
                       </p>
                     </div>
                     <p className="text-2xl font-bold text-white">
-                      ${(parseInt(formData.zynk_amount) * zynkToUsd).toFixed(2)}
+                      {formatAmount(parseInt(formData.zynk_amount))}
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Currency Conversions */}
-              {currencyConversions.length > 0 && (
-                <div className="p-4 bg-dark-700 rounded-lg border border-dark-500">
-                  <div className="flex items-center gap-2 mb-3">
-                    <FiGlobe className="text-accent" />
-                    <p className="text-sm font-medium text-gray-400">
-                      {parseInt(formData.zynk_amount).toLocaleString()} Z in other currencies
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {currencyConversions.map((conv) => (
-                      <div
-                        key={conv.code}
-                        className="flex items-center justify-between px-3 py-2 rounded bg-dark-600"
-                      >
-                        <span className="text-gray-400 text-sm">{conv.code}</span>
-                        <span className="font-mono font-medium text-white">
-                          {conv.symbol}{parseFloat(conv.value).toLocaleString(undefined, {
-                            maximumFractionDigits: conv.code === 'USD' ? 2 : (conv.type === 'crypto' ? 6 : 2)
-                          })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Buttons */}
               <div className="flex gap-4 pt-4">
                 <button
                   type="button"

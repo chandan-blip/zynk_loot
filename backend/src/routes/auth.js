@@ -120,8 +120,8 @@ router.post('/register', [
       notificationService.create({
         userId: result.insertId,
         type: 'personal',
-        title: 'Welcome to LOOT Market!',
-        message: `Hi ${username}, your account is ready. Buy numbers, play games, and start winning!`,
+        title: '🎉 Welcome to LOOT Market!',
+        message: `Hi ${username}, your account is ready. Make your first deposit, pick lucky numbers, and start winning today!`,
       }).catch(() => {});
     }
 
@@ -183,7 +183,7 @@ router.post('/login', async (req, res) => {
 
     let query, param;
     if (email) {
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, preferred_currency FROM users WHERE email = ?';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE email = ?';
       param = email.trim().toLowerCase();
     } else {
       // Normalize phone for lookup
@@ -191,7 +191,7 @@ router.post('/login', async (req, res) => {
       if (!phoneResult.valid) {
         return res.status(400).json({ success: false, message: 'Invalid phone number' });
       }
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, preferred_currency FROM users WHERE phone = ?';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE phone = ?';
       param = phoneResult.phone;
     }
 
@@ -220,6 +220,18 @@ router.post('/login', async (req, res) => {
         method: user.phone ? 'phone' : 'email',
         ip: req.ip,
       }).catch(() => {});
+
+      // Welcome-back notification — fire-and-forget so a failure here can't
+      // block the login response. Skipped for admin accounts.
+      const notificationService = req.app.get('notificationService');
+      if (notificationService) {
+        notificationService.create({
+          userId: user.id,
+          type: 'personal',
+          title: '👋 Welcome back!',
+          message: `Hi ${user.username}, glad to see you again. Check today's draws and games — fortune favours the brave!`,
+        }).catch(() => {});
+      }
     }
 
     res.json({
@@ -232,8 +244,7 @@ router.post('/login', async (req, res) => {
           email: user.email,
           phone: user.phone,
           balance: parseFloat(user.balance),
-          isAdmin: user.is_admin,
-          preferredCurrency: user.preferred_currency || 'ZYNK'
+          isAdmin: user.is_admin
         }
       }
     });
@@ -247,7 +258,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const [users] = await db.pool.query(
-      `SELECT id, username, email, phone, balance, total_spent, total_earned, is_admin, preferred_currency, created_at
+      `SELECT id, username, email, phone, balance, total_spent, total_earned, is_admin, created_at
        FROM users WHERE id = ?`,
       [req.user.id]
     );
@@ -268,7 +279,6 @@ router.get('/me', authenticateToken, async (req, res) => {
         totalSpent: parseFloat(user.total_spent),
         totalEarned: parseFloat(user.total_earned),
         isAdmin: user.is_admin === 1,
-        preferredCurrency: user.preferred_currency || 'ZYNK',
         createdAt: user.created_at
       }
     });

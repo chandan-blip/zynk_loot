@@ -184,7 +184,7 @@ function AdminDeposits() {
                   </div>
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <div>
-                      <p className="text-accent font-semibold">{deposit.zynk_amount?.toLocaleString()} Z</p>
+                      <p className="text-accent font-semibold">₹{deposit.zynk_amount?.toLocaleString()}</p>
                       <p className="text-[10px] text-gray-500">₹{parseFloat(deposit.price || 0).toLocaleString()} · {deposit.payment_method}</p>
                     </div>
                     <p className="text-[10px] text-gray-500 text-right">{formatDate(deposit.created_at)}</p>
@@ -256,7 +256,7 @@ function AdminDeposits() {
                     </td>
                     <td className="text-right">
                       <div>
-                        <p className="font-semibold text-accent text-sm lg:text-base">{deposit.zynk_amount?.toLocaleString()} Z</p>
+                        <p className="font-semibold text-accent text-sm lg:text-base">₹{deposit.zynk_amount?.toLocaleString()}</p>
                         <p className="text-xs text-gray-500">₹{parseFloat(deposit.price || 0).toLocaleString()}</p>
                       </div>
                     </td>
@@ -371,7 +371,7 @@ function AdminDeposits() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 bg-dark-700 rounded-lg">
                   <p className="text-sm text-gray-500">Amount</p>
-                  <p className="font-semibold text-accent">{selectedDeposit.zynk_amount?.toLocaleString()} Zynk</p>
+                  <p className="font-semibold text-accent">₹{selectedDeposit.zynk_amount?.toLocaleString()}</p>
                 </div>
                 <div className="p-3 bg-dark-700 rounded-lg">
                   <p className="text-sm text-gray-500">Price</p>

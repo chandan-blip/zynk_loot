@@ -42,38 +42,12 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// Update current user's settings (preferred currency, etc.)
-router.put('/me/settings', async (req, res) => {
-  try {
-    const { preferredCurrency } = req.body;
-
-    if (!preferredCurrency || typeof preferredCurrency !== 'string') {
-      return res.status(400).json({ success: false, message: 'preferredCurrency is required' });
-    }
-
-    const code = preferredCurrency.toUpperCase().trim();
-    if (code.length > 20) {
-      return res.status(400).json({ success: false, message: 'Invalid currency code' });
-    }
-
-    await db.pool.query(
-      'UPDATE users SET preferred_currency = ? WHERE id = ?',
-      [code, req.user.id]
-    );
-
-    res.json({ success: true, message: 'Settings updated', data: { preferredCurrency: code } });
-  } catch (error) {
-    console.error('Update user settings error:', error);
-    res.status(500).json({ success: false, message: 'Failed to update settings' });
-  }
-});
-
 // Get current user's full profile with stats
 router.get('/me/profile', async (req, res) => {
   try {
     // Get user basic info
     const [users] = await db.pool.query(
-      `SELECT id, username, email, balance, total_spent, total_earned, preferred_currency, created_at
+      `SELECT id, username, email, balance, total_spent, total_earned, created_at
        FROM users WHERE id = ?`,
       [req.user.id]
     );
@@ -141,7 +115,6 @@ router.get('/me/profile', async (req, res) => {
           balance: parseFloat(user.balance),
           totalSpent: parseFloat(user.total_spent),
           totalEarned: parseFloat(user.total_earned),
-          preferredCurrency: user.preferred_currency || 'ZYNK',
           joinedAt: user.created_at
         },
         stats: {
@@ -174,18 +147,69 @@ router.get('/activity', async (req, res) => {
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
 
+    // Optional type filter — used by Profile → History dropdown. Whitelisted
+    // server-side so a hand-crafted query can't inject SQL via the type col.
+    const ALLOWED_TYPES = new Set([
+      'deposit', 'withdrawal', 'purchase', 'sale', 'vote', 'prize', 'refund',
+      'transfer_in', 'transfer_out', 'cashout', 'referral_commission',
+      'invest', 'invest_return', 'invest_withdraw',
+      'game_bet', 'game_win', 'bonus',
+    ]);
+    const typeFilter = ALLOWED_TYPES.has(req.query.type) ? req.query.type : null;
+
+    // History is a UNION of two sources:
+    //   1. `transactions` — the canonical settled ledger.
+    //   2. `zynk_orders` rows whose status is NOT completed/approved — those
+    //      represent pending/awaiting/rejected/refunded/failed deposit attempts
+    //      that don't yet have a `transactions` row (the row is only written
+    //      when admin approves the order). Without UNIONing them, users see
+    //      a blank history right after deposit, which looks broken.
+    // Approved/completed orders are already mirrored into `transactions`
+    // (admin.js inserts a 'deposit' row at approval time), so we exclude
+    // those from the UNION to avoid duplicate rows.
+    const ORDER_VISIBLE_STATUSES = ['pending', 'awaiting_approval', 'rejected', 'refunded', 'failed'];
+    const orderStatusPlaceholders = ORDER_VISIBLE_STATUSES.map(() => '?').join(',');
+
+    // Build the transactions SELECT (with optional type filter)
+    const txWhere = typeFilter ? 'WHERE user_id = ? AND type = ?' : 'WHERE user_id = ?';
+    const txWhereParams = typeFilter ? [req.user.id, typeFilter] : [req.user.id];
+
+    // Only include zynk_orders when the filter is unset or explicitly 'deposit'
+    const includeOrders = !typeFilter || typeFilter === 'deposit';
+    const orderWhereParams = includeOrders
+      ? [req.user.id, ...ORDER_VISIBLE_STATUSES]
+      : [];
+
+    const subqueries = [
+      `SELECT id, type, amount, description, created_at, NULL AS status
+         FROM transactions ${txWhere}`,
+    ];
+    if (includeOrders) {
+      subqueries.push(
+        `SELECT id, 'deposit' AS type, zynk_amount AS amount,
+                CONCAT('Deposit ', status) AS description,
+                created_at, status
+           FROM zynk_orders
+          WHERE user_id = ? AND status IN (${orderStatusPlaceholders})`
+      );
+    }
+
+    const unionSql = subqueries.length > 1
+      ? `(${subqueries.join(') UNION ALL (')})`
+      : subqueries[0];
+
+    const baseParams = [...txWhereParams, ...orderWhereParams];
+
     const [[{ total }]] = await db.pool.query(
-      'SELECT COUNT(*) AS total FROM transactions WHERE user_id = ?',
-      [req.user.id]
+      `SELECT COUNT(*) AS total FROM (${unionSql}) AS u`,
+      baseParams
     );
 
     const [items] = await db.pool.query(
-      `SELECT type, amount, description, created_at
-         FROM transactions
-        WHERE user_id = ?
+      `SELECT * FROM (${unionSql}) AS u
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?`,
-      [req.user.id, limit, offset]
+      [...baseParams, limit, offset]
     );
 
     res.json({
@@ -196,6 +220,7 @@ router.get('/activity', async (req, res) => {
         limit,
         total,
         totalPages: Math.max(1, Math.ceil(total / limit)),
+        type: typeFilter,
       },
     });
   } catch (error) {

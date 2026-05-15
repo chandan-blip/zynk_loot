@@ -35,38 +35,16 @@ const PAYMENT_METHODS = [
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { zynkToUsd, currencies, formatCurrency } = useCurrency();
+  const { formatCurrency } = useCurrency();
 
-  // Map payment method to currency
-  const getPaymentCurrency = (method) => {
-    if (!method) return { symbol: '$', rate: zynkToUsd, code: 'USD' };
-    if (method === 'upi' || method === 'bank') {
-      const inr = currencies.find(c => c.code === 'INR');
-      return inr ? { symbol: inr.symbol || '₹', rate: inr.rateFromZynk, code: 'INR' } : { symbol: '₹', rate: zynkToUsd * 83, code: 'INR' };
-    }
-    if (method === 'crypto_btc') {
-      const btc = currencies.find(c => c.code === 'BTC');
-      return btc ? { symbol: '', rate: btc.rateFromZynk, code: 'BTC', precision: 8 } : { symbol: '', rate: zynkToUsd / 60000, code: 'BTC', precision: 8 };
-    }
-    if (method === 'crypto_eth') {
-      const eth = currencies.find(c => c.code === 'ETH');
-      return eth ? { symbol: '', rate: eth.rateFromZynk, code: 'ETH', precision: 6 } : { symbol: '', rate: zynkToUsd / 3000, code: 'ETH', precision: 6 };
-    }
-    if (method === 'crypto_usdt') {
-      const usdt = currencies.find(c => c.code === 'USDT');
-      return usdt ? { symbol: '', rate: usdt.rateFromZynk, code: 'USDT', precision: 2 } : { symbol: '$', rate: zynkToUsd, code: 'USDT' };
-    }
-    return { symbol: '$', rate: zynkToUsd, code: 'USD' };
-  };
+  // INR-only: every payment is displayed in rupees regardless of payment
+  // method. The payment-method buttons still let the user choose how to pay
+  // (UPI / bank / etc.), but the amount they owe is always ₹.
+  const getPaymentCurrency = () => ({ symbol: '₹', rate: 1, code: 'INR' });
 
-  const formatPaymentAmount = (zynkAmount, method) => {
-    const curr = getPaymentCurrency(method);
-    const amount = zynkAmount * curr.rate;
-    const precision = curr.precision || 2;
-    if (curr.code === 'INR') return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-    if (['BTC', 'ETH'].includes(curr.code)) return `${amount.toFixed(precision)} ${curr.code}`;
-    if (curr.code === 'USDT') return `${amount.toFixed(2)} USDT`;
-    return `$${amount.toFixed(2)}`;
+  const formatPaymentAmount = (amount) => {
+    const v = Number(amount) || 0;
+    return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
   };
 
   const packageId = searchParams.get('package');

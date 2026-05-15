@@ -1,62 +1,54 @@
-/**
- * Format a stored (zynk) amount into the user's selected display currency.
- * @param {number} zynkAmount - Amount stored internally (zynk units)
- * @param {object} selectedCurrency - Selected currency object from CurrencyContext
- * @returns {string} Formatted amount with currency symbol
- */
-export function formatAmount(zynkAmount, selectedCurrency) {
-  const symbol = selectedCurrency?.symbol || '$';
-  const rate = selectedCurrency?.rateFromZynk || 1;
-  const precision = selectedCurrency?.precision || 2;
+// Single source of truth for amount display. The app is INR-only — stored
+// numeric values are treated as raw INR and rendered with a ₹ symbol. No
+// conversion, no exchange rates, no per-user picker.
 
-  const safe = Number(zynkAmount);
-  const converted = !zynkAmount || isNaN(safe) ? 0 : safe * rate;
+export const INR_CURRENCY = {
+  code: 'INR',
+  name: 'Indian Rupee',
+  symbol: '₹',
+  type: 'fiat',
+  rateFromZynk: 1,
+  precision: 2,
+};
+
+export function formatAmount(amount) {
+  const safe = Number(amount);
+  const v = !amount || isNaN(safe) ? 0 : safe;
 
   let formatted;
-  if (selectedCurrency?.type === 'crypto' && converted < 1) {
-    formatted = converted.toFixed(precision);
-  } else if (converted >= 1000000) {
-    formatted = (converted / 1000000).toFixed(2) + 'M';
+  if (v >= 1_000_000) {
+    formatted = (v / 1_000_000).toFixed(2) + 'M';
+  } else if (v >= 1_000) {
+    formatted = (v / 1_000).toFixed(2) + 'K';
   } else {
-    formatted = converted.toLocaleString(undefined, {
-      maximumFractionDigits: Math.min(precision, 2)
-    });
+    formatted = v.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
 
-  return `${symbol}${formatted}`;
+  return `₹${formatted}`;
 }
 
-/**
- * Rewrite legacy currency literals embedded in backend-supplied strings
- * (e.g. "Purchased 1000 Zynk", "Deposit of 50 coins", "won 100Z on Coin Flip")
- * into the user's selected currency. Numbers stand alone are untouched.
- *
- * @param {string} text - Source text from the API
- * @param {object} selectedCurrency - Selected currency object
- * @returns {string} Text with amounts re-rendered in the selected currency
- */
-export function rewriteAmounts(text, selectedCurrency) {
-  if (!text || typeof text !== 'string') return text || '';
+export function formatAmountFull(amount) {
+  const safe = Number(amount);
+  const v = !amount || isNaN(safe) ? 0 : safe;
+  return `₹${v.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
+// Backward-compat: callers previously passed (amount, selectedCurrency) — the
+// selectedCurrency arg is ignored now. Kept as a no-op param to avoid an audit
+// of every call site.
+// eslint-disable-next-line no-unused-vars
+export function rewriteAmounts(text, _selectedCurrency) {
+  if (!text || typeof text !== 'string') return text || '';
+  // Strip any legacy "Z"/"Zynk"/"coins" suffix that the backend may still emit.
   return text.replace(
     /(\d+(?:,\d{3})*(?:\.\d+)?)\s?(Zynk|coins|Z)\b/gi,
-    (_match, numStr) => {
-      const value = parseFloat(numStr.replace(/,/g, ''));
-      return formatAmount(value, selectedCurrency);
-    }
+    (_m, numStr) => `₹${numStr}`
   );
 }
 
-/**
- * Get conversion rate string for display (e.g. "1 unit = $0.10").
- * @param {object} selectedCurrency - Selected currency object
- * @returns {string} Rate display string
- */
-export function getConversionRate(selectedCurrency) {
-  if (!selectedCurrency) return null;
-
-  const rate = selectedCurrency.rateFromZynk || 1;
-  const precision = selectedCurrency.precision || 2;
-
-  return `1 unit = ${selectedCurrency.symbol}${rate.toFixed(precision)}`;
+export function getConversionRate() {
+  return null;
 }

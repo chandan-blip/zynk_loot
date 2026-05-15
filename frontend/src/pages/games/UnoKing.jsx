@@ -70,7 +70,7 @@ function CardChipMini({ id }) {
 function SlipTarget({ slip }) {
   if (slip.kind === 'cards') {
     return (
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-0.5">
         {slip.cards.map((cid) => <CardChipMini key={cid} id={cid} />)}
       </div>
     );
@@ -79,7 +79,7 @@ function SlipTarget({ slip }) {
     const c = UNO_COLORS.find((x) => x.name === slip.color);
     return (
       <span
-        className="inline-flex items-center px-3 h-9 rounded border font-bold text-xs capitalize text-white"
+        className="inline-flex items-center px-2 h-6 rounded border font-bold text-[10px] capitalize text-white"
         style={{ background: c?.main || '#444', borderColor: c?.dark || '#222' }}
       >
         {slip.color}
@@ -88,7 +88,7 @@ function SlipTarget({ slip }) {
   }
   if (slip.kind === 'number') {
     return (
-      <span className="inline-flex items-center px-3 h-9 rounded bg-white border border-gray-300 font-bold text-xs text-gray-900">
+      <span className="inline-flex items-center px-1.5 h-6 rounded border bg-cyan-500/15 border-cyan-500/40 text-cyan-300 font-bold text-[10px]">
         Number {slip.number}
       </span>
     );
@@ -96,14 +96,14 @@ function SlipTarget({ slip }) {
   if (slip.kind === 'action') {
     const action = ACTIONS.find((a) => a.id === slip.action);
     return (
-      <span className="inline-flex items-center px-3 h-9 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold text-xs">
+      <span className="inline-flex items-center px-1.5 h-6 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold text-[10px]">
         {action?.label || slip.action}
       </span>
     );
   }
   if (slip.kind === 'wild') {
     return (
-      <span className="inline-flex items-center px-3 h-9 rounded bg-slate-900 border border-purple-500/40 text-purple-300 font-bold text-xs">
+      <span className="inline-flex items-center px-1.5 h-6 rounded bg-slate-900/70 border border-purple-500/40 text-purple-300 font-bold text-[10px]">
         ★ Wild
       </span>
     );

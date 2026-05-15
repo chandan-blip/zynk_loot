@@ -6,6 +6,7 @@ import { getNotifications, markNotificationRead, markAllNotificationsRead } from
 import socketService from '../services/socket';
 import usePageTitle from '../hooks/usePageTitle';
 import PageHeader from '../components/PageHeader';
+import { rewriteAmounts } from '../utils/formatAmount';
 
 const TYPE_CONFIG = {
   personal: { icon: FiUser, color: 'text-blue-400', bg: 'bg-blue-500/20', label: 'Personal' },
@@ -120,14 +121,14 @@ function Notifications() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <p className={`text-sm font-semibold ${n.is_read ? 'text-gray-400' : 'text-white'}`}>
-                      {n.title}
+                      {rewriteAmounts(n.title)}
                     </p>
                     {!n.is_read && (
                       <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
                     )}
                   </div>
                   <p className={`text-xs leading-relaxed ${n.is_read ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {n.message}
+                    {rewriteAmounts(n.message)}
                   </p>
                   <div className="flex items-center gap-2 mt-1.5">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${config.bg} ${config.color} font-medium`}>

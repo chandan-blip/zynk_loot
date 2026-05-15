@@ -96,9 +96,9 @@ function AdminWinners() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { label: 'Total Winners', value: stats.totalWinners, icon: FiUsers, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-            { label: 'Total Prizes Paid', value: stats.totalPrizesPaid, icon: FiDollarSign, color: 'text-accent', bg: 'bg-accent/10', suffix: ' Z' },
+            { label: 'Total Prizes Paid', value: stats.totalPrizesPaid, icon: FiDollarSign, color: 'text-accent', bg: 'bg-accent/10', prefix: '₹' },
             { label: 'Jackpot Winners', value: stats.jackpotWinners, icon: GiTrophy, color: 'text-gold-light', bg: 'bg-gold/10' },
-            { label: 'Biggest Prize', value: stats.biggestPrize, icon: FiTrendingUp, color: 'text-green-400', bg: 'bg-green-500/10', suffix: ' Z' },
+            { label: 'Biggest Prize', value: stats.biggestPrize, icon: FiTrendingUp, color: 'text-green-400', bg: 'bg-green-500/10', prefix: '₹' },
           ].map((stat, i) => (
             <motion.div
               key={stat.label}
@@ -111,7 +111,7 @@ function AdminWinners() {
                 <stat.icon className={`w-6 h-6 ${stat.color}`} />
               </div>
               <div className="text-2xl font-bold text-white">
-                <CountUp end={stat.value} duration={2} separator="," suffix={stat.suffix || ''} />
+                <CountUp end={stat.value} duration={2} separator="," prefix={stat.prefix || ''} suffix={stat.suffix || ''} />
               </div>
               <p className="text-gray-500 text-sm mt-1">{stat.label}</p>
             </motion.div>

@@ -2,7 +2,6 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
-const exchangeRateService = require('../services/exchangeRateService');
 
 const router = express.Router();
 
@@ -10,34 +9,6 @@ const router = express.Router();
 // blocked. Backend-only gate — the frontend has no UI for it; the user only
 // learns about it via the toast when they try to withdraw.
 const MIN_DEPOSIT_INR_FOR_WITHDRAWAL = 2000;
-
-// Public route - Get exchange rates (for currency display)
-// This doesn't require authentication as it's just display data
-router.get('/exchange-rates', async (req, res) => {
-  try {
-    // Get Zynk to USD base rate from settings
-    const [[zynkSetting]] = await db.pool.query(
-      `SELECT setting_value FROM settings WHERE setting_key = 'zynk_to_usd'`
-    );
-    const zynkToUsd = zynkSetting ? parseFloat(zynkSetting.setting_value) : 0.1;
-
-    // Get live exchange rates from free API
-    const currencyData = await exchangeRateService.getCurrencyList(zynkToUsd);
-
-    res.json({
-      success: true,
-      data: {
-        zynkToUsd: currencyData.zynkToUsd,
-        rates: currencyData.rates,
-        source: currencyData.source,
-        updated: currencyData.updated
-      }
-    });
-  } catch (error) {
-    console.error('Get exchange rates error:', error);
-    res.status(500).json({ success: false, message: 'Failed to get exchange rates' });
-  }
-});
 
 // All routes below require authentication
 router.use(authenticateToken);
@@ -411,7 +382,7 @@ router.post('/checkout', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { package_id, payment_method, payment_account_id, payment_reference, payment_note, payment_currency, payment_amount } = req.body;
+    const { package_id, payment_method, payment_account_id, payment_reference, payment_note } = req.body;
 
     await connection.beginTransaction();
 
@@ -456,12 +427,14 @@ router.post('/checkout', [
       );
     }
 
-    // Create order awaiting approval
+    // Create order awaiting approval. payment_currency is always INR now and
+    // payment_amount mirrors the package price, so we just hardcode them so
+    // existing DB columns keep getting populated without a migration.
     const [orderResult] = await connection.execute(
       `INSERT INTO zynk_orders
        (user_id, package_id, zynk_amount, bonus_amount, price, payment_currency, payment_amount, payment_method, payment_account_id, payment_reference, payment_note, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_approval')`,
-      [req.user.id, package_id, pkg.zynk_amount, bonusAmount, pkg.price, payment_currency || null, payment_amount || null, payment_method, payment_account_id || null, payment_reference || null, payment_note || null]
+       VALUES (?, ?, ?, ?, ?, 'INR', ?, ?, ?, ?, ?, 'awaiting_approval')`,
+      [req.user.id, package_id, pkg.zynk_amount, bonusAmount, pkg.price, pkg.price, payment_method, payment_account_id || null, payment_reference || null, payment_note || null]
     );
 
     await connection.commit();
@@ -483,8 +456,8 @@ router.post('/checkout', [
         totalZynk,
         price: parseFloat(pkg.price),
         paymentMethod: payment_method,
-        paymentCurrency: payment_currency || null,
-        paymentAmount: payment_amount || null,
+        paymentCurrency: 'INR',
+        paymentAmount: pkg.price,
         paymentReference: payment_reference || null,
         status: 'awaiting_approval',
         createdAt: new Date().toISOString(),
@@ -505,8 +478,8 @@ router.post('/checkout', [
               packageName: pkg.name,
               priceLabel: `${parseFloat(pkg.price)} INR`,
               paymentMethod: payment_method,
-              paymentCurrency: payment_currency || null,
-              paymentAmount: payment_amount || null,
+              paymentCurrency: 'INR',
+              paymentAmount: pkg.price,
               paymentReference: payment_reference || null,
               orderId: orderResult.insertId,
               source: '/wallet/checkout',

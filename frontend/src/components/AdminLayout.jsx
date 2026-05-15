@@ -18,7 +18,6 @@ const navItems = [
   { path: '/admin/packages', label: 'Packages', icon: FiPackage },
   { path: '/admin/orders', label: 'Orders', icon: FiShoppingCart },
   { path: '/admin/payments', label: 'Payments', icon: FiCreditCard },
-  { path: '/admin/currency', label: 'Currency', icon: FiDollarSign },
   { path: '/admin/deposits', label: 'Deposits', icon: FiDownload },
   { path: '/admin/withdrawals', label: 'Withdrawals', icon: FiUpload },
   { path: '/admin/support', label: 'Support', icon: FiMessageCircle, badge: true },

@@ -64,7 +64,8 @@ export const scheduleTicketCashout = (ticketId, matchedDigits) => api.post(`/lot
 
 // Wallet
 export const getWalletBalance = () => api.get('/wallet/balance');
-export const getTransactions = (page = 1) => api.get(`/wallet/transactions?page=${page}`);
+export const getTransactions = (page = 1, limit = 100) =>
+  api.get(`/wallet/transactions?page=${page}&limit=${limit}`);
 export const deposit = (amount) => api.post('/wallet/deposit', { amount });
 export const withdraw = (amount) => api.post('/wallet/withdraw', { amount });
 
@@ -94,9 +95,6 @@ export const cancelOrder = (orderId) => api.post(`/wallet/orders/${orderId}/canc
 // Legacy
 export const buyZynkPackage = (package_id) => api.post('/wallet/buy-zynk', { package_id });
 export const completePurchase = (orderId) => api.post(`/wallet/complete-purchase/${orderId}`);
-
-// Exchange Rates (user-facing)
-export const getUserExchangeRates = () => api.get('/wallet/exchange-rates');
 
 // Withdrawals
 export const getWithdrawals = (page = 1) => api.get(`/wallet/withdrawals?page=${page}`);
@@ -135,10 +133,11 @@ export const createInvestmentTier = (data) => api.post('/admin/investment-tiers'
 
 // User Profile
 export const getUserProfile = () => api.get('/users/me/profile');
-export const getUserActivity = (page = 1, limit = 20) =>
-  api.get(`/users/activity?page=${page}&limit=${limit}`);
-export const updateUserSettings = (settings) => api.put('/users/me/settings', settings);
-
+export const getUserActivity = (page = 1, limit = 20, type = null) => {
+  const params = new URLSearchParams({ page, limit });
+  if (type) params.set('type', type);
+  return api.get(`/users/activity?${params.toString()}`);
+};
 // User Transfers (P2P)
 export const searchUsers = (query) => api.get(`/users/search?q=${encodeURIComponent(query)}`);
 export const transferZynk = (recipientId, amount, note = '') =>
@@ -225,13 +224,6 @@ export const getAdminPackages = () => api.get('/admin/packages');
 export const createPackage = (data) => api.post('/admin/packages', data);
 export const updatePackage = (id, data) => api.put(`/admin/packages/${id}`, data);
 export const deletePackage = (id) => api.delete(`/admin/packages/${id}`);
-
-// Exchange Rates (admin)
-export const getZynkRate = () => api.get('/admin/zynk-rate');
-export const updateZynkRate = (rate) => api.put('/admin/zynk-rate', { rate });
-export const getExchangeRates = () => api.get('/admin/exchange-rates');
-export const refreshExchangeRates = () => api.post('/admin/exchange-rates/refresh');
-export const convertZynk = (amount, currency) => api.get(`/admin/convert?amount=${amount}&to=${currency}`);
 
 // Admin Orders
 export const getAdminOrders = (page = 1, status = '') =>

@@ -292,9 +292,9 @@ function AdminInvestments() {
                       {inv.tier_name} ({inv.multiplier}x)
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-white">{parseFloat(inv.amount).toLocaleString()} Z</td>
-                  <td className="px-4 py-3 text-right text-green-400 hidden lg:table-cell">{parseFloat(inv.current_value).toLocaleString()} Z</td>
-                  <td className="px-4 py-3 text-right text-accent hidden md:table-cell">+{parseFloat(inv.total_returns).toLocaleString()} Z</td>
+                  <td className="px-4 py-3 text-right text-white">₹{parseFloat(inv.amount).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-green-400 hidden lg:table-cell">₹{parseFloat(inv.current_value).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-accent hidden md:table-cell">+₹{parseFloat(inv.total_returns).toLocaleString()}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       inv.status === 'active' ? 'bg-blue-500/10 text-blue-400' :
@@ -521,7 +521,7 @@ function AdminInvestments() {
                     ) : (
                       <span className="text-gray-400">{tier.multiplier}x (dynamic)</span>
                     )}
-                    <span>{parseFloat(tier.min_amount).toLocaleString()} - {parseFloat(tier.max_amount).toLocaleString()} Z</span>
+                    <span>₹{parseFloat(tier.min_amount).toLocaleString()} - ₹{parseFloat(tier.max_amount).toLocaleString()}</span>
                     <button
                       onClick={() => handleEditTier(tier)}
                       className="p-1.5 rounded hover:bg-dark-600 text-gray-400 hover:text-white transition-colors"

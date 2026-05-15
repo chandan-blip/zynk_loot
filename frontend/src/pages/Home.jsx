@@ -931,42 +931,54 @@ function Home() {
           </div>
         </motion.div>
 
-        {/* Join Community CTA */}
+        {/* All Games at a Glance — bottom of home */}
+        <AllGamesAtAGlance className="mt-6" maxHeight="none" />
+
+        {/* Safety / 18+ disclaimer block — final element on the home feed
+            so the responsible-gaming notice is the last thing the user
+            sees before scrolling off the page. */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18 }}
-          className="relative rounded-xl bg-gradient-to-br from-accent/20 via-purple/20 to-pink-500/20 border border-accent/30 overflow-hidden p-5"
+          transition={{ delay: 0.2 }}
+          className="relative mt-6 rounded-2xl overflow-hidden bg-gradient-to-br from-dark-800 via-dark-900 to-dark-800 border border-dark-600"
         >
-          <div className="absolute -top-10 -right-10 w-48 h-48 bg-accent/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative flex items-center justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5">
-                <FiHeart className="w-4 h-4 text-pink-400" />
-                <span className="text-pink-300 text-[10px] font-bold uppercase tracking-wide">
-                  Community
-                </span>
+          <div className="absolute -top-12 -left-12 w-48 h-48 bg-red-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative p-5 sm:p-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+            {/* 18+ badge */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shadow-lg shadow-red-500/30 ring-2 ring-red-500/30">
+                <span className="text-white font-black text-lg">18+</span>
               </div>
-              <p className="text-white font-bold text-base sm:text-lg leading-tight">
-                Join 12K+ players on Telegram
-              </p>
-              <p className="text-gray-300 text-[11px] mt-1">
-                Daily tips, results, and exclusive bonuses
+              <div className="hidden sm:block w-px h-12 bg-dark-600" />
+            </div>
+
+            {/* Center text */}
+            <div className="flex-1 text-center sm:text-left min-w-0">
+              <h3 className="text-white font-bold text-base sm:text-lg leading-tight">
+                Play Responsibly — Strictly 18+
+              </h3>
+              <p className="text-gray-400 text-xs sm:text-sm mt-1 leading-relaxed">
+                This platform is intended for adults only. Gamble within your means and
+                seek help if play stops being fun.
               </p>
             </div>
-            <a
-              href="https://t.me/+YNMSbc_KGOA2YjA9"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent hover:brightness-110 text-white text-xs font-bold transition-all"
-            >
-              Join <FiArrowUpRight className="w-3.5 h-3.5" />
-            </a>
+
+            {/* 100% safe badge */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="hidden sm:block w-px h-12 bg-dark-600" />
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-700/15 border border-emerald-500/40">
+                <FiShield className="w-5 h-5 text-emerald-400" />
+                <div className="text-left">
+                  <p className="text-emerald-300 font-black text-sm leading-none">100% Safe</p>
+                  <p className="text-emerald-400/70 text-[10px] mt-0.5">Secure &amp; Encrypted</p>
+                </div>
+              </div>
+            </div>
           </div>
         </motion.div>
-
-        {/* All Games at a Glance — bottom of home */}
-        <AllGamesAtAGlance className="mt-6" maxHeight="none" />
       </div>
     </>
   );

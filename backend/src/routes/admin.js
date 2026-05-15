@@ -58,10 +58,10 @@ router.post('/login', async (req, res) => {
 
     let query, param;
     if (email) {
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, preferred_currency FROM users WHERE email = ? AND is_admin = 1';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE email = ? AND is_admin = 1';
       param = email.trim().toLowerCase();
     } else {
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, preferred_currency FROM users WHERE phone = ? AND is_admin = 1';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE phone = ? AND is_admin = 1';
       param = phone.trim();
     }
 
@@ -94,8 +94,7 @@ router.post('/login', async (req, res) => {
           email: user.email,
           phone: user.phone,
           balance: parseFloat(user.balance),
-          isAdmin: true,
-          preferredCurrency: user.preferred_currency || 'ZYNK'
+          isAdmin: true
         }
       }
     });
@@ -1054,11 +1053,11 @@ router.post('/winners/:id/approve', async (req, res) => {
         userId: winner.user_id,
         type: 'personal',
         title: '🏆 You Won a Prize!',
-        message: `${matchLabel} on Draw #${winner.period_id}! You won ${parseFloat(winner.prize_amount).toLocaleString()} Z. The amount has been credited to your balance.`
+        message: `${matchLabel} on Draw #${winner.period_id}! You won ₹${parseFloat(winner.prize_amount).toLocaleString()}. The amount has been credited to your balance.`
       });
     }
 
-    res.json({ success: true, message: `Winner approved. ${winner.prize_amount} Z credited.` });
+    res.json({ success: true, message: `Winner approved. ₹${winner.prize_amount} credited.` });
   } catch (error) {
     await conn.rollback();
     conn.release();
@@ -1146,7 +1145,7 @@ router.post('/draws/:periodId/approve-all', async (req, res) => {
           userId: winner.user_id,
           type: 'personal',
           title: '🏆 You Won a Prize!',
-          message: `${matchLabel} on Draw #${winner.period_id}! You won ${parseFloat(winner.prize_amount).toLocaleString()} Z. The amount has been credited to your balance.`
+          message: `${matchLabel} on Draw #${winner.period_id}! You won ₹${parseFloat(winner.prize_amount).toLocaleString()}. The amount has been credited to your balance.`
         });
       }
     }
@@ -2233,7 +2232,7 @@ router.post('/deposits/:id/approve', async (req, res) => {
     await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
        VALUES (?, 'deposit', ?, ?, ?, 'admin', ?, ?)`,
-      [order.user_id, order.zynk_amount, currentBalance, newBalance, order.id, `Deposit approved - ${order.zynk_amount} Zynk added`]
+      [order.user_id, order.zynk_amount, currentBalance, newBalance, order.id, `Deposit approved - ₹${order.zynk_amount} added`]
     );
 
     await connection.commit();
@@ -2244,7 +2243,7 @@ router.post('/deposits/:id/approve', async (req, res) => {
       notificationService.create({
         userId: order.user_id, type: 'personal',
         title: 'Deposit Approved',
-        message: `Your deposit of ${order.zynk_amount} Z has been approved and added to your balance.${req.body.admin_note ? ' Note: ' + req.body.admin_note : ''}`,
+        message: `Your deposit of ₹${order.zynk_amount} has been approved and added to your balance.${req.body.admin_note ? ' Note: ' + req.body.admin_note : ''}`,
       }).catch(() => {});
     }
 
@@ -2256,7 +2255,7 @@ router.post('/deposits/:id/approve', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Deposit approved and Zynk added to user balance',
+      message: 'Deposit approved and amount added to user balance',
       data: { orderId: order.id, zynkAdded: order.zynk_amount }
     });
   } catch (error) {
@@ -2282,7 +2281,7 @@ router.post('/deposits/:id/reject', async (req, res) => {
       notificationService.create({
         userId: order.user_id, type: 'personal',
         title: 'Deposit Rejected',
-        message: `Your deposit of ${order.zynk_amount} Z was rejected.${req.body.admin_note ? ' Reason: ' + req.body.admin_note : ''}`,
+        message: `Your deposit of ₹${order.zynk_amount} was rejected.${req.body.admin_note ? ' Reason: ' + req.body.admin_note : ''}`,
       }).catch(() => {});
     }
 
@@ -2385,7 +2384,7 @@ router.post('/withdrawals/:id/approve', async (req, res) => {
       notificationService.create({
         userId: withdrawal.user_id, type: 'personal',
         title: 'Withdrawal Approved',
-        message: `Your withdrawal of ${withdrawal.amount} Z has been approved.${req.body.admin_note ? ' Note: ' + req.body.admin_note : ''}`,
+        message: `Your withdrawal of ₹${withdrawal.amount} has been approved.${req.body.admin_note ? ' Note: ' + req.body.admin_note : ''}`,
       }).catch(() => {});
     }
 
@@ -2457,7 +2456,7 @@ router.post('/withdrawals/:id/reject', async (req, res) => {
       notificationService.create({
         userId: withdrawal.user_id, type: 'personal',
         title: 'Withdrawal Rejected',
-        message: `Your withdrawal of ${withdrawal.amount} Z was rejected and refunded to your balance.${req.body.admin_note ? ' Reason: ' + req.body.admin_note : ''}`,
+        message: `Your withdrawal of ₹${withdrawal.amount} was rejected and refunded to your balance.${req.body.admin_note ? ' Reason: ' + req.body.admin_note : ''}`,
       }).catch(() => {});
     }
 
@@ -2534,7 +2533,7 @@ router.post('/packages', async (req, res) => {
     const { name, zynk_amount, price, bonus_percent, is_active } = req.body;
 
     if (!name || !zynk_amount || !price) {
-      return res.status(400).json({ success: false, message: 'Name, Zynk amount, and price are required' });
+      return res.status(400).json({ success: false, message: 'Name, amount, and price are required' });
     }
 
     const [result] = await db.pool.query(
@@ -2627,163 +2626,7 @@ router.delete('/packages/:id', async (req, res) => {
   }
 });
 
-// ============ EXCHANGE RATES MANAGEMENT ============
-// Now using live rates from free API (Frankfurter/ExchangeRate-API)
-
-const exchangeRateService = require('../services/exchangeRateService');
-
-// Get Zynk to USD rate from settings
-router.get('/zynk-rate', async (req, res) => {
-  try {
-    const [settings] = await db.pool.query(
-      "SELECT setting_value FROM settings WHERE setting_key = 'zynk_to_usd'"
-    );
-    const rate = parseFloat(settings[0]?.setting_value || 0.1);
-    res.json({ success: true, data: { zynkToUsd: rate } });
-  } catch (error) {
-    console.error('Get zynk rate error:', error);
-    res.status(500).json({ success: false, message: 'Failed to get Zynk rate' });
-  }
-});
-
-// Update Zynk to USD rate
-router.put('/zynk-rate', async (req, res) => {
-  try {
-    const { rate } = req.body;
-    if (!rate || rate <= 0) {
-      return res.status(400).json({ success: false, message: 'Invalid rate' });
-    }
-
-    // Check if setting exists, insert or update
-    const [existing] = await db.pool.query(
-      "SELECT id FROM settings WHERE setting_key = 'zynk_to_usd'"
-    );
-
-    if (existing.length > 0) {
-      await db.pool.query(
-        "UPDATE settings SET setting_value = ? WHERE setting_key = 'zynk_to_usd'",
-        [rate.toString()]
-      );
-    } else {
-      await db.pool.query(
-        "INSERT INTO settings (setting_key, setting_value, description) VALUES ('zynk_to_usd', ?, 'Zynk to USD exchange rate')",
-        [rate.toString()]
-      );
-    }
-
-    res.json({ success: true, message: 'Zynk rate updated', data: { zynkToUsd: rate } });
-  } catch (error) {
-    console.error('Update zynk rate error:', error);
-    res.status(500).json({ success: false, message: 'Failed to update Zynk rate' });
-  }
-});
-
-// Get all exchange rates (live from API)
-router.get('/exchange-rates', async (req, res) => {
-  try {
-    // Get Zynk to USD rate from settings
-    const [settings] = await db.pool.query(
-      "SELECT setting_value FROM settings WHERE setting_key = 'zynk_to_usd'"
-    );
-    const zynkToUsd = parseFloat(settings[0]?.setting_value || 0.1);
-
-    // Get live rates from free API
-    const currencyData = await exchangeRateService.getCurrencyList(zynkToUsd);
-
-    res.json({
-      success: true,
-      data: {
-        zynkToUsd: currencyData.zynkToUsd,
-        rates: currencyData.rates,
-        source: currencyData.source,
-        updated: currencyData.updated
-      }
-    });
-  } catch (error) {
-    console.error('Get exchange rates error:', error);
-    res.status(500).json({ success: false, message: 'Failed to get exchange rates' });
-  }
-});
-
-// Refresh exchange rates cache
-router.post('/exchange-rates/refresh', async (req, res) => {
-  try {
-    exchangeRateService.clearCache();
-
-    // Get Zynk to USD rate
-    const [settings] = await db.pool.query(
-      "SELECT setting_value FROM settings WHERE setting_key = 'zynk_to_usd'"
-    );
-    const zynkToUsd = parseFloat(settings[0]?.setting_value || 0.1);
-
-    // Fetch fresh rates
-    const currencyData = await exchangeRateService.getCurrencyList(zynkToUsd);
-
-    res.json({
-      success: true,
-      message: 'Exchange rates refreshed',
-      data: {
-        zynkToUsd: currencyData.zynkToUsd,
-        rates: currencyData.rates,
-        source: currencyData.source,
-        updated: currencyData.updated
-      }
-    });
-  } catch (error) {
-    console.error('Refresh rates error:', error);
-    res.status(500).json({ success: false, message: 'Failed to refresh rates' });
-  }
-});
-
-// Convert Zynk to currency (utility endpoint)
-router.get('/convert', async (req, res) => {
-  try {
-    const { amount, to } = req.query;
-
-    if (!amount || !to) {
-      return res.status(400).json({ success: false, message: 'Amount and currency code required' });
-    }
-
-    const zynkAmount = parseFloat(amount);
-    if (isNaN(zynkAmount) || zynkAmount < 0) {
-      return res.status(400).json({ success: false, message: 'Invalid amount' });
-    }
-
-    // Get Zynk to USD rate
-    const [settings] = await db.pool.query(
-      "SELECT setting_value FROM settings WHERE setting_key = 'zynk_to_usd'"
-    );
-    const zynkToUsd = parseFloat(settings[0]?.setting_value || 0.1);
-
-    // Get live rates
-    const currencyData = await exchangeRateService.getCurrencyList(zynkToUsd);
-    const targetCurrency = currencyData.rates.find(r => r.currency_code === to.toUpperCase());
-
-    if (!targetCurrency) {
-      return res.status(404).json({ success: false, message: 'Currency not found' });
-    }
-
-    // Convert using rate_from_zynk (how many units of target currency = 1 Zynk)
-    const targetAmount = zynkAmount * targetCurrency.rate_from_zynk;
-    const precision = targetCurrency.decimal_precision;
-    const roundedAmount = Math.round(targetAmount * Math.pow(10, precision)) / Math.pow(10, precision);
-
-    res.json({
-      success: true,
-      data: {
-        input: { amount: zynkAmount, currency: 'Z' },
-        output: { amount: roundedAmount, currency: targetCurrency.currency_code, symbol: targetCurrency.currency_symbol },
-        rateFromZynk: targetCurrency.rate_from_zynk,
-        zynkToUsd
-      }
-    });
-  } catch (error) {
-    console.error('Convert error:', error);
-    res.status(500).json({ success: false, message: 'Conversion failed' });
-  }
-});
-
-// ============ ZYNK ORDERS MANAGEMENT ============
+// ============ ORDERS MANAGEMENT ============
 
 // Get all orders (with filters)
 router.get('/orders', async (req, res) => {
@@ -2912,7 +2755,7 @@ router.post('/orders/:id/approve', async (req, res) => {
     const [txnResult] = await connection.execute(
       `INSERT INTO transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, description)
        VALUES (?, 'deposit', ?, ?, ?, 'admin', ?, ?)`,
-      [order.user_id, totalZynk, currentBalance, newBalance, order.id, `Purchased ${totalZynk} Zynk (Order #${order.id})`]
+      [order.user_id, totalZynk, currentBalance, newBalance, order.id, `Purchased ₹${totalZynk} (Order #${order.id})`]
     );
 
     await connection.commit();
@@ -2929,7 +2772,7 @@ router.post('/orders/:id/approve', async (req, res) => {
       notificationService.create({
         userId: order.user_id, type: 'personal',
         title: 'Order Approved',
-        message: `Your purchase of ${totalZynk} Z has been approved and added to your balance.${adminNote !== 'Approved' ? ' Note: ' + adminNote : ''}`,
+        message: `Your purchase of ₹${totalZynk} has been approved and added to your balance.${adminNote !== 'Approved' ? ' Note: ' + adminNote : ''}`,
       }).catch(() => {});
     }
 
@@ -2947,7 +2790,7 @@ router.post('/orders/:id/approve', async (req, res) => {
 
     res.json({
       success: true,
-      message: `Order approved. ${totalZynk} Zynk credited to user.`,
+      message: `Order approved. ₹${totalZynk} credited to user.`,
       data: { orderId: order.id, zynkCredited: totalZynk, newBalance }
     });
   } catch (error) {

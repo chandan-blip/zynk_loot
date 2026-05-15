@@ -29,6 +29,7 @@ import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { sounds } from '../utils/sounds';
+import { rewriteAmounts } from '../utils/formatAmount';
 import { getUnreadCount } from '../services/api';
 import socketService from '../services/socket';
 
@@ -382,8 +383,8 @@ function Layout() {
                   }`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{notifToast.title}</p>
-                  <p className="text-xs text-gray-400 line-clamp-2 mt-0.5">{notifToast.message}</p>
+                  <p className="text-sm font-semibold text-white truncate">{rewriteAmounts(notifToast.title)}</p>
+                  <p className="text-xs text-gray-400 line-clamp-2 mt-0.5">{rewriteAmounts(notifToast.message)}</p>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); setNotifToast(null); }}
