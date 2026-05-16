@@ -3496,4 +3496,152 @@ router.get('/predictions/log', async (req, res) => {
   }
 });
 
+// ============ SMM QUEUE ============
+// Inspect / manage the smm_queue table populated by predictionService and
+// dailyWinnersService. Background worker (`smmQueueService`) drains rows
+// with a 10–20s gap so the panel never gets burst-throttled. Admin can:
+//   - list rows (paginated, filterable by status / context)
+//   - see counts by status
+//   - manually retry a failed row (flip status back to 'pending')
+//   - delete a row
+
+router.get('/smm-queue', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+
+    const ALLOWED_STATUS = new Set(['pending', 'processing', 'done', 'failed']);
+    const statusFilter = ALLOWED_STATUS.has(req.query.status) ? req.query.status : null;
+    const contextSearch = (req.query.context || '').trim().slice(0, 100);
+
+    const where = [];
+    const params = [];
+    if (statusFilter) {
+      where.push('status = ?');
+      params.push(statusFilter);
+    }
+    if (contextSearch) {
+      where.push('context_label LIKE ?');
+      params.push(`%${contextSearch}%`);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [[{ total }]] = await db.pool.query(
+      `SELECT COUNT(*) AS total FROM smm_queue ${whereSql}`,
+      params
+    );
+
+    const [rows] = await db.pool.query(
+      `SELECT id, post_url, context_label, status, attempts, placed,
+              views_order_id, reactions_order_id, last_error,
+              created_at, started_at, processed_at
+         FROM smm_queue
+         ${whereSql}
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        rows,
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (error) {
+    console.error('Get SMM queue error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/smm-queue/stats', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      `SELECT status, COUNT(*) AS count FROM smm_queue GROUP BY status`
+    );
+    const stats = { pending: 0, processing: 0, done: 0, failed: 0 };
+    for (const r of rows) stats[r.status] = Number(r.count);
+
+    // Last 24h activity for a sparkline-ish summary
+    const [[recent]] = await db.pool.query(
+      `SELECT COUNT(*) AS placed_24h
+         FROM smm_queue
+        WHERE status = 'done'
+          AND processed_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`
+    );
+
+    res.json({
+      success: true,
+      data: { ...stats, placed24h: Number(recent.placed_24h || 0) },
+    });
+  } catch (error) {
+    console.error('Get SMM queue stats error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/smm-queue/:id/retry', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid id' });
+    }
+    const [result] = await db.pool.query(
+      `UPDATE smm_queue
+          SET status = 'pending',
+              attempts = 0,
+              last_error = NULL,
+              started_at = NULL,
+              processed_at = NULL
+        WHERE id = ? AND status IN ('failed', 'done')`,
+      [id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Row not found or not retryable' });
+    }
+    res.json({ success: true, message: 'Row queued for retry' });
+  } catch (error) {
+    console.error('Retry SMM queue row error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/smm-queue/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid id' });
+    }
+    const [result] = await db.pool.query('DELETE FROM smm_queue WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Row not found' });
+    }
+    res.json({ success: true, message: 'Row deleted' });
+  } catch (error) {
+    console.error('Delete SMM queue row error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/smm-queue/clear-done', async (req, res) => {
+  try {
+    const [result] = await db.pool.query(
+      `DELETE FROM smm_queue WHERE status IN ('done', 'failed')`
+    );
+    res.json({
+      success: true,
+      message: `Cleared ${result.affectedRows} rows`,
+      data: { deleted: result.affectedRows },
+    });
+  } catch (error) {
+    console.error('Clear SMM queue error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;

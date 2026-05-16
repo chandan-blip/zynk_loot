@@ -396,4 +396,16 @@ export const adminDeleteWebsite = (id) => api.delete(`/admin/websites/${id}`);
 export const getBonusStatus = () => api.get('/bonuses/status');
 export const claimBonus = (type) => api.post('/bonuses/claim', { type });
 
+// Admin SMM queue
+export const getAdminSmmQueue = ({ page = 1, limit = 50, status = '', context = '' } = {}) => {
+  const params = new URLSearchParams({ page, limit });
+  if (status) params.set('status', status);
+  if (context) params.set('context', context);
+  return api.get(`/admin/smm-queue?${params.toString()}`);
+};
+export const getAdminSmmQueueStats = () => api.get('/admin/smm-queue/stats');
+export const retryAdminSmmQueueRow = (id) => api.post(`/admin/smm-queue/${id}/retry`);
+export const deleteAdminSmmQueueRow = (id) => api.delete(`/admin/smm-queue/${id}`);
+export const clearDoneAdminSmmQueue = () => api.post('/admin/smm-queue/clear-done');
+
 export default api;

@@ -259,6 +259,26 @@ class DailyWinnersService {
   constructor() {
     this.telegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
     this.telegramChatId = process.env.TELEGRAM_WINNERS_CHANNEL_ID || '';
+    // Wired in from index.js. When set, SMM orders go through the queue
+    // (asynchronous, paced) instead of calling the panel synchronously.
+    this.smmQueueService = null;
+  }
+
+  setSmmQueueService(svc) {
+    this.smmQueueService = svc;
+  }
+
+  // Helper: enqueue an SMM job for a post URL with a context label, or
+  // fall back to the legacy in-flight call if the queue isn't wired (in
+  // unit tests or before the boot wiring completes).
+  async _enqueueOrCallSmm(postUrl, contextLabel, log) {
+    if (!postUrl) return { skipped: true, reason: 'no_post_url', placed: 0 };
+    if (this.smmQueueService) {
+      const id = await this.smmQueueService.enqueue({ postUrl, contextLabel });
+      if (id) log?.info?.(`SMM queued #${id} for ${postUrl} [${contextLabel}]`);
+      return { queued: true, queueId: id, placed: 0 };
+    }
+    return this.placeSmmOrdersForPost(postUrl, log);
   }
 
   async getPaymentDetailsConfig() {
@@ -585,7 +605,7 @@ class DailyWinnersService {
           const result = await this.sendToTelegram(png, caption, log);
           if (!result.skipped) {
             screenshotsSent++;
-            const smm = await this.placeSmmOrdersForPost(result.postUrl, log);
+            const smm = await this._enqueueOrCallSmm(result.postUrl, `winners-screenshot:${tag}`, log);
             smmOrdersPlaced += smm.placed || 0;
           }
           log.info(`[${i + 1}/${winners.length}] ${winner.name} (${platform}) sent`);
@@ -920,7 +940,7 @@ class DailyWinnersService {
           // itself decides what to do based on settings / postUrl availability
           // and logs its own skip reason.
           if (!result.skipped) {
-            const smm = await this.placeSmmOrdersForPost(result.postUrl, log);
+            const smm = await this._enqueueOrCallSmm(result.postUrl, `winners-screenshot:${draw.period_id || draw.id}`, log);
             smmOrdersPlaced += smm.placed || 0;
           }
         } catch (err) {
@@ -953,7 +973,7 @@ class DailyWinnersService {
       try {
         telegramResult = await this.sendToTelegram(summaryPng, caption, log);
         if (telegramResult && !telegramResult.skipped) {
-          const smm = await this.placeSmmOrdersForPost(telegramResult.postUrl, log);
+          const smm = await this._enqueueOrCallSmm(telegramResult.postUrl, `winners-summary:${draw.period_id || draw.id}`, log);
           smmOrdersPlaced += smm.placed || 0;
         }
       } catch (err) {

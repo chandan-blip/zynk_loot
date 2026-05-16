@@ -289,6 +289,10 @@ class PredictionService {
     // Wired in from index.js so we can reuse the SMM-order pipeline and the
     // puppeteer card-image render path.
     this.dailyWinnersService = null;
+    // Wired in from index.js — async SMM order queue. Producers call
+    // .enqueue({ postUrl, contextLabel }) and a single worker drains
+    // rows with a 10–20 s gap so the panel never gets burst-throttled.
+    this.smmQueueService = null;
     // Wired in from index.js — used at slot fire to find the next open round
     // for each picked (game, card_count_type) so we can pre-roll its cards
     // and broadcast the real period_id, turning the post into a sure shot.
@@ -308,6 +312,10 @@ class PredictionService {
 
   setDailyWinnersService(svc) {
     this.dailyWinnersService = svc;
+  }
+
+  setSmmQueueService(svc) {
+    this.smmQueueService = svc;
   }
 
   setGameServices({ shuffleCardService, mutkaKingService, unoKingService } = {}) {
@@ -423,7 +431,8 @@ class PredictionService {
     // get-ready text drops. Disabled when SLOT_START_STICKER_FILE_ID is empty.
     if (SLOT_START_STICKER_FILE_ID) {
       try {
-        await this._sendTelegramSticker({ token, chatId, fileId: SLOT_START_STICKER_FILE_ID });
+        const r = await this._sendTelegramSticker({ token, chatId, fileId: SLOT_START_STICKER_FILE_ID });
+        if (r?.postUrl) await this._placeSmmForPost(r.postUrl, 'slot-start');
       } catch (err) {
         console.error(`[PRED] ${label} slot-start sticker send failed:`, err.message);
       }
@@ -432,7 +441,8 @@ class PredictionService {
     // Step 1: get-ready text (best-effort, doesn't abort the run)
     if (cfg.getReadyMessage) {
       try {
-        await this._sendTelegramText({ token, chatId, text: cfg.getReadyMessage });
+        const r = await this._sendTelegramText({ token, chatId, text: cfg.getReadyMessage });
+        if (r?.postUrl) await this._placeSmmForPost(r.postUrl, 'get-ready');
       } catch (err) {
         console.error(`[PRED] ${label} get-ready send failed:`, err.message);
       }
@@ -481,7 +491,8 @@ class PredictionService {
           await sleep(cfg.hypeStickerDelaySeconds * 1000);
         }
         try {
-          await this._sendTelegramSticker({ token, chatId, fileId: hype.file_id });
+          const r = await this._sendTelegramSticker({ token, chatId, fileId: hype.file_id });
+          if (r?.postUrl) await this._placeSmmForPost(r.postUrl, 'hype');
         } catch (err) {
           console.error(`[PRED] ${label} hype sticker send failed:`, err.message);
         }
@@ -507,7 +518,8 @@ class PredictionService {
           await sleep(cfg.resultStickerDelaySeconds * 1000);
         }
         try {
-          await this._sendTelegramSticker({ token, chatId, fileId: result.file_id });
+          const r = await this._sendTelegramSticker({ token, chatId, fileId: result.file_id });
+          if (r?.postUrl) await this._placeSmmForPost(r.postUrl, 'result');
         } catch (err) {
           console.error(`[PRED] ${label} result sticker send failed:`, err.message);
         }
@@ -594,10 +606,34 @@ class PredictionService {
       await sleep(delay * 1000);
     }
     try {
-      await this._sendTelegramText({ token, chatId, text: cfg.trailerMessage });
+      const r = await this._sendTelegramText({ token, chatId, text: cfg.trailerMessage });
+      if (r?.postUrl) await this._placeSmmForPost(r.postUrl, 'trailer');
       console.log(`[PRED] ${label} trailer sent`);
     } catch (err) {
       console.error(`[PRED] ${label} trailer send failed:`, err.message);
+    }
+  }
+
+  // Parse a Telegram bot API response body into the public post URL + msg id
+  // so the caller can wire it to placeSmmOrdersForPost. Returns nulls for
+  // both fields if the body wasn't a recognisable Telegram response.
+  _extractPostInfo(body) {
+    try {
+      const parsed = JSON.parse(body);
+      const msg = parsed.result || {};
+      const messageId = msg.message_id || null;
+      const chat = msg.chat || {};
+      let postUrl = null;
+      if (messageId) {
+        if (chat.username) postUrl = `https://t.me/${chat.username}/${messageId}`;
+        else if (chat.id != null) {
+          const internal = String(chat.id).replace(/^-100/, '');
+          postUrl = `https://t.me/c/${internal}/${messageId}`;
+        }
+      }
+      return { messageId, postUrl };
+    } catch (_) {
+      return { messageId: null, postUrl: null };
     }
   }
 
@@ -616,7 +652,7 @@ class PredictionService {
         }),
       });
       const body = await res.text();
-      if (res.ok) return body;
+      if (res.ok) return { ...this._extractPostInfo(body), body };
       // 429 = flood-wait; respect Telegram's retry_after then try again.
       if (res.status === 429 && attempt < maxRetries) {
         let retryAfter = 1;
@@ -644,7 +680,7 @@ class PredictionService {
         body: JSON.stringify({ chat_id: chatId, sticker: fileId }),
       });
       const body = await res.text();
-      if (res.ok) return body;
+      if (res.ok) return { ...this._extractPostInfo(body), body };
       if (res.status === 429 && attempt < maxRetries) {
         let retryAfter = 1;
         try {
@@ -657,6 +693,29 @@ class PredictionService {
       throw new Error(`Telegram sendSticker ${res.status}: ${body.slice(0, 200)}`);
     }
     throw new Error(`Telegram sendSticker failed after ${maxRetries} attempts`);
+  }
+
+  // Shared helper used by every Telegram send beat in runScheduledSlot.
+  // We now enqueue the SMM job into the smm_queue table instead of calling
+  // the panel synchronously. The smmQueueService worker drains the queue
+  // with a 10–20s pacing gap so the panel never gets burst-throttled.
+  // Best-effort: never throws, just logs.
+  async _placeSmmForPost(postUrl, contextLabel) {
+    if (!postUrl) return;
+    try {
+      const masterOn = await this.getSmmEnabled();
+      if (!masterOn) return;
+      if (!this.smmQueueService) {
+        console.warn(`[PRED] smmQueueService not wired — SMM(${contextLabel}) skipped for ${postUrl}`);
+        return;
+      }
+      const id = await this.smmQueueService.enqueue({ postUrl, contextLabel: `pred:${contextLabel}` });
+      if (id) {
+        console.log(`[PRED] SMM(${contextLabel}) queued #${id} for ${postUrl}`);
+      }
+    } catch (err) {
+      console.error(`[PRED] SMM(${contextLabel}) enqueue failed:`, err.message);
+    }
   }
 
   async _sendPredictionPost({ token, chatId, game, cardCountType, message, slotHour }) {
@@ -794,22 +853,9 @@ class PredictionService {
 
     console.log(`[PRED] Pushed ${game}/${cardCountType} ${periodId}${postUrl ? ` → ${postUrl}` : ''}`);
 
-    if (this.dailyWinnersService && postUrl) {
-      const masterOn = await this.getSmmEnabled();
-      if (!masterOn) {
-        console.log('[PRED] SMM master switch off — skipping SMM order');
-      } else {
-        try {
-          const log = this._createSmmLogger(game, cardCountType, periodId);
-          const smm = await this.dailyWinnersService.placeSmmOrdersForPost(postUrl, log);
-          if (smm && !smm.skipped && smm.placed > 0) {
-            console.log(`[PRED] SMM orders placed: ${smm.placed} for ${postUrl}`);
-          }
-        } catch (err) {
-          console.error('[PRED] SMM order step failed:', err.message);
-        }
-      }
-    }
+    // Enqueue SMM order asynchronously — same path used by every other
+    // Telegram beat in the slot. Worker drains the queue with pacing.
+    await this._placeSmmForPost(postUrl, `prediction:${game}/${cardCountType}`);
 
     return {
       logId,

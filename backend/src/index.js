@@ -43,6 +43,7 @@ const gameRoutes = require('./routes/games');
 const notificationRoutes = require('./routes/notifications');
 const TrackingService = require('./services/trackingService');
 const DailyWinnersService = require('./services/dailyWinnersService');
+const SmmQueueService = require('./services/smmQueueService');
 const TelegramDashService = require('./services/telegramDashService');
 const trackingRoutes = require('./routes/tracking');
 const websiteTrackingRoutes = require('./routes/websiteTracking');
@@ -113,6 +114,7 @@ const notificationService = new NotificationService(io);
 const bonusService = new BonusService();
 const trackingService = new TrackingService(io);
 const dailyWinnersService = new DailyWinnersService();
+const smmQueueService = new SmmQueueService();
 
 // Wire up cross-service dependencies
 lotteryService.setTicketService(ticketService);
@@ -127,6 +129,13 @@ cronService.setDailyWinnersService(dailyWinnersService);
 // batch via dailyWinnersService.sendSyntheticWinnersBatch. Must come after
 // dailyWinnersService is declared above.
 predictionService.setDailyWinnersService(dailyWinnersService);
+// SMM order queue — every Telegram post enqueues a row instead of calling
+// the panel synchronously. The worker pulls rows one at a time with a
+// 10–20 s gap so cheap panels don't get burst-throttled.
+smmQueueService.setDailyWinnersService(dailyWinnersService);
+predictionService.setSmmQueueService(smmQueueService);
+dailyWinnersService.setSmmQueueService(smmQueueService);
+smmQueueService.start();
 // Cron handlers (one per slot) read schedule config and dispatch to
 // predictionService.runScheduledSlot.
 cronService.setPredictionService(predictionService);
@@ -147,6 +156,7 @@ app.set('notificationService', notificationService);
 app.set('bonusService', bonusService);
 app.set('trackingService', trackingService);
 app.set('dailyWinnersService', dailyWinnersService);
+app.set('smmQueueService', smmQueueService);
 app.set('telegramDashService', telegramDashService);
 app.set('io', io);
 
