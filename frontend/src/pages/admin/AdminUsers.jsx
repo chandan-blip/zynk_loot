@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiSearch, FiPlus, FiActivity, FiEye, FiClock, FiMousePointer, FiX, FiLock, FiUnlock, FiAlertOctagon } from 'react-icons/fi';
+import { FiSearch, FiPlus, FiActivity, FiEye, FiClock, FiMousePointer, FiX, FiLock, FiUnlock, FiAlertOctagon, FiUser, FiArrowDownCircle, FiArrowUpCircle, FiTarget, FiCreditCard } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
-import api, { getUserTrackingSummary, freezeUser, unfreezeUser } from '../../services/api';
+import api, { getUserTrackingSummary, freezeUser, unfreezeUser, getUserDetails } from '../../services/api';
 
 function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -20,6 +20,10 @@ function AdminUsers() {
   const [freezeTarget, setFreezeTarget] = useState(null);   // user object opened in freeze modal
   const [freezeNote, setFreezeNote] = useState('');
   const [freezing, setFreezing] = useState(false);
+  const [detailUser, setDetailUser] = useState(null);       // user object opened in the details modal
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailTab, setDetailTab] = useState('overview');
 
   useEffect(() => {
     fetchUsers();
@@ -105,6 +109,21 @@ function AdminUsers() {
       toast.error('Failed to load activity');
     } finally {
       setActivityLoading(false);
+    }
+  };
+
+  const handleViewDetails = async (user) => {
+    setDetailUser(user);
+    setDetailTab('overview');
+    setDetailLoading(true);
+    setDetailData(null);
+    try {
+      const res = await getUserDetails(user.id);
+      setDetailData(res.data.data);
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to load user details');
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -207,6 +226,14 @@ function AdminUsers() {
                     </td>
                     <td className="text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => handleViewDetails(user)}
+                          className="px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 transition-colors text-xs font-medium"
+                          title="View user details"
+                        >
+                          <FiEye className="inline mr-0.5 w-3 h-3" />
+                          <span className="hidden lg:inline">View</span>
+                        </button>
                         <button
                           onClick={() => handleViewActivity(user)}
                           className="px-2 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors text-xs font-medium"
@@ -532,6 +559,245 @@ function AdminUsers() {
                   {freezing ? 'Freezing…' : 'Freeze Account'}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* User Details Modal — Overview / Deposits / Bets / Withdrawals / Payment Methods */}
+      <AnimatePresence>
+        {detailUser && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto py-8 px-4"
+            onClick={() => setDetailUser(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="card p-5 max-w-3xl w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${detailUser.is_frozen ? 'bg-red-500 text-white' : 'bg-accent text-dark-900'}`}>
+                    {detailUser.username[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                      {detailUser.username}
+                      {detailUser.is_frozen && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-500/15 text-red-300 border border-red-500/30">
+                          <FiLock className="w-2.5 h-2.5" /> Frozen
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-gray-500">{detailUser.email || detailUser.phone || `id #${detailUser.id}`}</p>
+                  </div>
+                </div>
+                <button onClick={() => setDetailUser(null)} className="w-8 h-8 rounded-lg bg-dark-700 flex items-center justify-center text-gray-400 hover:text-white">
+                  <FiX className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex flex-wrap gap-1.5 mb-4 border-b border-dark-600 pb-2">
+                {[
+                  { key: 'overview', label: 'Overview', icon: FiUser },
+                  { key: 'deposits', label: 'Deposits', icon: FiArrowDownCircle, badge: detailData?.deposits?.length },
+                  { key: 'bets', label: 'Bets', icon: FiTarget, badge: detailData?.bets?.length },
+                  { key: 'withdrawals', label: 'Withdrawals', icon: FiArrowUpCircle, badge: detailData?.withdrawals?.length },
+                  { key: 'payments', label: 'Payment Methods', icon: FiCreditCard, badge: detailData?.paymentMethods?.length },
+                ].map(({ key, label, icon: Icon, badge }) => (
+                  <button
+                    key={key}
+                    onClick={() => setDetailTab(key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      detailTab === key
+                        ? 'bg-accent text-dark-900'
+                        : 'bg-dark-700 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                    {typeof badge === 'number' && badge > 0 && (
+                      <span className={`px-1.5 rounded text-[10px] ${detailTab === key ? 'bg-dark-900/30 text-dark-900' : 'bg-dark-600 text-gray-300'}`}>{badge}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {detailLoading ? (
+                <div className="flex justify-center py-12">
+                  <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : !detailData ? (
+                <p className="text-gray-600 text-center py-8">Failed to load details</p>
+              ) : (
+                <div className="space-y-4">
+                  {detailTab === 'overview' && (
+                    <div className="space-y-4">
+                      {/* Profile grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-dark-700 rounded-lg p-4">
+                        {[
+                          ['User ID', `#${detailData.user.id}`],
+                          ['Username', detailData.user.username],
+                          ['Email', detailData.user.email || '—'],
+                          ['Phone', detailData.user.phone || '—'],
+                          ['Balance', `₹${parseFloat(detailData.user.balance || 0).toLocaleString('en-IN')}`],
+                          ['Total Spent', `₹${parseFloat(detailData.user.total_spent || 0).toLocaleString('en-IN')}`],
+                          ['Total Earned', `₹${parseFloat(detailData.user.total_earned || 0).toLocaleString('en-IN')}`],
+                          ['Joined', detailData.user.created_at ? new Date(detailData.user.created_at).toLocaleDateString() : '—'],
+                        ].map(([k, v]) => (
+                          <div key={k} className="flex justify-between gap-3 text-sm border-b border-dark-600/50 pb-1.5 last:border-0">
+                            <span className="text-gray-500">{k}</span>
+                            <span className="text-white font-medium text-right truncate">{v}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {detailData.user.is_frozen && (
+                        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm">
+                          <p className="text-red-300 font-semibold mb-1 flex items-center gap-1.5">
+                            <FiLock className="w-3.5 h-3.5" /> Frozen
+                          </p>
+                          <p className="text-red-200/80 text-xs">{detailData.user.freeze_note || 'No note recorded'}</p>
+                        </div>
+                      )}
+
+                      {/* Lifetime stats */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {[
+                          { label: 'Deposits', value: `${detailData.summary.depositCompleted}/${detailData.summary.depositCount}`, sub: `₹${detailData.summary.depositTotal.toLocaleString('en-IN')}` },
+                          { label: 'Withdrawals', value: `${detailData.summary.withdrawalCount}`, sub: `₹${detailData.summary.withdrawalTotal.toLocaleString('en-IN')}${detailData.summary.withdrawalPending ? ` • ${detailData.summary.withdrawalPending} pending` : ''}` },
+                          { label: 'Bets', value: `${detailData.summary.betCount}`, sub: `bet ₹${detailData.summary.betTotal.toLocaleString('en-IN')}` },
+                          { label: 'Wins', value: `${detailData.summary.betWins}`, sub: `won ₹${detailData.summary.winTotal.toLocaleString('en-IN')}` },
+                        ].map(s => (
+                          <div key={s.label} className="bg-dark-700 rounded-lg p-3">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">{s.label}</p>
+                            <p className="text-lg font-bold text-white mt-0.5">{s.value}</p>
+                            <p className="text-[10px] text-gray-500 mt-0.5">{s.sub}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {detailTab === 'deposits' && (
+                    <div className="bg-dark-700 rounded-lg p-3 max-h-[500px] overflow-y-auto">
+                      {detailData.deposits.length === 0 ? (
+                        <p className="text-gray-600 text-xs text-center py-8">No deposits yet</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {detailData.deposits.map(d => (
+                            <div key={d.id} className="flex items-center justify-between gap-3 text-xs py-1.5 border-b border-dark-600/50 last:border-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex-shrink-0 ${
+                                  d.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300' :
+                                  d.status === 'pending' || d.status === 'awaiting_approval' ? 'bg-amber-500/15 text-amber-300' :
+                                  'bg-red-500/15 text-red-300'
+                                }`}>{d.status}</span>
+                                <span className="text-gray-400 truncate">{d.package_name || `Order #${d.id}`}</span>
+                              </div>
+                              <div className="flex items-center gap-3 flex-shrink-0">
+                                <span className="text-accent font-semibold">₹{Number(d.zynk_amount).toLocaleString('en-IN')}</span>
+                                <span className="text-[10px] text-gray-600 w-[90px] text-right">{new Date(d.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {detailTab === 'bets' && (
+                    <div className="bg-dark-700 rounded-lg p-3 max-h-[500px] overflow-y-auto">
+                      {detailData.bets.length === 0 ? (
+                        <p className="text-gray-600 text-xs text-center py-8">No bets recorded</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {detailData.bets.map(b => (
+                            <div key={b.id} className="flex items-center justify-between gap-3 text-xs py-1.5 border-b border-dark-600/50 last:border-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex-shrink-0 ${b.is_win ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{b.is_win ? 'Win' : 'Loss'}</span>
+                                <span className="text-gray-300 font-medium truncate">{b.game_type}</span>
+                                {b.multiplier ? <span className="text-gray-500 text-[10px]">×{Number(b.multiplier).toFixed(2)}</span> : null}
+                              </div>
+                              <div className="flex items-center gap-3 flex-shrink-0">
+                                <span className="text-gray-400">₹{Number(b.bet_amount).toLocaleString('en-IN')}</span>
+                                <span className={`font-semibold w-[80px] text-right ${b.is_win ? 'text-emerald-300' : 'text-gray-500'}`}>
+                                  {b.is_win ? `+₹${Number(b.win_amount).toLocaleString('en-IN')}` : '—'}
+                                </span>
+                                <span className="text-[10px] text-gray-600 w-[90px] text-right">{new Date(b.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {detailTab === 'withdrawals' && (
+                    <div className="bg-dark-700 rounded-lg p-3 max-h-[500px] overflow-y-auto">
+                      {detailData.withdrawals.length === 0 ? (
+                        <p className="text-gray-600 text-xs text-center py-8">No withdrawals yet</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {detailData.withdrawals.map(w => {
+                            const dest = w.upi_id || w.wallet_address || w.account_number || w.payment_label || '—';
+                            return (
+                              <div key={w.id} className="flex items-center justify-between gap-3 text-xs py-1.5 border-b border-dark-600/50 last:border-0">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex-shrink-0 ${
+                                    w.status === 'completed' || w.status === 'approved' ? 'bg-emerald-500/15 text-emerald-300' :
+                                    w.status === 'pending' ? 'bg-amber-500/15 text-amber-300' :
+                                    'bg-red-500/15 text-red-300'
+                                  }`}>{w.status}</span>
+                                  <span className="text-gray-400 uppercase text-[10px] flex-shrink-0">{w.payment_type || '—'}</span>
+                                  <span className="text-gray-300 truncate font-mono text-[11px]">{dest}</span>
+                                </div>
+                                <div className="flex items-center gap-3 flex-shrink-0">
+                                  <span className="text-accent font-semibold">₹{Number(w.amount).toLocaleString('en-IN')}</span>
+                                  <span className="text-[10px] text-gray-600 w-[90px] text-right">{new Date(w.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {detailTab === 'payments' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {detailData.paymentMethods.length === 0 ? (
+                        <p className="text-gray-600 text-xs text-center py-8 md:col-span-2">No payment methods saved</p>
+                      ) : (
+                        detailData.paymentMethods.map(pm => (
+                          <div key={pm.id} className="bg-dark-700 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] text-gray-500 uppercase tracking-wider">{pm.type}</span>
+                              {pm.is_primary ? (
+                                <span className="text-[10px] font-bold uppercase bg-accent/20 text-accent px-1.5 py-0.5 rounded">Primary</span>
+                              ) : null}
+                            </div>
+                            <p className="text-sm font-semibold text-white truncate">{pm.label || `Method #${pm.id}`}</p>
+                            <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
+                              {pm.upi_id && <p className="font-mono truncate">UPI: {pm.upi_id}</p>}
+                              {pm.wallet_address && <p className="font-mono truncate">{pm.wallet_type || 'Wallet'}: {pm.wallet_address}</p>}
+                              {pm.bank_name && <p>{pm.bank_name} • {pm.account_holder || '—'}</p>}
+                              {pm.account_number && <p className="font-mono">A/c {pm.account_number} • IFSC {pm.ifsc_code || '—'}</p>}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

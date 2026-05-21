@@ -189,6 +189,8 @@ export const previewPaymentTemplate = (platform, sampleOverride) =>
   api.post(`/admin/daily-winners/payment-templates/${platform}/preview`, { sampleOverride });
 export const previewPaymentTemplatePng = (platform, sampleOverride) =>
   api.post(`/admin/daily-winners/payment-templates/${platform}/preview-png`, { sampleOverride });
+export const setPaymentTemplateActive = (platform, active) =>
+  api.put(`/admin/daily-winners/payment-templates/${platform}/active`, { active });
 export const getPaymentDetails = () => api.get('/admin/daily-winners/payment-details');
 export const savePaymentDetails = (config) =>
   api.put('/admin/daily-winners/payment-details', { config });
@@ -397,6 +399,7 @@ export const claimBonus = (type) => api.post('/bonuses/claim', { type });
 // Admin user freeze
 export const freezeUser = (id, note) => api.post(`/admin/users/${id}/freeze`, { note });
 export const unfreezeUser = (id) => api.post(`/admin/users/${id}/unfreeze`);
+export const getUserDetails = (id) => api.get(`/admin/users/${id}/details`);
 
 // Admin SMM queue
 export const getAdminSmmQueue = ({ page = 1, limit = 50, status = '', context = '' } = {}) => {

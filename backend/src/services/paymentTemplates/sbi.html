@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  body { width: 400px; height: 870px; background: #eef2f6; color: #1a1a1a; display: flex; flex-direction: column; }
+
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 18px 6px; font-size: 14px; font-weight: 600; color: #1a1a1a; }
+  .statusbar .left { display: flex; align-items: center; gap: 8px; }
+  .statusbar .left .time { font-weight: 600; }
+  .statusbar .left .apps { display: flex; align-items: center; gap: 5px; color: #555; }
+  .statusbar .left .apps .ic { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; }
+  .statusbar .left .dot { width: 4px; height: 4px; background: #555; border-radius: 50%; }
+  .statusbar .right { display: flex; align-items: center; gap: 5px; }
+  .sb-net { font-size: 9px; font-weight: 800; background: #1a1a1a; color: #fff; padding: 1px 4px; border-radius: 3px; line-height: 1.2; }
+  .sb-bars { display: flex; align-items: flex-end; gap: 1px; }
+  .sb-bars span { width: 2px; background: #1a1a1a; }
+  .sb-bars span:nth-child(1) { height: 4px; }
+  .sb-bars span:nth-child(2) { height: 6px; }
+  .sb-bars span:nth-child(3) { height: 8px; }
+  .sb-bars span:nth-child(4) { height: 10px; }
+  .sb-batt { background: #1a1a1a; color: #fff; padding: 2px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; }
+
+  .header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #eef2f6; }
+  .header .back { font-size: 22px; color: #1a1a1a; font-weight: 300; }
+  .header .avatar { width: 38px; height: 38px; border-radius: 50%; background: #dbe1e8; display: flex; align-items: center; justify-content: center; }
+  .header .avatar svg { width: 26px; height: 26px; }
+  .header .name { flex: 1; text-align: start; font-size: 17px; font-weight: 500; color: #1a1a1a; }
+  .header .menu { font-size: 22px; color: #555; line-height: 1; padding: 0 4px; }
+
+  .chat { flex: 1; background: #f4f7fa; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 16px 8px; }
+
+  .unread { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+  .unread .line { flex: 1; border-top: 1px solid #6c8db0; }
+  .unread .label { font-size: 12px; color: #4a6a8a; font-weight: 500; }
+
+  .date-stamp { text-align: center; font-size: 13px; color: #4a5666; padding: 12px 0 14px; }
+  .date-stamp .dot { margin: 0 6px; }
+
+  .bubble { background: #dbe4ee; border-radius: 18px; padding: 14px 16px; font-size: 17px; color: #1a1a1a; line-height: 1.6; max-width: 96%; align-self: flex-start; }
+  .bubble .sms-date { text-decoration: underline; }
+
+  .msg-time { font-size: 12px; color: #5a6a7a; padding: 6px 4px 10px; }
+
+  .reply-bubble { width: 100%; text-align: center; background: #dbe4ee; border-radius: 18px; padding: 14px 16px; font-size: 16px; color: #1a1a1a; align-self: flex-start; max-width: 96%; }
+  .reply-bubble .lm { color: #1656a8; text-decoration: underline; margin-left: 4px; }
+
+  .navbar { height: 40px; background: #eef2f6; display: flex; align-items: center; justify-content: space-around; padding: 0 40px; }
+  .navbar .nav { color: #1a1a1a; }
+  .navbar .lines { display: flex; flex-direction: column; gap: 3px; }
+  .navbar .lines span { width: 14px; height: 2px; background: #1a1a1a; }
+  .navbar .home { width: 14px; height: 14px; border: 1.5px solid #1a1a1a; border-radius: 3px; }
+  .navbar .chev { font-size: 18px; color: #1a1a1a; }
+</style>
+</head>
+<body>
+  <div class="statusbar">
+    <div class="left">
+      <span class="time">{{statusBarTime}}</span>
+      <span class="apps">{{statusBarLeftIconsHtml}}</span>
+    </div>
+    <div class="right">
+      <span class="sb-net">{{statusBarNet}}</span>
+      <span class="sb-bars">{{statusBarBarsHtml}}</span>
+      <span class="sb-batt">{{statusBarBattery}}</span>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="back">‹</div>
+    <div class="avatar">
+      <svg viewBox="0 0 24 24" fill="#9aa3ad"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c0-4 3.4-7 7.5-7s7.5 3 7.5 7" fill="#9aa3ad"/></svg>
+    </div>
+    <div class="name">{{smsSenderId}}</div>
+    <div class="menu">⋮</div>
+  </div>
+
+  <div class="chat">
+    <div class="unread">
+      <div class="line"></div>
+      <div class="label">Unread</div>
+      <div class="line"></div>
+    </div>
+
+    <div class="date-stamp">{{weekday}}, {{dayMonth}}<span class="dot">•</span>{{pastTime12}}</div>
+
+    <div class="bubble">
+      Dear {{smsUserPhrase}}, your A/c X{{bankLast4}}-credited by Rs.{{amount}} on <span class="sms-date">{{dateSms}}</span> transfer from {{nameUpper}} Ref No {{utr}} {{smsSignoff}}
+    </div>
+    <div class="msg-time">{{pastTime12}}</div>
+
+    <div class="reply-bubble">
+      Can't reply to this short code.<span class="lm">Learn more</span>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <span class="nav lines"><span></span><span></span><span></span></span>
+    <span class="nav home"></span>
+    <span class="nav chev">‹</span>
+  </div>
+</body>
+</html>

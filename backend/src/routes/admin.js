@@ -482,6 +482,119 @@ router.post('/users/:id/unfreeze', async (req, res) => {
   }
 });
 
+// One-shot user detail aggregator for the admin "View" modal — bundles the
+// profile, lifetime totals, and recent records from deposits / withdrawals /
+// bets / payment methods. Keeping it in one query batch (in parallel via
+// Promise.all) means the modal doesn't have to fan out 5 separate requests.
+router.get('/users/:id/details', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
+    const [
+      userRows,
+      summaryRows,
+      depositRows,
+      withdrawalRows,
+      betRows,
+      betSummaryRows,
+      paymentMethodRows,
+    ] = await Promise.all([
+      db.pool.query('SELECT * FROM users WHERE id = ?', [userId]),
+      db.pool.query(
+        `SELECT
+           (SELECT COALESCE(SUM(zynk_amount), 0) FROM zynk_orders WHERE user_id = ? AND status = 'completed') AS deposit_total,
+           (SELECT COUNT(*) FROM zynk_orders WHERE user_id = ?) AS deposit_count,
+           (SELECT COUNT(*) FROM zynk_orders WHERE user_id = ? AND status = 'completed') AS deposit_completed,
+           (SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE user_id = ? AND status IN ('completed','approved')) AS withdrawal_total,
+           (SELECT COUNT(*) FROM withdrawals WHERE user_id = ?) AS withdrawal_count,
+           (SELECT COUNT(*) FROM withdrawals WHERE user_id = ? AND status = 'pending') AS withdrawal_pending`,
+        [userId, userId, userId, userId, userId, userId]
+      ),
+      db.pool.query(
+        `SELECT zo.id, zo.status, zo.zynk_amount, zo.created_at, zo.completed_at,
+                zp.name AS package_name
+           FROM zynk_orders zo
+           LEFT JOIN zynk_packages zp ON zo.package_id = zp.id
+          WHERE zo.user_id = ?
+          ORDER BY zo.created_at DESC
+          LIMIT 25`,
+        [userId]
+      ),
+      db.pool.query(
+        `SELECT w.id, w.amount, w.status, w.created_at, w.processed_at,
+                pm.type AS payment_type, pm.label AS payment_label,
+                pm.upi_id, pm.wallet_address, pm.wallet_type,
+                pm.bank_name, pm.account_number, pm.ifsc_code, pm.account_holder
+           FROM withdrawals w
+           LEFT JOIN payment_methods pm ON w.payment_method_id = pm.id
+          WHERE w.user_id = ?
+          ORDER BY w.created_at DESC
+          LIMIT 25`,
+        [userId]
+      ),
+      db.pool.query(
+        `SELECT id, game_type, bet_amount, win_amount, multiplier, result, is_win, created_at
+           FROM game_bets
+          WHERE user_id = ?
+          ORDER BY created_at DESC
+          LIMIT 30`,
+        [userId]
+      ),
+      db.pool.query(
+        `SELECT
+           COUNT(*) AS bet_count,
+           COALESCE(SUM(bet_amount), 0) AS bet_total,
+           COALESCE(SUM(win_amount), 0) AS win_total,
+           COALESCE(SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END), 0) AS bet_wins
+           FROM game_bets WHERE user_id = ?`,
+        [userId]
+      ),
+      db.pool.query(
+        `SELECT * FROM payment_methods WHERE user_id = ? ORDER BY is_primary DESC, created_at DESC`,
+        [userId]
+      ),
+    ]);
+
+    const user = userRows[0][0];
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    delete user.password;
+
+    const summary = summaryRows[0][0] || {};
+    const betSummary = betSummaryRows[0][0] || {};
+
+    res.json({
+      success: true,
+      data: {
+        user,
+        summary: {
+          depositTotal: Number(summary.deposit_total || 0),
+          depositCount: Number(summary.deposit_count || 0),
+          depositCompleted: Number(summary.deposit_completed || 0),
+          withdrawalTotal: Number(summary.withdrawal_total || 0),
+          withdrawalCount: Number(summary.withdrawal_count || 0),
+          withdrawalPending: Number(summary.withdrawal_pending || 0),
+          betCount: Number(betSummary.bet_count || 0),
+          betTotal: Number(betSummary.bet_total || 0),
+          winTotal: Number(betSummary.win_total || 0),
+          betWins: Number(betSummary.bet_wins || 0),
+        },
+        deposits: depositRows[0],
+        withdrawals: withdrawalRows[0],
+        bets: betRows[0],
+        paymentMethods: paymentMethodRows[0],
+      },
+    });
+  } catch (error) {
+    console.error('Get user details error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load user details' });
+  }
+});
+
 // ============ LOTTERY DRAW MANAGEMENT ============
 
 // Get all draws
@@ -1300,16 +1413,37 @@ router.put('/daily-winners/template', async (req, res) => {
 
 // ===== Payment screenshot templates (file-based editor) =====
 
-// List all available platform templates
+// List all available platform templates (with active state)
 router.get('/daily-winners/payment-templates', async (req, res) => {
   try {
     const svc = req.app.get('dailyWinnersService');
     if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
     const platforms = svc.listPaymentTemplates();
-    res.json({ success: true, data: { platforms } });
+    const templates = await svc.listPaymentTemplatesWithState();
+    // `platforms` kept for backward compatibility with any older UI bundle;
+    // `templates` is the new shape with active flags.
+    res.json({ success: true, data: { platforms, templates } });
   } catch (error) {
     console.error('List payment templates error:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Toggle active/inactive for a single template
+router.put('/daily-winners/payment-templates/:platform/active', async (req, res) => {
+  try {
+    const svc = req.app.get('dailyWinnersService');
+    if (!svc) return res.status(500).json({ success: false, message: 'Service unavailable' });
+    const { active } = req.body || {};
+    if (typeof active !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'active (boolean) required' });
+    }
+    const states = await svc.setTemplateActive(req.params.platform, active);
+    const templates = Object.keys(states).map(platform => ({ platform, active: states[platform] }));
+    res.json({ success: true, data: { states, templates } });
+  } catch (error) {
+    console.error('Set template active error:', error);
+    res.status(400).json({ success: false, message: error.message });
   }
 });
 

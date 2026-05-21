@@ -6,6 +6,7 @@ import {
   listPaymentTemplates,
   previewPaymentTemplate,
   previewPaymentTemplatePng,
+  setPaymentTemplateActive,
   getPaymentDetails,
   savePaymentDetails,
 } from '../../services/api';
@@ -115,27 +116,52 @@ function PaymentDetailsEditor({ onSaved }) {
 }
 
 function AdminPaymentTemplates() {
-  const [platforms, setPlatforms] = useState([]);
+  // templates: [{ platform, active }] — backend's new shape. Falls back to
+  // the legacy `platforms: string[]` field for older backend builds.
+  const [templates, setTemplates] = useState([]);
   const [selected, setSelected] = useState(null);
   const [previewHtml, setPreviewHtml] = useState('');
   const [pngBase64, setPngBase64] = useState(null);
   const [loading, setLoading] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [togglingPlatform, setTogglingPlatform] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
         const res = await listPaymentTemplates();
         if (res.data.success) {
-          const list = res.data.data.platforms || [];
-          setPlatforms(list);
-          if (list.length) setSelected(list[0]);
+          const list = res.data.data.templates
+            || (res.data.data.platforms || []).map(p => ({ platform: p, active: true }));
+          setTemplates(list);
+          if (list.length) setSelected(list[0].platform);
         }
       } catch (err) {
         toast.error('Failed to list templates');
       }
     })();
   }, []);
+
+  const handleToggleActive = async (platform, nextActive) => {
+    setTogglingPlatform(platform);
+    // Optimistic update — flip immediately, roll back if the API rejects.
+    const prev = templates;
+    setTemplates(ts => ts.map(t => t.platform === platform ? { ...t, active: nextActive } : t));
+    try {
+      const res = await setPaymentTemplateActive(platform, nextActive);
+      if (res.data.success && res.data.data.templates) {
+        setTemplates(res.data.data.templates);
+      }
+      toast.success(`${platform} ${nextActive ? 'activated' : 'deactivated'}`);
+    } catch (err) {
+      setTemplates(prev);
+      toast.error(err.response?.data?.message || 'Toggle failed');
+    } finally {
+      setTogglingPlatform(null);
+    }
+  };
+
+  const activeCount = templates.filter(t => t.active).length;
 
   const loadPreview = useCallback(async (platform) => {
     if (!platform) return;
@@ -186,21 +212,71 @@ function AdminPaymentTemplates() {
 
       <PaymentDetailsEditor onSaved={() => selected && loadPreview(selected)} />
 
-      {/* Platform tabs */}
-      <div className="flex flex-wrap gap-2">
-        {platforms.map(p => (
-          <button
-            key={p}
-            onClick={() => setSelected(p)}
-            className={`px-4 py-2 rounded-lg border text-sm font-bold uppercase tracking-wide transition-colors ${
-              selected === p
-                ? 'bg-accent text-dark-900 border-accent'
-                : 'bg-dark-800 text-gray-400 border-dark-600 hover:border-accent/50 hover:text-white'
-            }`}
-          >
-            {p}
-          </button>
-        ))}
+      {/* Platform tabs with active toggles */}
+      <div className="bg-dark-800 border border-dark-600 rounded-lg p-3">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <div className="text-xs text-gray-500 uppercase tracking-wide">
+            Templates ({activeCount}/{templates.length} active)
+          </div>
+          <div className="text-[11px] text-gray-600">
+            Inactive templates are skipped by the round-robin in <code className="text-accent">generateWinners</code>.
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {templates.map(({ platform, active }) => {
+            const isSelected = selected === platform;
+            const isToggling = togglingPlatform === platform;
+            return (
+              <div
+                key={platform}
+                className={`flex items-stretch rounded-lg border overflow-hidden ${
+                  isSelected ? 'border-accent' : 'border-dark-600'
+                } ${active ? '' : 'opacity-60'}`}
+              >
+                <button
+                  onClick={() => setSelected(platform)}
+                  className={`px-4 py-2 text-sm font-bold uppercase tracking-wide transition-colors ${
+                    isSelected
+                      ? 'bg-accent text-dark-900'
+                      : 'bg-dark-800 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {platform}
+                  {!active && (
+                    <span className="ml-2 text-[10px] font-normal normal-case tracking-normal">(off)</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => handleToggleActive(platform, !active)}
+                  disabled={isToggling}
+                  title={active ? 'Deactivate template' : 'Activate template'}
+                  className={`px-2 flex items-center justify-center border-l border-dark-600 transition-colors disabled:opacity-40 ${
+                    active
+                      ? 'bg-green-900/40 hover:bg-green-900/60 text-green-300'
+                      : 'bg-dark-900 hover:bg-dark-700 text-gray-500'
+                  }`}
+                >
+                  <span
+                    className={`inline-block w-7 h-4 rounded-full relative transition-colors ${
+                      active ? 'bg-green-500' : 'bg-dark-600'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
+                        active ? 'left-3.5' : 'left-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {activeCount === 0 && templates.length > 0 && (
+          <div className="mt-2 text-[11px] text-yellow-500">
+            ⚠️ No templates active — the batch will fall back to using all templates on disk so winners are never skipped.
+          </div>
+        )}
       </div>
 
       <div className="bg-dark-800 border border-dark-600 rounded-lg overflow-hidden">

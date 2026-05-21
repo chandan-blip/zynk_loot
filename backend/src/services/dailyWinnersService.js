@@ -34,6 +34,44 @@ const INDIAN_BANKS = [
 ];
 const UPI_HANDLES = ['@okhdfcbank', '@okicici', '@oksbi', '@okaxis', '@ybl', '@paytm', '@apl', '@ptyes'];
 
+// Status-bar randomization pool for SMS-style templates. Each render picks a
+// network label, battery %, signal-bar fill, and a handful of notification
+// icons so two side-by-side screenshots don't look like duplicates.
+const STATUSBAR_NET_LABELS = ['5G', '4G', 'LTE', 'H+', '5G+'];
+const STATUSBAR_ICON_POOL = [
+  // calendar / square
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="#555" stroke-width="2.4"/></svg>',
+  // camera / instagram
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="5" stroke="#555" stroke-width="2"/><circle cx="12" cy="12" r="3.5" stroke="#555" stroke-width="2"/><circle cx="17" cy="7" r="1.2" fill="#555"/></svg>',
+  // messenger M
+  '<span style="font-weight:900;color:#555;font-size:13px;line-height:1;">M</span>',
+  // mail
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="2" stroke="#555" stroke-width="2"/><path d="M3 7l9 7 9-7" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg>',
+  // bluetooth
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M7 7l10 10-5 5V2l5 5L7 17" stroke="#555" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  // headphones
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0 1 16 0v6h-3v-8h3M4 12v6h3v-8H4" stroke="#555" stroke-width="2" stroke-linejoin="round"/></svg>',
+  // alarm clock
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="13" r="8" stroke="#555" stroke-width="2"/><path d="M12 9v4l3 2" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg>',
+  // mute speaker
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 9H4v6h5l5 4V5L9 9z" fill="#555"/><path d="M17 9l4 6M21 9l-4 6" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg>',
+  // location pin
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z" stroke="#555" stroke-width="2"/><circle cx="12" cy="9" r="2.5" stroke="#555" stroke-width="2"/></svg>',
+  // wifi
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M2 9c5.5-5.5 14.5-5.5 20 0M5 12c4-4 10-4 14 0M8 15c2-2 6-2 8 0" stroke="#555" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="19" r="1.4" fill="#555"/></svg>',
+];
+
+// Bank-SMS sender profiles used by SMS-style templates (sbi.html etc.). Each
+// render picks one so the header sender ID, in-message user phrase, and
+// signoff all reference the same bank.
+const SMS_BANK_PROFILES = [
+  { senderId: 'JD-SBIUPI-S', userPhrase: 'SBI User',     signoff: '-SBI' },
+  { senderId: 'AD-HDFCBK',   userPhrase: 'HDFC Customer', signoff: '-HDFC Bank' },
+  { senderId: 'VK-ICICIB',   userPhrase: 'ICICI Customer', signoff: '-ICICI Bank' },
+  { senderId: 'JK-AXISBK',   userPhrase: 'Axis Customer', signoff: '-Axis Bank' },
+  { senderId: 'AX-KOTAKB',   userPhrase: 'Kotak Customer', signoff: '-Kotak Bank' },
+];
+
 function numberToIndianWords(num) {
   if (num === 0) return 'Zero';
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -85,6 +123,25 @@ function buildPaymentVars(winner, draw, details = DEFAULT_PAYMENT_DETAILS) {
   const senderParts = senderName.trim().split(/\s+/);
   const senderInitials = ((senderParts[0]?.[0] || '') + (senderParts[1]?.[0] || '')).toUpperCase();
   const senderUpiId = cfg.senderUpiId || ('6' + Math.floor(100000000 + Math.random() * 899999999) + '@ptyes');
+  const smsBank = SMS_BANK_PROFILES[Math.floor(Math.random() * SMS_BANK_PROFILES.length)];
+
+  // Status-bar randomization. Bars and icons are emitted as ready-to-inject
+  // HTML so the template stays a flat string substitution.
+  const statusBarNet = STATUSBAR_NET_LABELS[Math.floor(Math.random() * STATUSBAR_NET_LABELS.length)];
+  const statusBarBattery = String(Math.floor(Math.random() * 81) + 15); // 15..95
+  const barsFilled = 2 + Math.floor(Math.random() * 3); // 2..4 of 4 bars lit
+  const statusBarBarsHtml = [4, 6, 8, 10].map((h, i) =>
+    `<span style="width:2px;height:${h}px;background:#1a1a1a;opacity:${i < barsFilled ? 1 : 0.3};"></span>`
+  ).join('');
+  const iconPool = [...STATUSBAR_ICON_POOL];
+  const iconCount = 3 + Math.floor(Math.random() * 2); // 3..4 unique icons
+  const pickedIcons = [];
+  for (let i = 0; i < iconCount && iconPool.length; i++) {
+    pickedIcons.push(iconPool.splice(Math.floor(Math.random() * iconPool.length), 1)[0]);
+  }
+  const statusBarLeftIconsHtml = pickedIcons.map(html => `<span class="ic">${html}</span>`).join('')
+    + '<span class="dot"></span>';
+
   return {
     name,
     nameUpper: name.toUpperCase(),
@@ -114,12 +171,37 @@ function buildPaymentVars(winner, draw, details = DEFAULT_PAYMENT_DETAILS) {
     supportName: cfg.supportName,
     date: now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     dateShort: now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }),
+    weekday: now.toLocaleDateString('en-IN', { weekday: 'long' }),
+    dayMonth: now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+    // Compact SBI-SMS style date — "01May26" with no spaces.
+    dateSms: String(now.getDate()).padStart(2, '0')
+      + now.toLocaleDateString('en-US', { month: 'short' })
+      + String(now.getFullYear()).slice(-2),
     time: now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
     time12: now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+    // Random past time earlier today — used by SMS-style templates (SBI, etc.)
+    // where the "received" timestamp should look like the message arrived
+    // hours ago, not right now. Floors at 7am and stays at least 5 min in
+    // the past, so it always reads as a believable earlier moment.
+    pastTime12: (() => {
+      const dayStart = new Date(now); dayStart.setHours(7, 0, 0, 0);
+      const earliest = Math.min(dayStart.getTime(), now.getTime() - 60_000);
+      const latest = now.getTime() - 5 * 60_000;
+      const span = Math.max(60_000, latest - earliest);
+      const past = new Date(earliest + Math.floor(Math.random() * span));
+      return past.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    })(),
     statusBarTime: randomStatusBarTime(),
     dateTime: now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' +
               now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
     periodId: draw.period_id || '',
+    smsSenderId: smsBank.senderId,
+    smsUserPhrase: smsBank.userPhrase,
+    smsSignoff: smsBank.signoff,
+    statusBarNet,
+    statusBarBattery,
+    statusBarBarsHtml,
+    statusBarLeftIconsHtml,
   };
 }
 
@@ -132,6 +214,7 @@ const DEFAULT_CAPTION_TEMPLATE =
 const CAPTION_SETTING_KEY = 'daily_winners_caption_template';
 const PAYMENT_DETAILS_SETTING_KEY = 'payment_template_details';
 const SMM_PANEL_SETTING_KEY = 'smm_panel_config';
+const PAYMENT_TEMPLATES_ACTIVE_KEY = 'payment_templates_active';
 
 const DEFAULT_PAYMENT_DETAILS = {
   senderName: 'Sachin Kumar',
@@ -204,8 +287,8 @@ function randomAlnum(n) {
   return s;
 }
 
-function generateJsonData() {
-  const platform = randomChoice(PLATFORMS);
+function generateJsonData(platform) {
+  if (!platform) platform = randomChoice(PLATFORMS);
   const utr = randomDigits(12);
   const base = { platform, type: 'UPI', utr };
   switch (platform) {
@@ -226,15 +309,32 @@ function generateJsonData() {
   }
 }
 
+// Fisher–Yates shuffle on a copy. Used so the round-robin platform sequence
+// doesn't always start with the same template — fairer when count % active != 0.
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = rand(0, i);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 // Sample without replacement: build (first, last) pairs and reject ones we've
 // already produced this run, so the same masked name never appears twice in
-// a single draw.
-function generateWinners(count) {
+// a single draw. `activePlatforms` is the (shuffled) list of payment templates
+// to cycle through — each generated winner gets the next platform round-robin
+// so coverage is balanced (12 winners × 3 active → 4 each).
+function generateWinners(count, activePlatforms) {
+  const platforms = (Array.isArray(activePlatforms) && activePlatforms.length)
+    ? shuffleArray(activePlatforms)
+    : PLATFORMS;
   const rows = [];
   const seen = new Set();
   // Cap attempts so a low-pool / huge-count call can't loop forever.
   const maxAttempts = count * 12;
   let attempts = 0;
+  let platformIdx = 0;
 
   while (rows.length < count && attempts < maxAttempts) {
     attempts++;
@@ -245,11 +345,13 @@ function generateWinners(count) {
     if (seen.has(display)) continue;
     seen.add(display);
 
+    const platform = platforms[platformIdx % platforms.length];
+    platformIdx++;
     const amount = rand(500, 900) * 100; // ₹50,000 – ₹90,000
     rows.push({
       name: display,
       amount,
-      json_data: generateJsonData(),
+      json_data: generateJsonData(platform),
     });
   }
   return rows.sort((a, b) => b.amount - a.amount);
@@ -532,10 +634,11 @@ class DailyWinnersService {
 
   async insertForDraw(draw, log) {
     const count = rand(10, 15);
-    const winners = generateWinners(count);
+    const activePlatforms = await this.getActivePlatforms();
+    const winners = generateWinners(count, activePlatforms);
     const values = winners.map(w => [w.name, w.amount, draw.id, JSON.stringify(w.json_data)]);
 
-    log.info(`Generating ${count} synthetic winners for draw ${draw.period_id} (id=${draw.id})`);
+    log.info(`Generating ${count} synthetic winners for draw ${draw.period_id} (id=${draw.id}) across ${activePlatforms.length} active templates: ${activePlatforms.join(', ')}`);
 
     await db.pool.query(
       `INSERT INTO daily_winners (name, amount, draw_id, json_data) VALUES ?`,
@@ -572,8 +675,9 @@ class DailyWinnersService {
 
     let browser = null;
     try {
-      log.info(`=== sendSyntheticWinnersBatch start (${count} winners, tag=${tag}) ===`);
-      winners = generateWinners(count);
+      const activePlatforms = await this.getActivePlatforms();
+      log.info(`=== sendSyntheticWinnersBatch start (${count} winners, tag=${tag}, ${activePlatforms.length} active templates: ${activePlatforms.join(', ')}) ===`);
+      winners = generateWinners(count, activePlatforms);
 
       // Persist with draw_id = NULL so the social-proof feed still shows these
       // rows on /api/lottery/winners.
@@ -601,8 +705,7 @@ class DailyWinnersService {
             continue;
           }
           const png = await this.renderHtmlToPng(browser, html, { width: 400, height: 870, mode: 'viewport' });
-          const caption = `💸 <b>${winner.name}</b> just received <b>${formatINR(winner.amount)}</b>`;
-          const result = await this.sendToTelegram(png, caption, log);
+          const result = await this.sendToTelegram(png, '', log);
           if (!result.skipped) {
             screenshotsSent++;
             const smm = await this._enqueueOrCallSmm(result.postUrl, `winners-screenshot:${tag}`, log);
@@ -701,6 +804,69 @@ class DailyWinnersService {
       .sort();
   }
 
+  // Returns { phonepe: true, gpay: false, ... } for every .html file currently
+  // on disk. Any template not yet in the settings blob defaults to active, so
+  // dropping a new file into paymentTemplates/ makes it participate immediately.
+  async getTemplateActiveStates() {
+    const [rows] = await db.pool.query(
+      'SELECT setting_value FROM settings WHERE setting_key = ?',
+      [PAYMENT_TEMPLATES_ACTIVE_KEY]
+    );
+    let stored = {};
+    if (rows.length && rows[0].setting_value) {
+      try { stored = JSON.parse(rows[0].setting_value) || {}; } catch (_) {}
+    }
+    const onDisk = this.listPaymentTemplates();
+    const result = {};
+    for (const p of onDisk) {
+      // Only an explicit `false` deactivates — unseen platforms default active.
+      result[p] = stored[p] !== false;
+    }
+    return result;
+  }
+
+  // List with active flag for the admin UI.
+  async listPaymentTemplatesWithState() {
+    const states = await this.getTemplateActiveStates();
+    return Object.keys(states).map(platform => ({ platform, active: states[platform] }));
+  }
+
+  async setTemplateActive(platform, active) {
+    this._validatePlatformName(platform);
+    // Reject toggling for a non-existent template so the settings blob
+    // doesn't accumulate dead keys.
+    const onDisk = this.listPaymentTemplates();
+    if (!onDisk.includes(platform)) {
+      throw new Error(`Unknown payment template: ${platform}`);
+    }
+    const [rows] = await db.pool.query(
+      'SELECT setting_value FROM settings WHERE setting_key = ?',
+      [PAYMENT_TEMPLATES_ACTIVE_KEY]
+    );
+    let stored = {};
+    if (rows.length && rows[0].setting_value) {
+      try { stored = JSON.parse(rows[0].setting_value) || {}; } catch (_) {}
+    }
+    stored[platform] = Boolean(active);
+    await db.pool.query(
+      `INSERT INTO settings (setting_key, setting_value, description)
+       VALUES (?, ?, 'Per-platform active flags for payment screenshot templates')
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [PAYMENT_TEMPLATES_ACTIVE_KEY, JSON.stringify(stored)]
+    );
+    return this.getTemplateActiveStates();
+  }
+
+  // Active platforms used by the round-robin in generateWinners. If the admin
+  // has deactivated every template (or none on disk), fall back to every file
+  // on disk so the winners batch never silently produces zero rows.
+  async getActivePlatforms() {
+    const states = await this.getTemplateActiveStates();
+    const active = Object.keys(states).filter(p => states[p]);
+    if (active.length) return active;
+    return this.listPaymentTemplates();
+  }
+
   _validatePlatformName(platform) {
     if (!platform || !/^[a-z0-9_-]+$/.test(platform)) {
       throw new Error('Invalid platform name (lowercase alphanumeric, dash, underscore only)');
@@ -773,8 +939,12 @@ class DailyWinnersService {
       log.info(`Sending photo to Telegram chat ${this.telegramChatId}${attempt > 1 ? ` (retry ${attempt - 1})` : ''}`);
       const form = new FormData();
       form.append('chat_id', this.telegramChatId);
-      form.append('caption', caption);
-      form.append('parse_mode', 'HTML');
+      // Empty caption → omit both fields so the photo posts bare. Used for
+      // per-winner payment screenshots where the screenshot speaks for itself.
+      if (caption) {
+        form.append('caption', caption);
+        form.append('parse_mode', 'HTML');
+      }
       form.append('photo', new Blob([pngBuffer], { type: 'image/png' }), 'winners.png');
 
       const res = await fetch(url, { method: 'POST', body: form });
@@ -930,10 +1100,7 @@ class DailyWinnersService {
             continue;
           }
           const png = await this.renderHtmlToPng(browser, html, { width: 400, height: 870, mode: 'viewport' });
-          // Per-winner image caption: just the winner + amount, no draw or
-          // payment-platform details.
-          const caption = `💸 <b>${winner.name}</b> just received <b>${formatINR(winner.amount)}</b>`;
-          const result = await this.sendToTelegram(png, caption, log);
+          const result = await this.sendToTelegram(png, '', log);
           if (!result.skipped) screenshotsSent++;
           log.info(`[${i + 1}/${winners.length}] ${winner.name} (${platform}) sent`);
           // Every successful Telegram send → run the SMM step. The function
