@@ -38,10 +38,8 @@ export default function Checkout() {
   const { formatCurrency } = useCurrency();
 
   // INR-only: every payment is displayed in rupees regardless of payment
-  // method. The payment-method buttons still let the user choose how to pay
-  // (UPI / bank / etc.), but the amount they owe is always ₹.
-  const getPaymentCurrency = () => ({ symbol: '₹', rate: 1, code: 'INR' });
-
+  // method. The payment-method buttons just let the user pick how to pay
+  // (UPI / bank / crypto), but the amount they owe is always ₹.
   const formatPaymentAmount = (amount) => {
     const v = Number(amount) || 0;
     return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -140,17 +138,12 @@ export default function Checkout() {
     setSubmitting(true);
 
     try {
-      const curr = getPaymentCurrency(selectedMethod);
-      const paymentAmt = selectedPackage.zynk_amount * curr.rate;
-
       await checkout(
         selectedPackage.id,
         selectedMethod,
         selectedAccountId,
         paymentReference.trim(),
         paymentNote.trim() || null,
-        curr.code,
-        paymentAmt
       );
       setSuccess(true);
     } catch (err) {
@@ -192,9 +185,9 @@ export default function Checkout() {
 
     switch (selectedMethod) {
       case 'upi': {
-        const upiCurr = getPaymentCurrency('upi');
-        const upiAmount = (selectedPackage.zynk_amount * upiCurr.rate).toFixed(2);
-        const upiNote = `Zynk-${selectedPackage.id}`;
+        // INR-only: the UPI deep-link amount is just the package price in ₹.
+        const upiAmount = Number(selectedPackage.zynk_amount).toFixed(2);
+        const upiNote = `Order-${selectedPackage.id}`;
         const upiParams = `pa=${encodeURIComponent(paymentSettings.upi.id)}&pn=${encodeURIComponent(paymentSettings.upi.name || 'Merchant')}&am=${upiAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`;
         const upiUri = `upi://pay?${upiParams}`;
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=${encodeURIComponent(upiUri)}`;

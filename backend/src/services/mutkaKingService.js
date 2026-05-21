@@ -190,8 +190,21 @@ class MutkaKingService {
     if (!round) return;
 
     try {
-      let cards = this.predictionService?.consumeCardsForRound(round.id) || null;
-      if (!cards || cards.length !== type) cards = secureSample(52, type);
+      // Durable lookup — falls through to prediction_log table if the
+      // in-memory Map was wiped by a PM2 restart between broadcast and now.
+      let cards = null;
+      if (this.predictionService) {
+        const { cards: resolved, source } = await this.predictionService
+          .resolveCardsForRound(round.id, 'mutka_king', type);
+        if (resolved) {
+          cards = resolved;
+          console.log(`[MUTKA/${type}] Used predicted cards (${source}) for round ${round.id}: ${JSON.stringify(cards)}`);
+        }
+      }
+      if (!cards) {
+        console.log(`[MUTKA/${type}] No predicted cards for round ${round.id} — using random sample`);
+        cards = secureSample(52, type);
+      }
       const cardSet = new Set(cards);
       const ranks = cards.map(cardRank);
       const suits = cards.map(cardSuit);

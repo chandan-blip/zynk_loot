@@ -1588,13 +1588,13 @@ function Wallet() {
               ) : (
                 <form onSubmit={handleWithdraw} className="space-y-4">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1">Amount (min {formatCurrency(10)})</label>
+                    <label className="block text-sm text-gray-400 mb-1">Amount (min {formatCurrency(1000)})</label>
                     <input
                       type="number"
                       value={withdrawForm.amount}
                       onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
-                      placeholder="100"
-                      min="10"
+                      placeholder="1000"
+                      min="1000"
                       max={balance.balance}
                       className="input-premium w-full"
                       required
@@ -1617,6 +1617,35 @@ function Wallet() {
                       ))}
                     </select>
                   </div>
+
+                  {/* Deposit-gate warning — only renders for users who've
+                      deposited something (>₹100) but haven't yet crossed the
+                      withdrawal threshold. Brand-new users with ≤ ₹100
+                      deposited skip the noisy lock banner; they'll see the
+                      backend error toast if they attempt to submit anyway. */}
+                  {balance.canWithdraw === false && (balance.totalDeposited || 0) > 100 && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1">
+                      <p className="text-sm font-semibold text-red-300">
+                        Withdrawals locked
+                      </p>
+                      <p className="text-xs text-red-200/80 leading-relaxed">
+                        Unlock after you've deposited at least{' '}
+                        <span className="font-semibold text-red-200">
+                          {formatCurrency(balance.minDepositForWithdrawal || 1000)}
+                        </span>.
+                        You've deposited{' '}
+                        <span className="font-semibold text-red-200">
+                          {formatCurrency(balance.totalDeposited || 0)}
+                        </span>{' '}
+                        so far — deposit{' '}
+                        <span className="font-semibold text-red-200">
+                          {formatCurrency(Math.ceil(balance.depositGapForWithdrawal))}
+                        </span>{' '}
+                        more to unlock withdrawals.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                     <p className="text-sm text-yellow-400">
                       Withdrawals require admin approval and may take 24-48 hours to process.
@@ -1624,7 +1653,12 @@ function Wallet() {
                   </div>
                   <button
                     type="submit"
-                    disabled={submitting || !withdrawForm.amount || !withdrawForm.payment_method_id}
+                    disabled={
+                      submitting ||
+                      !withdrawForm.amount ||
+                      !withdrawForm.payment_method_id ||
+                      balance.canWithdraw === false
+                    }
                     className="btn-premium w-full py-3"
                   >
                     {submitting ? 'Submitting...' : 'Request Withdrawal'}

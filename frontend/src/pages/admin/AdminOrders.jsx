@@ -292,10 +292,7 @@ export default function AdminOrders() {
                         <div>
                           <p className="text-accent font-semibold text-sm lg:text-base">₹{totalZynk.toLocaleString()}</p>
                           <p className="text-gray-500 text-xs">
-                            {order.payment_currency && order.payment_amount
-                              ? `${order.payment_currency === 'INR' ? '₹' : ''}${parseFloat(order.payment_amount).toLocaleString()} ${order.payment_currency !== 'INR' ? order.payment_currency : ''}`
-                              : `${parseFloat(order.price).toLocaleString()} Z`
-                            }
+                            ₹{parseFloat(order.payment_amount || order.price).toLocaleString()}
                           </p>
                         </div>
                       </td>
@@ -505,10 +502,7 @@ export default function AdminOrders() {
                   <div className="flex justify-between mt-1">
                     <span className="text-gray-300">Price</span>
                     <span className="text-white">
-                      {selectedOrder.payment_currency && selectedOrder.payment_amount
-                        ? `${selectedOrder.payment_currency === 'INR' ? '₹' : ''}${parseFloat(selectedOrder.payment_amount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${selectedOrder.payment_currency !== 'INR' ? selectedOrder.payment_currency : ''}`
-                        : `${parseFloat(selectedOrder.price).toLocaleString()} Z`
-                      }
+                      ₹{parseFloat(selectedOrder.payment_amount || selectedOrder.price).toLocaleString()}
                     </span>
                   </div>
                   {selectedOrder.payment_reference && (

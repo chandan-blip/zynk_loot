@@ -66,6 +66,7 @@ import AdminBanners from './pages/admin/AdminBanners';
 import AdminWebsiteLeads from './pages/admin/AdminWebsiteLeads';
 import useTracking from './hooks/useTracking';
 import AppLoader from './components/AppLoader';
+import FreezeOverlay from './components/FreezeOverlay';
 import { subscribe as subscribePending, getPending, reset as resetPending } from './utils/loadingTracker';
 
 function PublicRoute({ children }) {
@@ -259,6 +260,7 @@ function App() {
       <ScrollToTop />
       <TrackingInit />
       <RouteLoader />
+      <FreezeOverlay />
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />

@@ -5,8 +5,6 @@ const seedDemo = async () => {
   try {
     // Seed essential settings
     const essentialSettings = [
-      // Exchange rate
-      ['zynk_to_usd', '0.10', 'Zynk to USD exchange rate (1 Z = X USD)'],
       ['number_base_price', '10', 'Base price for buying a number'],
       ['vote_cost', '1', 'Cost per vote'],
 

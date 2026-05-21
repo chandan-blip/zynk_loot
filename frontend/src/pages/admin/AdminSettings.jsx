@@ -10,7 +10,6 @@ const settingIcons = {
   number_base_price: GiTwoCoins,
   vote_cost: FiDollarSign,
   current_period_id: FiSettings,
-  zynk_to_usd: FiDollarSign,
 
   // Cron configuration
   total_digits: FiSettings,
@@ -78,7 +77,6 @@ const settingLabels = {
   number_base_price: 'Number Base Price (Z)',
   vote_cost: 'Vote Cost (Z)',
   current_period_id: 'Current Period ID',
-  zynk_to_usd: 'Zynk to USD Rate',
 
   // Cron configuration
   total_digits: 'Total Digits',
@@ -147,7 +145,7 @@ const settingLabels = {
 
 // Group settings by category
 const settingCategories = {
-  'Core Settings': ['number_base_price', 'vote_cost', 'zynk_to_usd', 'current_period_id'],
+  'Core Settings': ['number_base_price', 'vote_cost', 'current_period_id'],
   'Cron Configuration': ['cron_enabled', 'auto_reveal_enabled', 'total_digits', 'timezone'],
   'Prize Settings': ['exact_match_multiplier', 'near_match_multiplier', 'vote_reward'],
   'Referral Settings': ['referral_commission_rate'],

@@ -8,12 +8,15 @@ const router = express.Router();
 // Lifetime completed-deposit threshold (in INR) below which withdrawals are
 // blocked. Backend-only gate — the frontend has no UI for it; the user only
 // learns about it via the toast when they try to withdraw.
-const MIN_DEPOSIT_INR_FOR_WITHDRAWAL = 2000;
+const MIN_DEPOSIT_INR_FOR_WITHDRAWAL = 200;
 
 // All routes below require authentication
 router.use(authenticateToken);
 
-// Get wallet balance
+// Get wallet balance + withdrawal eligibility (lifetime completed deposits
+// against the MIN_DEPOSIT_INR_FOR_WITHDRAWAL gate). The eligibility fields
+// let the frontend render the "deposit ₹X more" hint in the withdraw modal
+// without an extra round trip.
 router.get('/balance', async (req, res) => {
   try {
     const [users] = await db.pool.query(
@@ -25,12 +28,25 @@ router.get('/balance', async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const [[depositRow]] = await db.pool.query(
+      `SELECT COALESCE(SUM(zynk_amount), 0) AS total
+         FROM zynk_orders
+        WHERE user_id = ? AND status = 'completed'`,
+      [req.user.id]
+    );
+    const totalDeposited = parseFloat(depositRow.total) || 0;
+    const remaining = Math.max(0, MIN_DEPOSIT_INR_FOR_WITHDRAWAL - totalDeposited);
+
     res.json({
       success: true,
       data: {
         balance: parseFloat(users[0].balance),
         totalSpent: parseFloat(users[0].total_spent || 0),
-        totalEarned: parseFloat(users[0].total_earned || 0)
+        totalEarned: parseFloat(users[0].total_earned || 0),
+        totalDeposited,
+        minDepositForWithdrawal: MIN_DEPOSIT_INR_FOR_WITHDRAWAL,
+        depositGapForWithdrawal: remaining,
+        canWithdraw: remaining === 0,
       }
     });
   } catch (error) {
@@ -767,7 +783,7 @@ router.get('/withdrawals', async (req, res) => {
 
 // Request withdrawal
 router.post('/withdraw-request', [
-  body('amount').isFloat({ min: 10 }),
+  body('amount').isFloat({ min: 1000 }),
   body('payment_method_id').isInt({ min: 1 })
 ], async (req, res) => {
   const connection = await db.getConnection();
@@ -796,8 +812,12 @@ router.post('/withdraw-request', [
     // Gate: total lifetime completed deposits must reach the INR threshold
     // before the user can withdraw anything. Backend-only check — frontend
     // surfaces this purely via the error toast on the request response.
+    // Sum `zynk_amount` (the INR amount under the INR-only refactor) rather
+    // than the legacy `price` column (which stored a USD value = zynk_amount
+    // × 0.10 for orders placed before the refactor). Mixing the two scales
+    // would underreport historic deposits by ~100×.
     const [depositSum] = await connection.execute(
-      `SELECT COUNT(*) AS deposit_count, COALESCE(SUM(price), 0) AS total_inr
+      `SELECT COUNT(*) AS deposit_count, COALESCE(SUM(zynk_amount), 0) AS total_inr
          FROM zynk_orders
         WHERE user_id = ? AND status = 'completed'`,
       [req.user.id]
@@ -815,7 +835,7 @@ router.post('/withdraw-request', [
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: `Withdrawals unlock after you've deposited at least ₹${MIN_DEPOSIT_INR_FOR_WITHDRAWAL}. You've deposited ₹${Math.floor(totalDepositedInr)} so far.`,
+        message: `Withdrawals unlock after you've deposited at least ₹${MIN_DEPOSIT_INR_FOR_WITHDRAWAL}. You've deposited ₹${Math.floor(totalDepositedInr)} so far — deposit ₹${Math.max(0, Math.ceil(MIN_DEPOSIT_INR_FOR_WITHDRAWAL - totalDepositedInr))} more to unlock withdrawals.`,
       });
     }
 
@@ -1174,7 +1194,7 @@ router.post('/deposit', [
 
 // Withdraw funds (for demo)
 router.post('/withdraw', [
-  body('amount').isFloat({ min: 1 })
+  body('amount').isFloat({ min: 1000 })
 ], async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1189,8 +1209,12 @@ router.post('/withdraw', [
     await connection.beginTransaction();
 
     // Same deposit-gate as /withdraw-request.
+    // Sum `zynk_amount` (the INR amount under the INR-only refactor) rather
+    // than the legacy `price` column (which stored a USD value = zynk_amount
+    // × 0.10 for orders placed before the refactor). Mixing the two scales
+    // would underreport historic deposits by ~100×.
     const [depositSum] = await connection.execute(
-      `SELECT COUNT(*) AS deposit_count, COALESCE(SUM(price), 0) AS total_inr
+      `SELECT COUNT(*) AS deposit_count, COALESCE(SUM(zynk_amount), 0) AS total_inr
          FROM zynk_orders
         WHERE user_id = ? AND status = 'completed'`,
       [req.user.id]
@@ -1208,7 +1232,7 @@ router.post('/withdraw', [
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: `Withdrawals unlock after you've deposited at least ₹${MIN_DEPOSIT_INR_FOR_WITHDRAWAL}. You've deposited ₹${Math.floor(totalDepositedInr)} so far.`,
+        message: `Withdrawals unlock after you've deposited at least ₹${MIN_DEPOSIT_INR_FOR_WITHDRAWAL}. You've deposited ₹${Math.floor(totalDepositedInr)} so far — deposit ₹${Math.max(0, Math.ceil(MIN_DEPOSIT_INR_FOR_WITHDRAWAL - totalDepositedInr))} more to unlock withdrawals.`,
       });
     }
 

@@ -219,10 +219,22 @@ class ShuffleCardService {
 
     try {
       // Each type draws exactly `type` cards from a 52-card deck. If the
-      // prediction module stashed pre-rolled cards for this round at slot
-      // fire, use those so the reveal matches what was broadcast.
-      let cards = this.predictionService?.consumeCardsForRound(round.id) || null;
-      if (!cards || cards.length !== type) cards = secureSample(52, type);
+      // prediction module stashed pre-rolled cards for this round, use them
+      // so the reveal matches what was broadcast. Lookup is durable —
+      // survives PM2 restart by falling back to prediction_log.
+      let cards = null;
+      if (this.predictionService) {
+        const { cards: resolved, source } = await this.predictionService
+          .resolveCardsForRound(round.id, 'shuffle_card', type);
+        if (resolved) {
+          cards = resolved;
+          console.log(`[SHUFFLE/${type}] Used predicted cards (${source}) for round ${round.id}: ${JSON.stringify(cards)}`);
+        }
+      }
+      if (!cards) {
+        console.log(`[SHUFFLE/${type}] No predicted cards for round ${round.id} — using random sample`);
+        cards = secureSample(52, type);
+      }
       const cardSet = new Set(cards);
       const ranks = cards.map(cardRank);
       const suits = cards.map(cardSuit);

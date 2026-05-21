@@ -5,7 +5,6 @@ import {
   FiDownload, FiCheckCircle, FiAlertCircle, FiXCircle,
   FiActivity, FiSmartphone, FiMonitor, FiZap,
 } from 'react-icons/fi';
-import { GiTwoCoins } from 'react-icons/gi';
 import CountUp from 'react-countup';
 import toast from 'react-hot-toast';
 import {
@@ -283,13 +282,16 @@ function AdminDashboard() {
               sub={range === 'lifetime' ? 'Lifetime registrations' : `New signups ${range}`}
             />
             <StatTile
-              icon={GiTwoCoins}
-              iconColor="text-accent"
-              label="User Balances"
-              value={usersData?.totalBalance || 0}
-              valueColor="text-accent"
+              icon={FiDownload}
+              iconColor="text-emerald-400"
+              label="Total Deposits"
+              value={depositsData?.completedAmount || 0}
+              valueColor="text-emerald-400"
               decimals={2}
-              sub={range === 'lifetime' ? 'Sum of every user balance' : `Current balance of those signups`}
+              prefix="₹"
+              sub={range === 'lifetime'
+                ? `${(depositsData?.completedCount || 0).toLocaleString()} approved orders`
+                : `${(depositsData?.completedCount || 0).toLocaleString()} approved ${range}`}
             />
           </div>
         )}
@@ -327,7 +329,7 @@ function AdminDashboard() {
               valueColor="text-green-400"
               decimals={2}
               prefix="₹"
-              sub={`${(depositsData?.completedCount || 0).toLocaleString()} approved · ${(depositsData?.zynkDelivered || 0).toLocaleString()} Z delivered`}
+              sub={`${(depositsData?.completedCount || 0).toLocaleString()} approved · ₹${(depositsData?.zynkDelivered || 0).toLocaleString()} delivered`}
             />
             <StatTile
               icon={FiAlertCircle}

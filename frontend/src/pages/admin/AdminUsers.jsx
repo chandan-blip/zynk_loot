@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiSearch, FiPlus, FiActivity, FiEye, FiClock, FiMousePointer, FiX } from 'react-icons/fi';
+import { FiSearch, FiPlus, FiActivity, FiEye, FiClock, FiMousePointer, FiX, FiLock, FiUnlock, FiAlertOctagon } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
-import api, { getUserTrackingSummary } from '../../services/api';
+import api, { getUserTrackingSummary, freezeUser, unfreezeUser } from '../../services/api';
 
 function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -17,6 +17,9 @@ function AdminUsers() {
   const [activityUser, setActivityUser] = useState(null);
   const [activityData, setActivityData] = useState(null);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [freezeTarget, setFreezeTarget] = useState(null);   // user object opened in freeze modal
+  const [freezeNote, setFreezeNote] = useState('');
+  const [freezing, setFreezing] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -59,6 +62,38 @@ function AdminUsers() {
     }
   };
 
+  const handleConfirmFreeze = async () => {
+    if (!freezeTarget) return;
+    const note = freezeNote.trim();
+    if (!note) {
+      toast.error('Please enter a freeze note');
+      return;
+    }
+    setFreezing(true);
+    try {
+      await freezeUser(freezeTarget.id, note);
+      toast.success(`${freezeTarget.username} frozen`);
+      setFreezeTarget(null);
+      setFreezeNote('');
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to freeze user');
+    } finally {
+      setFreezing(false);
+    }
+  };
+
+  const handleUnfreeze = async (user) => {
+    if (!window.confirm(`Unfreeze ${user.username}?`)) return;
+    try {
+      await unfreezeUser(user.id);
+      toast.success(`${user.username} unfrozen`);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to unfreeze');
+    }
+  };
+
   const handleViewActivity = async (user) => {
     setActivityUser(user);
     setActivityLoading(true);
@@ -73,10 +108,19 @@ function AdminUsers() {
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.username.toLowerCase().includes(search.toLowerCase()) ||
-    user.email.toLowerCase().includes(search.toLowerCase())
-  );
+  // Phone-only signups have null email, and some legacy rows can have a
+  // null username — coerce to '' before toLowerCase so the search filter
+  // doesn't crash on those rows.
+  const q = (search || '').toLowerCase();
+  const filteredUsers = users.filter((user) => {
+    if (!q) return true;
+    return (
+      (user.username || '').toLowerCase().includes(q) ||
+      (user.email || '').toLowerCase().includes(q) ||
+      (user.phone || '').toLowerCase().includes(q) ||
+      String(user.id || '').includes(q)
+    );
+  });
 
   return (
     <div className="space-y-3">
@@ -128,11 +172,23 @@ function AdminUsers() {
                   >
                     <td>
                       <div className="flex items-center gap-2 lg:gap-3">
-                        <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-accent flex items-center justify-center font-bold text-dark-900 text-sm lg:text-base">
+                        <div className={`w-8 h-8 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center font-bold text-sm lg:text-base ${
+                          user.is_frozen ? 'bg-red-500 text-white' : 'bg-accent text-dark-900'
+                        }`}>
                           {user.username[0].toUpperCase()}
                         </div>
                         <div>
-                          <span className="font-medium text-white block">{user.username}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-white">{user.username}</span>
+                            {user.is_frozen ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-red-500/15 text-red-300 border border-red-500/30"
+                                title={user.freeze_note || 'Frozen'}
+                              >
+                                <FiLock className="w-2.5 h-2.5" /> Frozen
+                              </span>
+                            ) : null}
+                          </div>
                           <span className="text-xs text-gray-500 sm:hidden">{user.email}</span>
                         </div>
                       </div>
@@ -166,6 +222,25 @@ function AdminUsers() {
                           <FiPlus className="inline mr-0.5 w-3 h-3" />
                           <span className="hidden lg:inline">Balance</span>
                         </button>
+                        {user.is_frozen ? (
+                          <button
+                            onClick={() => handleUnfreeze(user)}
+                            className="px-2 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors text-xs font-medium"
+                            title={user.freeze_note || 'Unfreeze user'}
+                          >
+                            <FiUnlock className="inline mr-0.5 w-3 h-3" />
+                            <span className="hidden lg:inline">Unfreeze</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => { setFreezeTarget(user); setFreezeNote(''); }}
+                            className="px-2 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-xs font-medium"
+                            title="Freeze user"
+                          >
+                            <FiLock className="inline mr-0.5 w-3 h-3" />
+                            <span className="hidden lg:inline">Freeze</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -388,6 +463,75 @@ function AdminUsers() {
               ) : (
                 <p className="text-gray-600 text-center py-8">Failed to load activity data</p>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Freeze Confirmation Modal */}
+      <AnimatePresence>
+        {freezeTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            onClick={() => !freezing && setFreezeTarget(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 16 }}
+              className="bg-dark-800 border border-red-500/30 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 rounded-xl bg-red-500/15 border border-red-500/40 flex items-center justify-center">
+                  <FiAlertOctagon className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Freeze {freezeTarget.username}?</h3>
+                  <p className="text-xs text-gray-500">User will see a fullscreen lock overlay until they deposit or you unfreeze.</p>
+                </div>
+              </div>
+
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Reason / Note <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={freezeNote}
+                onChange={(e) => setFreezeNote(e.target.value)}
+                maxLength={500}
+                rows={4}
+                placeholder="e.g. Suspicious activity detected — please make a verification deposit to continue."
+                className="input-premium w-full resize-none"
+                autoFocus
+              />
+              <p className="text-[11px] text-gray-500 mt-1 text-right">{freezeNote.length} / 500</p>
+
+              <div className="flex gap-3 mt-5">
+                <button
+                  type="button"
+                  onClick={() => { setFreezeTarget(null); setFreezeNote(''); }}
+                  disabled={freezing}
+                  className="flex-1 py-3 rounded-lg bg-dark-700 hover:bg-dark-600 text-white font-semibold transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmFreeze}
+                  disabled={freezing || !freezeNote.trim()}
+                  className="flex-1 py-3 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {freezing ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <FiLock className="w-4 h-4" />
+                  )}
+                  {freezing ? 'Freezing…' : 'Freeze Account'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

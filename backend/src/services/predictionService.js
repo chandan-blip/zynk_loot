@@ -333,6 +333,43 @@ class PredictionService {
     return cards;
   }
 
+  // Durable variant — first tries the in-memory Map, then falls back to the
+  // `prediction_log` table (which was INSERTed before the broadcast went out,
+  // so the row is already on disk well before round completion). This way a
+  // PM2 restart between broadcast and round completion doesn't lose the
+  // predicted cards.
+  //
+  // `game` is used both as a filter and as a sanity check so a stray row
+  // from a different game can't bleed through.
+  async resolveCardsForRound(roundId, game, expectedLength) {
+    // 1. Fast path: in-memory Map (clears on read so legacy callers still work).
+    const inMemory = this.consumeCardsForRound(roundId);
+    if (Array.isArray(inMemory) && inMemory.length === expectedLength) {
+      return { cards: inMemory, source: 'memory' };
+    }
+
+    // 2. DB fallback. Query the most recent prediction_log row for this round.
+    try {
+      const [rows] = await db.pool.query(
+        `SELECT predicted_cards FROM prediction_log
+          WHERE round_id = ? AND game = ?
+          ORDER BY id DESC LIMIT 1`,
+        [roundId, game]
+      );
+      if (rows.length && rows[0].predicted_cards != null) {
+        const raw = rows[0].predicted_cards;
+        const cards = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (Array.isArray(cards) && cards.length === expectedLength) {
+          return { cards, source: 'db' };
+        }
+      }
+    } catch (err) {
+      console.error(`[PRED] resolveCardsForRound DB lookup failed for round ${roundId}:`, err.message);
+    }
+
+    return { cards: null, source: 'none' };
+  }
+
   // Master SMM toggle — single row in `settings` so admin can flip it once
   // for the whole module. Defaults to enabled when no row exists.
   async getSmmEnabled() {

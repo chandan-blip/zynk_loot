@@ -194,8 +194,22 @@ class UnoKingService {
     if (!round) return;
 
     try {
-      let cards = this.predictionService?.consumeCardsForRound(round.id) || null;
-      if (!cards || cards.length !== type) cards = secureSample(UNO_DECK_SIZE, type);
+      // Durable predicted-cards lookup — falls through to prediction_log if
+      // the in-memory Map was wiped by a PM2 restart between broadcast
+      // and now.
+      let cards = null;
+      if (this.predictionService) {
+        const { cards: resolved, source } = await this.predictionService
+          .resolveCardsForRound(round.id, 'uno_king', type);
+        if (resolved) {
+          cards = resolved;
+          console.log(`[UNO/${type}] Used predicted cards (${source}) for round ${round.id}: ${JSON.stringify(cards)}`);
+        }
+      }
+      if (!cards) {
+        console.log(`[UNO/${type}] No predicted cards for round ${round.id} — using random sample`);
+        cards = secureSample(UNO_DECK_SIZE, type);
+      }
       const cardSet = new Set(cards);
       const colors = cards.map(unoColorOf);
       const ranks = cards.map(unoRankOf);

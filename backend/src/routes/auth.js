@@ -183,7 +183,7 @@ router.post('/login', async (req, res) => {
 
     let query, param;
     if (email) {
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE email = ?';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, is_frozen, freeze_note FROM users WHERE email = ?';
       param = email.trim().toLowerCase();
     } else {
       // Normalize phone for lookup
@@ -191,7 +191,7 @@ router.post('/login', async (req, res) => {
       if (!phoneResult.valid) {
         return res.status(400).json({ success: false, message: 'Invalid phone number' });
       }
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE phone = ?';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, is_frozen, freeze_note FROM users WHERE phone = ?';
       param = phoneResult.phone;
     }
 
@@ -244,7 +244,9 @@ router.post('/login', async (req, res) => {
           email: user.email,
           phone: user.phone,
           balance: parseFloat(user.balance),
-          isAdmin: user.is_admin
+          isAdmin: user.is_admin,
+          isFrozen: !!user.is_frozen,
+          freezeNote: user.freeze_note || null
         }
       }
     });
@@ -258,7 +260,8 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const [users] = await db.pool.query(
-      `SELECT id, username, email, phone, balance, total_spent, total_earned, is_admin, created_at
+      `SELECT id, username, email, phone, balance, total_spent, total_earned, is_admin,
+              is_frozen, freeze_note, created_at
        FROM users WHERE id = ?`,
       [req.user.id]
     );
@@ -279,6 +282,8 @@ router.get('/me', authenticateToken, async (req, res) => {
         totalSpent: parseFloat(user.total_spent),
         totalEarned: parseFloat(user.total_earned),
         isAdmin: user.is_admin === 1,
+        isFrozen: !!user.is_frozen,
+        freezeNote: user.freeze_note || null,
         createdAt: user.created_at
       }
     });

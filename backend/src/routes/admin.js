@@ -307,7 +307,8 @@ router.get('/users', async (req, res) => {
     const offset = (page - 1) * limit;
 
     const [users] = await db.pool.query(
-      `SELECT id, username, email, balance, total_spent, total_earned, is_active, created_at
+      `SELECT id, username, email, balance, total_spent, total_earned, is_active,
+              is_frozen, freeze_note, frozen_at, created_at
        FROM users WHERE is_admin = 0
        ORDER BY created_at DESC
        LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
@@ -385,6 +386,99 @@ router.post('/users/:id/balance', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to add balance' });
   } finally {
     connection.release();
+  }
+});
+
+// ============ FREEZE / UNFREEZE USER ============
+// Admin can freeze any non-admin user with a note. The user is locked into
+// a fullscreen overlay on next page-load until either the admin unfreezes,
+// or the user makes a deposit that gets admin-approved (which auto-clears
+// the freeze via approveDeposit below).
+
+router.post('/users/:id/freeze', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+    const note = String(req.body?.note || '').trim().slice(0, 500);
+    if (!note) {
+      return res.status(400).json({ success: false, message: 'Freeze note is required' });
+    }
+
+    const [users] = await db.pool.query(
+      'SELECT id, is_admin FROM users WHERE id = ?',
+      [userId]
+    );
+    if (!users.length) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (users[0].is_admin) {
+      return res.status(400).json({ success: false, message: 'Admins cannot be frozen' });
+    }
+
+    await db.pool.query(
+      `UPDATE users
+          SET is_frozen = 1,
+              freeze_note = ?,
+              frozen_at = NOW(),
+              frozen_by = ?
+        WHERE id = ?`,
+      [note, req.user.id, userId]
+    );
+
+    // Best-effort: send a notification so the user has a paper trail.
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId,
+        type: 'personal',
+        title: '🚫 Account Frozen',
+        message: `Your account has been frozen. Reason: ${note}`,
+      }).catch(() => {});
+    }
+
+    res.json({ success: true, message: 'User frozen', data: { id: userId, isFrozen: true, freezeNote: note } });
+  } catch (error) {
+    console.error('Freeze user error:', error);
+    res.status(500).json({ success: false, message: 'Failed to freeze user' });
+  }
+});
+
+router.post('/users/:id/unfreeze', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
+    const [result] = await db.pool.query(
+      `UPDATE users
+          SET is_frozen = 0,
+              freeze_note = NULL,
+              frozen_at = NULL,
+              frozen_by = NULL
+        WHERE id = ?`,
+      [userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const notificationService = req.app.get('notificationService');
+    if (notificationService) {
+      notificationService.create({
+        userId,
+        type: 'personal',
+        title: '✅ Account Unfrozen',
+        message: 'Your account has been unfrozen. You can use the app normally.',
+      }).catch(() => {});
+    }
+
+    res.json({ success: true, message: 'User unfrozen', data: { id: userId, isFrozen: false } });
+  } catch (error) {
+    console.error('Unfreeze user error:', error);
+    res.status(500).json({ success: false, message: 'Failed to unfreeze user' });
   }
 });
 
@@ -2105,13 +2199,16 @@ router.get('/deposits/dashboard', async (req, res) => {
       return res.status(400).json({ success: false, message: 'range must be today, yesterday, or lifetime' });
     }
 
+    // Sum `zynk_amount` (INR under the new refactor) for completed_amount;
+    // the legacy `price` column held USD = zynk_amount × 0.10 for pre-INR
+    // refactor orders, so summing it would underreport historic deposits.
     const [[row]] = await db.pool.query(
       `SELECT
          COUNT(*) AS total_count,
          COUNT(CASE WHEN status IN ('approved','completed') THEN 1 END) AS completed_count,
          COUNT(CASE WHEN status IN ('pending','awaiting_approval') THEN 1 END) AS pending_count,
          COUNT(CASE WHEN status = 'rejected' THEN 1 END) AS rejected_count,
-         COALESCE(SUM(CASE WHEN status IN ('approved','completed') THEN price END), 0) AS completed_amount,
+         COALESCE(SUM(CASE WHEN status IN ('approved','completed') THEN zynk_amount END), 0) AS completed_amount,
          COALESCE(SUM(CASE WHEN status IN ('approved','completed') THEN zynk_amount + COALESCE(bonus_amount, 0) END), 0) AS zynk_delivered
        FROM zynk_orders
        ${dateFilter}`
@@ -2236,6 +2333,29 @@ router.post('/deposits/:id/approve', async (req, res) => {
     );
 
     await connection.commit();
+
+    // Auto-unfreeze: an approved deposit clears any active freeze on the
+    // user. Best-effort — failure here doesn't roll back the deposit.
+    try {
+      const [unfrozen] = await db.pool.query(
+        `UPDATE users
+            SET is_frozen = 0, freeze_note = NULL, frozen_at = NULL, frozen_by = NULL
+          WHERE id = ? AND is_frozen = 1`,
+        [order.user_id]
+      );
+      if (unfrozen.affectedRows > 0) {
+        console.log(`[FREEZE] User ${order.user_id} auto-unfrozen via deposit approval (order ${order.id})`);
+        const notif = req.app.get('notificationService');
+        if (notif) {
+          notif.create({
+            userId: order.user_id,
+            type: 'personal',
+            title: '✅ Account Unfrozen',
+            message: 'Your deposit was approved and your account has been unfrozen.',
+          }).catch(() => {});
+        }
+      }
+    } catch (_) {}
 
     // Notify user
     const notificationService = req.app.get('notificationService');
