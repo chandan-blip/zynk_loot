@@ -269,7 +269,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), {
 // Rate limiters
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 20 : 100, // strict in prod, relaxed in dev
+  max: process.env.NODE_ENV === 'production' ? 70 : 150, // strict in prod, relaxed in dev
   message: { success: false, message: 'Too many attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,

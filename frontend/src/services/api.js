@@ -106,8 +106,8 @@ export const completePurchase = (orderId) => api.post(`/wallet/complete-purchase
 
 // Withdrawals
 export const getWithdrawals = (page = 1) => api.get(`/wallet/withdrawals?page=${page}`);
-export const requestWithdrawal = (amount, payment_method_id) =>
-  api.post('/wallet/withdraw-request', { amount, payment_method_id });
+export const requestWithdrawal = (amount, payment_method_id, password) =>
+  api.post('/wallet/withdraw-request', { amount, payment_method_id, password });
 
 // Referral / Promote
 export const generateReferralCode = () => api.post('/referral/generate-code');

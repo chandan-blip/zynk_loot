@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
@@ -8,7 +9,7 @@ const router = express.Router();
 // Lifetime completed-deposit threshold (in INR) below which withdrawals are
 // blocked. Backend-only gate — the frontend has no UI for it; the user only
 // learns about it via the toast when they try to withdraw.
-const MIN_DEPOSIT_INR_FOR_WITHDRAWAL = 200;
+const MIN_DEPOSIT_INR_FOR_WITHDRAWAL = 1000;
 
 // All routes below require authentication
 router.use(authenticateToken);
@@ -784,7 +785,8 @@ router.get('/withdrawals', async (req, res) => {
 // Request withdrawal
 router.post('/withdraw-request', [
   body('amount').isFloat({ min: 1000 }),
-  body('payment_method_id').isInt({ min: 1 })
+  body('payment_method_id').isInt({ min: 1 }),
+  body('password').isString().isLength({ min: 1 })
 ], async (req, res) => {
   const connection = await db.getConnection();
 
@@ -794,7 +796,20 @@ router.post('/withdraw-request', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { amount, payment_method_id } = req.body;
+    const { amount, payment_method_id, password } = req.body;
+
+    // Verify account password before doing any withdrawal work.
+    const [pwRows] = await db.pool.query(
+      'SELECT password_hash FROM users WHERE id = ?',
+      [req.user.id]
+    );
+    if (pwRows.length === 0) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+    const passwordOk = await bcrypt.compare(password, pwRows[0].password_hash);
+    if (!passwordOk) {
+      return res.status(401).json({ success: false, message: 'Incorrect password' });
+    }
 
     await connection.beginTransaction();
 

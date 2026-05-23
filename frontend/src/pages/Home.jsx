@@ -25,6 +25,9 @@ import {
   FiTrendingUp,
   FiHeadphones,
   FiRefreshCw,
+  FiDownload,
+  FiX,
+  FiSmartphone,
 } from "react-icons/fi";
 import {
   GiTwoCoins,
@@ -91,6 +94,38 @@ function Home() {
 
   const [recentActivities, setRecentActivities] = useState([]);
   const [lastWinners, setLastWinners] = useState([]);
+
+  // Android APK download banner
+  const APK_URL = '/loot.apk';
+  const [showInstall, setShowInstall] = useState(false);
+
+  useEffect(() => {
+    // Show only on Android devices.
+    const isAndroid = /android/i.test(navigator.userAgent || '');
+    if (!isAndroid) return;
+
+    // Suppress for 7 days after the user dismisses.
+    const dismissedAt = parseInt(localStorage.getItem('apkPromptDismissedAt') || '0', 10);
+    if (dismissedAt && Date.now() - dismissedAt < 7 * 24 * 60 * 60 * 1000) return;
+
+    setShowInstall(true);
+  }, []);
+
+  const handleInstallClick = () => {
+    // Triggers an APK download. The user will get an "install from this source"
+    // prompt on Android once the file lands in their Downloads folder.
+    const a = document.createElement('a');
+    a.href = APK_URL;
+    a.download = 'loot.apk';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleDismissInstall = () => {
+    setShowInstall(false);
+    localStorage.setItem('apkPromptDismissedAt', Date.now().toString());
+  };
 
   const activityMeta = {
     vote: { icon: FiHeart, color: "text-pink-400", bgColor: "bg-pink-500/20" },
@@ -980,6 +1015,56 @@ function Home() {
           </div>
         </motion.div>
       </div>
+
+      {/* Sticky PWA install banner — sits above the mobile bottom nav. */}
+      <AnimatePresence>
+        {showInstall && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+            className="fixed left-0 right-0 z-30 px-3 lg:hidden pointer-events-none"
+            style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
+          >
+            <div className="pointer-events-auto max-w-[1400px] mx-auto">
+              <div className="flex items-center gap-3 rounded-xl border border-accent/30 bg-dark-800/95 backdrop-blur-md shadow-lg shadow-black/40 p-3">
+                <div className="w-11 h-11 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center shrink-0 overflow-hidden">
+                  <img
+                    src="/icon-192.png"
+                    alt="LOOT"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                    <FiSmartphone className="w-3.5 h-3.5 text-accent" />
+                    Get the LOOT Android App
+                  </p>
+                  <p className="text-[11px] text-gray-400 truncate">
+                    Download APK · Faster &amp; smoother experience
+                  </p>
+                </div>
+                <button
+                  onClick={handleInstallClick}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-dark-900 text-xs font-bold hover:bg-accent/90 transition-colors"
+                >
+                  <FiDownload className="w-4 h-4" />
+                  Download
+                </button>
+                <button
+                  onClick={handleDismissInstall}
+                  aria-label="Dismiss APK download prompt"
+                  className="shrink-0 p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-dark-700 transition-colors"
+                >
+                  <FiX className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

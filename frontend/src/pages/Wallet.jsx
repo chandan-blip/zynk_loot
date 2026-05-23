@@ -49,7 +49,6 @@ import {
   buyZynkPackage,
   completePurchase,
   getWithdrawals,
-  requestWithdrawal,
   getTransactions,
   searchUsers,
   transferZynk,
@@ -123,7 +122,6 @@ function Wallet() {
   // Modal states
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [paymentType, setPaymentType] = useState('upi');
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showTransferConfirm, setShowTransferConfirm] = useState(false);
   // Form states
   const [upiForm, setUpiForm] = useState({ upi_id: '', label: '' });
@@ -131,7 +129,6 @@ function Wallet() {
   const [bankForm, setBankForm] = useState({
     bank_name: '', account_number: '', ifsc_code: '', account_holder: '', label: ''
   });
-  const [withdrawForm, setWithdrawForm] = useState({ amount: '', payment_method_id: '' });
 
   // Transfer states
   const [transferForm, setTransferForm] = useState({ recipient: '', amount: '', note: '' });
@@ -383,28 +380,6 @@ function Wallet() {
     }
   };
 
-  const handleWithdraw = async (e) => {
-    e.preventDefault();
-    if (!withdrawForm.payment_method_id) {
-      toast.error('Please select a payment method');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const res = await requestWithdrawal(parseFloat(withdrawForm.amount), parseInt(withdrawForm.payment_method_id));
-      toast.success('Withdrawal request submitted!');
-      updateBalance(res.data.data.newBalance);
-      setBalance(prev => ({ ...prev, balance: res.data.data.newBalance }));
-      setWithdrawForm({ amount: '', payment_method_id: '' });
-      setShowWithdrawModal(false);
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Withdrawal failed');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   // User search for transfers
   const handleUserSearch = async (query) => {
     setTransferForm({ ...transferForm, recipient: query });
@@ -558,7 +533,7 @@ function Wallet() {
             Deposit
           </button>
           <button
-            onClick={() => setShowWithdrawModal(true)}
+            onClick={() => navigate('/wallet/withdraw')}
             className="px-4 py-2 shrink-0 rounded-lg bg-dark-600 hover:bg-dark-500 text-white text-sm transition-colors border border-dark-500"
           >
             Withdraw
@@ -601,8 +576,9 @@ function Wallet() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
+            className="space-y-4"
           >
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {packages.map((pkg, idx) => {
               const hasBonus = pkg.bonus_percent > 0;
               const bonusAmount = hasBonus
@@ -688,6 +664,45 @@ function Wallet() {
                 </motion.div>
               );
             })}
+          </div>
+
+          {/* Deposit Rules */}
+          <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl">
+            <p className="text-sm font-semibold text-accent mb-2 flex items-center gap-1.5">
+              <FiCheck className="w-4 h-4" />
+              Deposit Rules
+            </p>
+            <ul className="space-y-1.5 text-xs text-gray-300 leading-relaxed">
+              <li className="flex gap-2">
+                <span className="text-accent shrink-0">•</span>
+                <span>Minimum deposit amount is {formatCurrency(packages.length ? Math.min(...packages.map(p => parseFloat(p.zynk_amount) || 0)) : 100)} per transaction.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent shrink-0">•</span>
+                <span>Deposits are usually credited <b>within a few minutes</b> after payment confirmation.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent shrink-0">•</span>
+                <span>Bonus credits (if any) are added <b>automatically</b> based on the selected package.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent shrink-0">•</span>
+                <span>Always pay from your <b>own UPI / bank account</b> — third-party payments will be reversed.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent shrink-0">•</span>
+                <span>Deposits are <b>non-refundable</b> once credited to your wallet.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent shrink-0">•</span>
+                <span>Maximum <b>100 deposits per day</b> are allowed per account.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent shrink-0">•</span>
+                <span>If a deposit fails or is delayed, contact support with your transaction reference ID.</span>
+              </li>
+            </ul>
+          </div>
           </motion.div>
         )}
 
@@ -758,6 +773,16 @@ function Wallet() {
             exit={{ opacity: 0, y: -10 }}
             className="space-y-4"
           >
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-white">Your Withdrawals</h3>
+              <button
+                onClick={() => navigate('/wallet/withdraw')}
+                className="bg-accent text-dark-900 rounded-lg flex items-center justify-center px-4 py-2 text-sm font-semibold hover:bg-accent/90 transition-colors"
+              >
+                <FiArrowUpCircle className="w-4 h-4 mr-1" /> New Withdrawal
+              </button>
+            </div>
+
             {/* Timeline */}
             <div className="bg-dark-700 rounded-xl border border-dark-600 p-4">
               <div className="flex items-center justify-between mb-4">
@@ -1535,133 +1560,6 @@ function Wallet() {
                     className="btn-premium w-full py-3"
                   >
                     {submitting ? 'Adding...' : 'Add Bank Account'}
-                  </button>
-                </form>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Withdraw Modal */}
-      <AnimatePresence>
-        {showWithdrawModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="!mt-0 fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center px-4 pb-4"
-            style={{ top: 0, height: '100dvh' }}
-            onClick={() => setShowWithdrawModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-dark-800 rounded-2xl border border-dark-600 p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-white">Withdraw</h3>
-                <button
-                  onClick={() => setShowWithdrawModal(false)}
-                  className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-dark-700"
-                >
-                  <FiX className="w-5 h-5" />
-                </button>
-              </div>
-
-              {paymentMethods.length === 0 ? (
-                <div className="text-center py-8">
-                  <FiCreditCard className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-400 mb-4">Add a payment method first</p>
-                  <button
-                    onClick={() => {
-                      setShowWithdrawModal(false);
-                      setShowAddPayment(true);
-                    }}
-                    className="btn-premium px-6 py-2"
-                  >
-                    Add Payment Method
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleWithdraw} className="space-y-4">
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-1">Amount (min {formatCurrency(1000)})</label>
-                    <input
-                      type="number"
-                      value={withdrawForm.amount}
-                      onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
-                      placeholder="1000"
-                      min="1000"
-                      max={balance.balance}
-                      className="input-premium w-full"
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Available: {formatCurrency(balance.balance)}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-1">Payment Method</label>
-                    <select
-                      value={withdrawForm.payment_method_id}
-                      onChange={(e) => setWithdrawForm({ ...withdrawForm, payment_method_id: e.target.value })}
-                      className="input-premium w-full"
-                      required
-                    >
-                      <option value="">Select payment method</option>
-                      {paymentMethods.map((method) => (
-                        <option key={method.id} value={method.id}>
-                          {method.label} ({method.type.toUpperCase()})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Deposit-gate warning — only renders for users who've
-                      deposited something (>₹100) but haven't yet crossed the
-                      withdrawal threshold. Brand-new users with ≤ ₹100
-                      deposited skip the noisy lock banner; they'll see the
-                      backend error toast if they attempt to submit anyway. */}
-                  {balance.canWithdraw === false && (balance.totalDeposited || 0) > 100 && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1">
-                      <p className="text-sm font-semibold text-red-300">
-                        Withdrawals locked
-                      </p>
-                      <p className="text-xs text-red-200/80 leading-relaxed">
-                        Unlock after you've deposited at least{' '}
-                        <span className="font-semibold text-red-200">
-                          {formatCurrency(balance.minDepositForWithdrawal || 1000)}
-                        </span>.
-                        You've deposited{' '}
-                        <span className="font-semibold text-red-200">
-                          {formatCurrency(balance.totalDeposited || 0)}
-                        </span>{' '}
-                        so far — deposit{' '}
-                        <span className="font-semibold text-red-200">
-                          {formatCurrency(Math.ceil(balance.depositGapForWithdrawal))}
-                        </span>{' '}
-                        more to unlock withdrawals.
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <p className="text-sm text-yellow-400">
-                      Withdrawals require admin approval and may take 24-48 hours to process.
-                    </p>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={
-                      submitting ||
-                      !withdrawForm.amount ||
-                      !withdrawForm.payment_method_id ||
-                      balance.canWithdraw === false
-                    }
-                    className="btn-premium w-full py-3"
-                  >
-                    {submitting ? 'Submitting...' : 'Request Withdrawal'}
                   </button>
                 </form>
               )}

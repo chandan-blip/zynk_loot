@@ -39,6 +39,7 @@ import AdminPayments from './pages/admin/AdminPayments';
 import AdminSupport from './pages/admin/AdminSupport';
 import NumberDetail from './pages/NumberDetail';
 import Wallet from './pages/Wallet';
+import Withdraw from './pages/Withdraw';
 import Checkout from './pages/Checkout';
 import Promote from './pages/Promote';
 import Bonus from './pages/Bonus';
@@ -298,6 +299,7 @@ function App() {
           <Route index element={<Home />} />
           <Route path="number/:number" element={<NumberDetail />} />
           <Route path="wallet" element={<PrivateRoute><Wallet /></PrivateRoute>} />
+          <Route path="wallet/withdraw" element={<PrivateRoute><Withdraw /></PrivateRoute>} />
           <Route path="checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
           <Route path="profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="promote" element={<PrivateRoute><Promote /></PrivateRoute>} />
