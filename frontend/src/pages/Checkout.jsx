@@ -581,7 +581,7 @@ export default function Checkout() {
                   onClick={() => setStep(3)}
                   className="w-full mt-6 py-3 rounded-lg bg-accent hover:bg-accent-600 text-dark-900 font-semibold transition-colors flex items-center justify-center"
                 >
-                  I've Made the Payment
+                  Submit UTR
                   <FiChevronRight className="w-5 h-5 ml-2" />
                 </button>
               </motion.div>
@@ -630,7 +630,7 @@ export default function Checkout() {
                       </p>
                     </div>
 
-                    <div>
+                    {/* <div>
                       <label className="block text-sm text-gray-400 mb-2">
                         Additional Notes <span className="text-gray-600">(optional)</span>
                       </label>
@@ -641,7 +641,7 @@ export default function Checkout() {
                         rows={3}
                         className="input-premium w-full resize-none"
                       />
-                    </div>
+                    </div> */}
                   </div>
 
                   {error && (
@@ -655,12 +655,12 @@ export default function Checkout() {
                     </motion.div>
                   )}
 
-                  <div className="bg-dark-800 rounded-lg p-4 flex items-start gap-3">
+                  {/* <div className="bg-dark-800 rounded-lg p-4 flex items-start gap-3">
                     <FiLock className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-gray-400">
                       By submitting, you confirm that you have sent the payment. Your balance will be credited once the payment is verified by our team.
                     </p>
-                  </div>
+                  </div> */}
 
                   <button
                     type="submit"
@@ -675,7 +675,7 @@ export default function Checkout() {
                     ) : (
                       <>
                         <FiCheck className="w-5 h-5 mr-2" />
-                        Submit for Verification
+                        Submit
                       </>
                     )}
                   </button>
@@ -696,7 +696,7 @@ export default function Checkout() {
               {selectedPackage && (
                 <div className="p-5 space-y-5">
                   {/* Package Info */}
-                  <div className="flex items-center gap-4 p-4 bg-dark-800 rounded-lg">
+                  {/* <div className="flex items-center gap-4 p-4 bg-dark-800 rounded-lg">
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent to-accent-400 flex items-center justify-center">
                       <FiPackage className="w-6 h-6 text-dark-900" />
                     </div>
@@ -704,7 +704,7 @@ export default function Checkout() {
                       <p className="text-white font-semibold">{selectedPackage.name}</p>
                       <p className="text-gray-500 text-sm">Package</p>
                     </div>
-                  </div>
+                  </div> */}
 
                   {/* Breakdown */}
                   <div className="space-y-3">

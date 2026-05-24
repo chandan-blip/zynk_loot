@@ -100,10 +100,8 @@ function slugifyName(name) {
   return (name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
 }
 
-function randomStatusBarTime() {
-  const h = Math.floor(Math.random() * 17) + 7; // 7..23
-  const m = Math.floor(Math.random() * 60);
-  return `${h}:${m.toString().padStart(2, '0')}`;
+function formatStatusBarTime(date) {
+  return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
 }
 
 function buildPaymentVars(winner, draw, details = DEFAULT_PAYMENT_DETAILS) {
@@ -111,6 +109,8 @@ function buildPaymentVars(winner, draw, details = DEFAULT_PAYMENT_DETAILS) {
   const data = winner.json_data || {};
   const amount = Number(winner.amount);
   const now = new Date();
+  const paymentAt = new Date(now.getTime() - 20 * 60_000);
+  const statusBarAt = new Date(paymentAt.getTime() + 10 * 60_000);
   const nameInitial = (winner.name || '?').trim().charAt(0).toUpperCase();
   const name = (winner.name || '').trim();
   const parts = name.split(/\s+/);
@@ -169,31 +169,20 @@ function buildPaymentVars(winner, draw, details = DEFAULT_PAYMENT_DETAILS) {
     recipientUpiId: slugifyName(name) + handle,
     brandLine: cfg.brandLine,
     supportName: cfg.supportName,
-    date: now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-    dateShort: now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }),
-    weekday: now.toLocaleDateString('en-IN', { weekday: 'long' }),
-    dayMonth: now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+    date: paymentAt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    dateShort: paymentAt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }),
+    weekday: paymentAt.toLocaleDateString('en-IN', { weekday: 'long' }),
+    dayMonth: paymentAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
     // Compact SBI-SMS style date — "01May26" with no spaces.
-    dateSms: String(now.getDate()).padStart(2, '0')
-      + now.toLocaleDateString('en-US', { month: 'short' })
-      + String(now.getFullYear()).slice(-2),
-    time: now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
-    time12: now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
-    // Random past time earlier today — used by SMS-style templates (SBI, etc.)
-    // where the "received" timestamp should look like the message arrived
-    // hours ago, not right now. Floors at 7am and stays at least 5 min in
-    // the past, so it always reads as a believable earlier moment.
-    pastTime12: (() => {
-      const dayStart = new Date(now); dayStart.setHours(7, 0, 0, 0);
-      const earliest = Math.min(dayStart.getTime(), now.getTime() - 60_000);
-      const latest = now.getTime() - 5 * 60_000;
-      const span = Math.max(60_000, latest - earliest);
-      const past = new Date(earliest + Math.floor(Math.random() * span));
-      return past.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-    })(),
-    statusBarTime: randomStatusBarTime(),
-    dateTime: now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' +
-              now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+    dateSms: String(paymentAt.getDate()).padStart(2, '0')
+      + paymentAt.toLocaleDateString('en-US', { month: 'short' })
+      + String(paymentAt.getFullYear()).slice(-2),
+    time: paymentAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    time12: paymentAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+    pastTime12: paymentAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+    statusBarTime: formatStatusBarTime(statusBarAt),
+    dateTime: paymentAt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' +
+              paymentAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
     periodId: draw.period_id || '',
     smsSenderId: smsBank.senderId,
     smsUserPhrase: smsBank.userPhrase,
@@ -218,7 +207,7 @@ const PAYMENT_TEMPLATES_ACTIVE_KEY = 'payment_templates_active';
 
 const DEFAULT_PAYMENT_DETAILS = {
   senderName: 'Sachin Kumar',
-  senderUpiId: '6299228657@ptyes',
+  senderUpiId: '9090902920@ptyes',
   bankName: 'Punjab National Bank',
   recipientUpiHandle: '@okhdfcbank',
   brandLine: 'LOOT Market Winner',
@@ -416,7 +405,7 @@ class DailyWinnersService {
   getPaymentDetailsSchema() {
     return [
       { key: 'senderName', label: 'Sender Name', placeholder: 'Sachin Kumar' },
-      { key: 'senderUpiId', label: 'Sender UPI ID', placeholder: '6299228657@ptyes' },
+      { key: 'senderUpiId', label: 'Sender UPI ID', placeholder: '9090902920@ptyes' },
       { key: 'bankName', label: 'Bank Name', placeholder: 'Punjab National Bank' },
       { key: 'recipientUpiHandle', label: 'Recipient UPI Handle', placeholder: '@okhdfcbank' },
       { key: 'brandLine', label: 'Brand Line', placeholder: 'LOOT Market Winner' },
