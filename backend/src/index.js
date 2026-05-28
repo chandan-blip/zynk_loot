@@ -14,6 +14,7 @@ const rootEnv = path.resolve(__dirname, '../../.env');
 dotenv.config({ path: fs.existsSync(rootEnv) ? rootEnv : undefined });
 
 const db = require('./config/database');
+const ensureRbacSchema = require('./utils/ensureRbacSchema');
 const seedAdmin = require('./utils/seedAdmin');
 const seedDemo = require('./utils/seedDemo');
 const authRoutes = require('./routes/auth');
@@ -48,6 +49,7 @@ const TelegramDashService = require('./services/telegramDashService');
 const trackingRoutes = require('./routes/tracking');
 const websiteTrackingRoutes = require('./routes/websiteTracking');
 const enrollRoutes = require('./routes/enroll');
+const telegramRoutes = require('./routes/telegram');
 const prerenderMiddleware = require('./middleware/prerender');
 const { subdomainMiddleware, siteByPathHandler } = require('./middleware/website');
 
@@ -310,6 +312,8 @@ app.use('/api/bonuses', apiLimiter, bonusRoutes);
 app.use('/api/tracking', apiLimiter, trackingRoutes);
 app.use('/api/websites', apiLimiter, websiteTrackingRoutes);
 app.use('/api/enroll', apiLimiter, enrollRoutes);
+// Telegram webhook: no auth/limiter — verified via secret-token header inside.
+app.use('/api/telegram', telegramRoutes);
 
 // Recent activities (public, no auth needed)
 app.get('/api/activities/recent', (req, res) => {
@@ -346,6 +350,9 @@ const startServer = async () => {
   try {
     await db.testConnection();
     console.log('Database connected successfully');
+
+    // Ensure RBAC schema (admin_roles, users.admin_role_id, Super Admin role)
+    await ensureRbacSchema();
 
     // Seed admin user if not exists
     await seedAdmin();

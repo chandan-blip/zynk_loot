@@ -45,18 +45,24 @@ class SmmQueueService {
   }
 
   // Producer API — called from predictionService / dailyWinnersService
-  // right after a successful Telegram post. Best-effort: returns the new
+  // right after a successful Telegram post, and from the Telegram webhook
+  // for posts made directly on the channel. Best-effort: returns the new
   // queue row id, or null on insert failure (we never want a queue write
   // failure to break the calling flow).
+  //
+  // INSERT IGNORE + the unique index on post_url makes this idempotent:
+  // if the same post was already enqueued (e.g. a producer enqueued the
+  // bot's own post and the webhook then sees it too), the second call is a
+  // silent no-op and returns null — so a post never gets a double order.
   async enqueue({ postUrl, contextLabel = 'generic' }) {
     if (!postUrl) return null;
     try {
       const [res] = await db.pool.query(
-        `INSERT INTO smm_queue (post_url, context_label, status)
+        `INSERT IGNORE INTO smm_queue (post_url, context_label, status)
          VALUES (?, ?, 'pending')`,
         [String(postUrl).slice(0, 500), String(contextLabel).slice(0, 64)]
       );
-      return res.insertId;
+      return res.insertId || null;
     } catch (err) {
       console.error('[SMM-Q] enqueue failed:', err.message);
       return null;

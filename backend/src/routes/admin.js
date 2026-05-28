@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const db = require('../config/database');
 const { authenticateToken, requireAdmin, generateToken } = require('../middleware/auth');
+const { moduleForPath, hasModule, ADMIN_MODULES, ALL_MODULE_KEYS } = require('../config/adminModules');
 
 const router = express.Router();
 
@@ -58,10 +59,16 @@ router.post('/login', async (req, res) => {
 
     let query, param;
     if (email) {
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE email = ? AND is_admin = 1';
+      query = `SELECT u.id, u.username, u.email, u.phone, u.password_hash, u.balance, u.is_admin, u.is_active,
+                      r.name AS role_name, r.permissions AS role_permissions, r.is_system AS role_is_system
+                 FROM users u LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+                WHERE u.email = ? AND u.is_admin = 1`;
       param = email.trim().toLowerCase();
     } else {
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active FROM users WHERE phone = ? AND is_admin = 1';
+      query = `SELECT u.id, u.username, u.email, u.phone, u.password_hash, u.balance, u.is_admin, u.is_active,
+                      r.name AS role_name, r.permissions AS role_permissions, r.is_system AS role_is_system
+                 FROM users u LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+                WHERE u.phone = ? AND u.is_admin = 1`;
       param = phone.trim();
     }
 
@@ -84,6 +91,9 @@ router.post('/login', async (req, res) => {
 
     const token = generateToken(user.id);
 
+    const permissions = parsePerms(user.role_permissions);
+    const isSuper = !!user.role_is_system || permissions.includes('*');
+
     res.json({
       success: true,
       data: {
@@ -94,7 +104,10 @@ router.post('/login', async (req, res) => {
           email: user.email,
           phone: user.phone,
           balance: parseFloat(user.balance),
-          isAdmin: true
+          isAdmin: true,
+          roleName: user.role_name || null,
+          permissions,
+          isSuper
         }
       }
     });
@@ -107,6 +120,16 @@ router.post('/login', async (req, res) => {
 // Apply auth middleware to all routes below
 router.use(authenticateToken);
 router.use(requireAdmin);
+
+// RBAC: map the request path to an admin module and enforce the caller's role
+// permissions. Super admins pass everything. Paths that map to no module
+// (generic endpoints like /upload) are not gated here. This single middleware
+// covers every route defined below in this file.
+router.use((req, res, next) => {
+  const moduleKey = moduleForPath(req.path);
+  if (!moduleKey || hasModule(req.user, moduleKey)) return next();
+  return res.status(403).json({ success: false, message: 'You do not have access to this module' });
+});
 
 // Get dashboard stats
 // Main-site traffic aggregate for the admin dashboard with a today/yesterday/
@@ -3746,6 +3769,189 @@ router.get('/predictions/log', async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('Get prediction log error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ── Custom Prediction (admin manual rig — pick exact result cards, no Telegram) ──
+
+router.get('/predictions/custom/round', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const game = req.query.game;
+    const type = parseInt(req.query.type, 10);
+    const info = svc.getCustomRoundInfo(game, type);
+    res.json({ success: true, data: info });
+  } catch (error) {
+    console.error('Get custom prediction round error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/predictions/custom', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const { game, cardCountType, cards } = req.body || {};
+    const result = await svc.lockCustomPrediction({ game, cardCountType, cards });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Lock custom prediction error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ── Roles & Access (RBAC management — view gated by 'roles' module,
+//    mutations restricted to Super Admins to prevent privilege escalation) ──
+
+const parsePerms = (v) => {
+  if (v == null) return [];
+  try { const p = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(p) ? p : []; }
+  catch (_) { return []; }
+};
+const superOnly = (req, res) => {
+  if (req.user.is_super) return false;
+  res.status(403).json({ success: false, message: 'Only a Super Admin can manage roles' });
+  return true;
+};
+
+// The module catalog for building the role checkbox grid.
+router.get('/roles/modules', (req, res) => {
+  res.json({ success: true, data: ADMIN_MODULES.map((m) => ({ key: m.key, label: m.label })) });
+});
+
+// Admin users + their assigned role (for the assignment UI).
+router.get('/roles/admins', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      `SELECT u.id, u.username, u.email, u.admin_role_id, r.name AS role_name, r.is_system
+         FROM users u LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+        WHERE u.is_admin = 1
+        ORDER BY u.username ASC`
+    );
+    res.json({ success: true, data: rows.map((u) => ({
+      id: u.id, username: u.username, email: u.email,
+      adminRoleId: u.admin_role_id, roleName: u.role_name, isSystem: !!u.is_system,
+    })) });
+  } catch (error) {
+    console.error('List role admins error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// List all roles.
+router.get('/roles', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      `SELECT r.id, r.name, r.permissions, r.is_system, r.created_at, r.updated_at,
+              (SELECT COUNT(*) FROM users u WHERE u.admin_role_id = r.id) AS user_count
+         FROM admin_roles r
+        ORDER BY r.is_system DESC, r.name ASC`
+    );
+    res.json({ success: true, data: rows.map((r) => ({
+      id: r.id, name: r.name, permissions: parsePerms(r.permissions),
+      isSystem: !!r.is_system, userCount: r.user_count,
+      createdAt: r.created_at, updatedAt: r.updated_at,
+    })) });
+  } catch (error) {
+    console.error('List roles error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Create a role.
+router.post('/roles', async (req, res) => {
+  if (superOnly(req, res)) return;
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ success: false, message: 'Role name is required' });
+  const permissions = Array.isArray(req.body?.permissions)
+    ? req.body.permissions.filter((p) => ALL_MODULE_KEYS.includes(p)) : [];
+  try {
+    const [ins] = await db.pool.query(
+      'INSERT INTO admin_roles (name, permissions, is_system) VALUES (?, ?, 0)',
+      [name, JSON.stringify(permissions)]
+    );
+    res.json({ success: true, data: { id: ins.insertId } });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'A role with that name already exists' });
+    console.error('Create role error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Assign a role to an admin user. (Defined before '/roles/:id' is irrelevant —
+// distinct segment counts — but kept grouped with the other admin route.)
+router.put('/roles/admins/:id', async (req, res) => {
+  if (superOnly(req, res)) return;
+  const userId = parseInt(req.params.id, 10);
+  const roleId = req.body?.adminRoleId == null ? null : parseInt(req.body.adminRoleId, 10);
+  try {
+    const [u] = await db.pool.query(
+      `SELECT u.id, u.is_admin, cur.is_system AS cur_is_system
+         FROM users u LEFT JOIN admin_roles cur ON cur.id = u.admin_role_id
+        WHERE u.id = ?`, [userId]
+    );
+    if (!u.length || !u[0].is_admin) return res.status(404).json({ success: false, message: 'Admin user not found' });
+
+    let newIsSystem = false;
+    if (roleId != null) {
+      const [r] = await db.pool.query('SELECT is_system FROM admin_roles WHERE id = ?', [roleId]);
+      if (!r.length) return res.status(400).json({ success: false, message: 'Role not found' });
+      newIsSystem = !!r[0].is_system;
+    }
+    // Never strip the last Super Admin.
+    if (u[0].cur_is_system && !newIsSystem) {
+      const [[{ c }]] = await db.pool.query(
+        `SELECT COUNT(*) AS c FROM users
+          WHERE is_admin = 1 AND admin_role_id IN (SELECT id FROM admin_roles WHERE is_system = 1)`
+      );
+      if (c <= 1) return res.status(400).json({ success: false, message: 'Cannot remove the last Super Admin' });
+    }
+    await db.pool.query('UPDATE users SET admin_role_id = ? WHERE id = ?', [roleId, userId]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Assign role error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update a role (name + permissions). System role is immutable.
+router.put('/roles/:id', async (req, res) => {
+  if (superOnly(req, res)) return;
+  const id = parseInt(req.params.id, 10);
+  try {
+    const [rows] = await db.pool.query('SELECT is_system FROM admin_roles WHERE id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Role not found' });
+    if (rows[0].is_system) return res.status(400).json({ success: false, message: 'The Super Admin role cannot be edited' });
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ success: false, message: 'Role name is required' });
+    const permissions = Array.isArray(req.body?.permissions)
+      ? req.body.permissions.filter((p) => ALL_MODULE_KEYS.includes(p)) : [];
+    await db.pool.query('UPDATE admin_roles SET name = ?, permissions = ? WHERE id = ?',
+      [name, JSON.stringify(permissions), id]);
+    res.json({ success: true });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'A role with that name already exists' });
+    console.error('Update role error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Delete a role (blocked for system role or roles still in use).
+router.delete('/roles/:id', async (req, res) => {
+  if (superOnly(req, res)) return;
+  const id = parseInt(req.params.id, 10);
+  try {
+    const [rows] = await db.pool.query('SELECT is_system FROM admin_roles WHERE id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Role not found' });
+    if (rows[0].is_system) return res.status(400).json({ success: false, message: 'The Super Admin role cannot be deleted' });
+    const [[{ c }]] = await db.pool.query('SELECT COUNT(*) AS c FROM users WHERE admin_role_id = ?', [id]);
+    if (c > 0) return res.status(400).json({ success: false, message: `Role is assigned to ${c} admin(s) — reassign them first` });
+    await db.pool.query('DELETE FROM admin_roles WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete role error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

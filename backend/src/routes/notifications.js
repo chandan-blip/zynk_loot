@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { authenticateToken, requireAdmin, requireModule } = require('../middleware/auth');
+const requireNotifications = requireModule('notifications');
 
 // === Admin routes first (before :id params) ===
 
 // Admin: get all notifications
-router.get('/admin/all', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/admin/all', authenticateToken, requireAdmin, requireNotifications, async (req, res) => {
   try {
     const { page = 1, limit = 30 } = req.query;
     const notificationService = req.app.get('notificationService');
@@ -18,7 +19,7 @@ router.get('/admin/all', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Admin: create notification
-router.post('/admin/create', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/admin/create', authenticateToken, requireAdmin, requireNotifications, async (req, res) => {
   try {
     const { userId, type, title, message } = req.body;
     if (!type || !title || !message) {

@@ -1,36 +1,48 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiTarget, FiList } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiTarget, FiList, FiCrosshair, FiShield } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { getAdminSupportUnread } from '../services/api';
+import { hasModule } from '../utils/adminAccess';
 import socketService from '../services/socket';
 
 const navItems = [
-  { path: '/admin', label: 'Dashboard', icon: FiHome },
-  { path: '/admin/draws', label: 'Draws', icon: GiTrophy },
-  { path: '/admin/winners', label: 'Winners', icon: FiAward },
-  { path: '/admin/daily-winners', label: 'Daily Winners', icon: FiSend },
-  { path: '/admin/payment-templates', label: 'Payment Templates', icon: FiSmartphone },
-  { path: '/admin/prediction', label: 'Prediction', icon: FiTarget },
-  { path: '/admin/smm-queue', label: 'SMM Queue', icon: FiList },
-  { path: '/admin/users', label: 'Users', icon: FiUsers },
-  { path: '/admin/packages', label: 'Packages', icon: FiPackage },
-  { path: '/admin/orders', label: 'Orders', icon: FiShoppingCart },
-  { path: '/admin/payments', label: 'Payments', icon: FiCreditCard },
-  { path: '/admin/deposits', label: 'Deposits', icon: FiDownload },
-  { path: '/admin/withdrawals', label: 'Withdrawals', icon: FiUpload },
-  { path: '/admin/support', label: 'Support', icon: FiMessageCircle, badge: true },
-  { path: '/admin/investments', label: 'Investments', icon: FiTrendingUp },
-  { path: '/admin/notifications', label: 'Notifications', icon: FiBell },
-  { path: '/admin/analytics', label: 'Analytics', icon: FiActivity },
-  { path: '/admin/social-links', label: 'Social Links', icon: FiShare2 },
-  { path: '/admin/banners', label: 'Banners', icon: FiImage },
-  { path: '/admin/websites', label: 'Websites', icon: FiGlobe },
-  { path: '/admin/website-leads', label: 'Website Leads', icon: FiInbox },
-  { path: '/admin/settings', label: 'Settings', icon: FiSettings },
+  { path: '/admin', label: 'Dashboard', icon: FiHome, module: 'dashboard' },
+  { path: '/admin/draws', label: 'Draws', icon: GiTrophy, module: 'draws' },
+  { path: '/admin/winners', label: 'Winners', icon: FiAward, module: 'winners' },
+  { path: '/admin/daily-winners', label: 'Daily Winners', icon: FiSend, module: 'daily-winners' },
+  { path: '/admin/payment-templates', label: 'Payment Templates', icon: FiSmartphone, module: 'payment-templates' },
+  { path: '/admin/prediction', label: 'Prediction', icon: FiTarget, module: 'prediction' },
+  { path: '/admin/custom-prediction', label: 'Custom Prediction', icon: FiCrosshair, module: 'custom-prediction' },
+  { path: '/admin/smm-queue', label: 'SMM Queue', icon: FiList, module: 'smm-queue' },
+  { path: '/admin/users', label: 'Users', icon: FiUsers, module: 'users' },
+  { path: '/admin/packages', label: 'Packages', icon: FiPackage, module: 'packages' },
+  { path: '/admin/orders', label: 'Orders', icon: FiShoppingCart, module: 'orders' },
+  { path: '/admin/payments', label: 'Payments', icon: FiCreditCard, module: 'payments' },
+  { path: '/admin/deposits', label: 'Deposits', icon: FiDownload, module: 'deposits' },
+  { path: '/admin/withdrawals', label: 'Withdrawals', icon: FiUpload, module: 'withdrawals' },
+  { path: '/admin/support', label: 'Support', icon: FiMessageCircle, badge: true, module: 'support' },
+  { path: '/admin/investments', label: 'Investments', icon: FiTrendingUp, module: 'investments' },
+  { path: '/admin/notifications', label: 'Notifications', icon: FiBell, module: 'notifications' },
+  { path: '/admin/analytics', label: 'Analytics', icon: FiActivity, module: 'analytics' },
+  { path: '/admin/social-links', label: 'Social Links', icon: FiShare2, module: 'social-links' },
+  { path: '/admin/banners', label: 'Banners', icon: FiImage, module: 'banners' },
+  { path: '/admin/websites', label: 'Websites', icon: FiGlobe, module: 'websites' },
+  { path: '/admin/website-leads', label: 'Website Leads', icon: FiInbox, module: 'website-leads' },
+  { path: '/admin/settings', label: 'Settings', icon: FiSettings, module: 'settings' },
+  { path: '/admin/roles', label: 'Roles & Access', icon: FiShield, module: 'roles' },
 ];
+
+// Which module governs a given pathname — longest matching nav path wins, so
+// '/admin/users/5' resolves to 'users' and bare '/admin' to 'dashboard'.
+function moduleForPathname(pathname) {
+  const match = [...navItems]
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((i) => pathname === i.path || pathname.startsWith(i.path + '/'));
+  return match ? match.module : null;
+}
 
 function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -114,7 +126,7 @@ function AdminLayout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-          {navItems.map((item) => {
+          {navItems.filter((item) => hasModule(user, item.module)).map((item) => {
             const isActive = location.pathname === item.path;
             const badgeCount = item.badge && item.path === '/admin/support' ? supportUnread : 0;
             return (
@@ -209,7 +221,26 @@ function AdminLayout() {
 
         {/* Page Content */}
         <div className="p-4 lg:p-6 min-w-0">
-          <Outlet />
+          {(() => {
+            const currentModule = moduleForPathname(location.pathname);
+            // Guard deep links: if the active route maps to a module the user
+            // lacks, send them to their first allowed module (or show a notice
+            // if they somehow have none).
+            if (currentModule && !hasModule(user, currentModule)) {
+              const firstAllowed = navItems.find((item) => hasModule(user, item.module));
+              if (firstAllowed) return <Navigate to={firstAllowed.path} replace />;
+              return (
+                <div className="max-w-md mx-auto mt-16 text-center">
+                  <FiShield className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <h3 className="text-lg font-bold text-white">No module access</h3>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Your role has no admin modules assigned. Ask a Super Admin to grant access.
+                  </p>
+                </div>
+              );
+            }
+            return <Outlet />;
+          })()}
         </div>
       </main>
     </div>

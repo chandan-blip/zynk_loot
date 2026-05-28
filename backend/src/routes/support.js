@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { authenticateToken, requireAdmin, requireModule } = require('../middleware/auth');
+const requireSupport = requireModule('support');
 
 const router = express.Router();
 
@@ -81,7 +82,7 @@ router.get('/unread', authenticateToken, async (req, res) => {
 // ================== ADMIN ENDPOINTS ==================
 
 // Get all conversations
-router.get('/admin/conversations', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/admin/conversations', authenticateToken, requireAdmin, requireSupport, async (req, res) => {
   try {
     const supportService = req.app.get('supportService');
     const status = req.query.status || null;
@@ -103,7 +104,7 @@ router.get('/admin/conversations', authenticateToken, requireAdmin, async (req, 
 });
 
 // Get conversation messages
-router.get('/admin/conversations/:id/messages', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/admin/conversations/:id/messages', authenticateToken, requireAdmin, requireSupport, async (req, res) => {
   try {
     const supportService = req.app.get('supportService');
     const conversationId = parseInt(req.params.id);
@@ -133,7 +134,7 @@ router.get('/admin/conversations/:id/messages', authenticateToken, requireAdmin,
 });
 
 // Admin sends a message
-router.post('/admin/conversations/:id/message', authenticateToken, requireAdmin, [
+router.post('/admin/conversations/:id/message', authenticateToken, requireAdmin, requireSupport, [
   body('message').trim().notEmpty().isLength({ max: 2000 })
 ], async (req, res) => {
   try {
@@ -158,7 +159,7 @@ router.post('/admin/conversations/:id/message', authenticateToken, requireAdmin,
 });
 
 // Admin marks messages as read
-router.post('/admin/conversations/:id/read', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/admin/conversations/:id/read', authenticateToken, requireAdmin, requireSupport, async (req, res) => {
   try {
     const supportService = req.app.get('supportService');
     const conversationId = parseInt(req.params.id);
@@ -173,7 +174,7 @@ router.post('/admin/conversations/:id/read', authenticateToken, requireAdmin, as
 });
 
 // Update conversation status
-router.put('/admin/conversations/:id/status', authenticateToken, requireAdmin, [
+router.put('/admin/conversations/:id/status', authenticateToken, requireAdmin, requireSupport, [
   body('status').isIn(['open', 'resolved', 'closed'])
 ], async (req, res) => {
   try {
@@ -198,7 +199,7 @@ router.put('/admin/conversations/:id/status', authenticateToken, requireAdmin, [
 });
 
 // Get total unread count for admin
-router.get('/admin/unread', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/admin/unread', authenticateToken, requireAdmin, requireSupport, async (req, res) => {
   try {
     const supportService = req.app.get('supportService');
     const count = await supportService.getUnreadCountForAdmin();

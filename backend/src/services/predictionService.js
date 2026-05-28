@@ -618,6 +618,100 @@ class PredictionService {
     return this.runScheduledSlot(idx, { manual: true });
   }
 
+  // ── Custom Prediction (admin-driven manual rig) ───────────────────────────
+  // Lets an admin hand-pick the exact cards a game will reveal instead of the
+  // scheduled random sample. The picked cards are locked into the next
+  // available betting round for (game, cardCountType) via the same
+  // predictedByRoundId + prediction_log path the scheduled broadcast uses — but
+  // NOTHING is sent to Telegram. Pure silent outcome control.
+
+  // Validate + normalize an admin card pick. Throws on bad input.
+  _validateCustomCards(game, cardCountType, cards) {
+    const deckSize = DECK_SIZES[game];
+    if (!deckSize) throw new Error(`Unsupported game "${game}"`);
+    const type = parseInt(cardCountType, 10);
+    if (!CARD_COUNT_TYPES.includes(type)) {
+      throw new Error(`Invalid cardCountType "${cardCountType}"`);
+    }
+    if (!Array.isArray(cards)) throw new Error('cards must be an array');
+    const ids = cards.map((c) => parseInt(c, 10));
+    if (ids.some((n) => !Number.isInteger(n) || n < 0 || n >= deckSize)) {
+      throw new Error(`Every card id must be an integer in 0..${deckSize - 1}`);
+    }
+    if (new Set(ids).size !== ids.length) throw new Error('cards must be unique');
+    if (ids.length !== type) {
+      throw new Error(`Pick exactly ${type} card(s) for a ${type}-card round`);
+    }
+    return { type, ids };
+  }
+
+  // Read-only: report the current round for (game, type) so the admin UI can
+  // show which period a pick will land on and how long until it completes.
+  getCustomRoundInfo(game, cardCountType) {
+    const type = parseInt(cardCountType, 10);
+    if (!SUPPORTED_GAMES.includes(game) || !CARD_COUNT_TYPES.includes(type)) {
+      return { available: false, reason: 'bad_params' };
+    }
+    const svc = this.gameServices[game];
+    if (!svc || typeof svc.getCurrentRound !== 'function') {
+      return { available: false, reason: 'no_service' };
+    }
+    const round = svc.getCurrentRound(type);
+    if (!round) return { available: false, reason: 'no_round' };
+    return {
+      available: round.status === 'betting',
+      status: round.status,
+      roundId: round.id,
+      periodId: round.periodId,
+      completeAt: round.completeAt || null,
+      lockedAt: round.lockedAt || null,
+    };
+  }
+
+  // Lock admin-picked cards into the next available betting round. Silent —
+  // no Telegram post. Returns the round it bound to.
+  async lockCustomPrediction({ game, cardCountType, cards }) {
+    if (!SUPPORTED_GAMES.includes(game)) throw new Error(`Unsupported game "${game}"`);
+    const { type, ids } = this._validateCustomCards(game, cardCountType, cards);
+
+    const svc = this.gameServices[game];
+    if (!svc || typeof svc.getCurrentRound !== 'function') {
+      throw new Error(`Game service for "${game}" is not wired`);
+    }
+
+    // Same wait logic as a scheduled pick: if we land in the locked/gap window,
+    // wait up to ~18s for a fresh betting round to open.
+    let round = svc.getCurrentRound(type);
+    const waitDeadline = Date.now() + 18_000;
+    while ((!round || round.status !== 'betting') && Date.now() < waitDeadline) {
+      await sleep(500);
+      round = svc.getCurrentRound(type);
+    }
+    if (!round || round.status !== 'betting') {
+      throw new Error('No betting round open for this game/type right now — try again in a few seconds');
+    }
+
+    // Stash for the fast in-memory path AND persist to prediction_log so a
+    // restart between now and round completion still applies the pick. The
+    // game's _completeRound calls resolveCardsForRound(round.id, game, type),
+    // which reads whichever of these is present (latest prediction_log row wins).
+    this.predictedByRoundId.set(round.id, ids);
+    await db.pool.query(
+      `INSERT INTO prediction_log (game, card_count_type, round_id, period_id, predicted_cards, telegram_pushed)
+       VALUES (?, ?, ?, ?, ?, 0)`,
+      [game, type, round.id, round.periodId, JSON.stringify(ids)]
+    );
+
+    console.log(`[PRED] Custom prediction locked ${game}/${type} → round ${round.id} (${round.periodId}) cards=${JSON.stringify(ids)}`);
+
+    return {
+      roundId: round.id,
+      periodId: round.periodId,
+      completeAt: round.completeAt || null,
+      cards: ids,
+    };
+  }
+
   _setSlotTimer(slotIndex, key, ms, fn) {
     if (!this.pendingTimers.has(slotIndex)) this.pendingTimers.set(slotIndex, {});
     const handles = this.pendingTimers.get(slotIndex);

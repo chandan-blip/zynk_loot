@@ -284,7 +284,11 @@ router.get('/me', authenticateToken, async (req, res) => {
         isAdmin: user.is_admin === 1,
         isFrozen: !!user.is_frozen,
         freezeNote: user.freeze_note || null,
-        createdAt: user.created_at
+        createdAt: user.created_at,
+        // RBAC fields (populated by authenticateToken from the user's role).
+        roleName: req.user.role_name || null,
+        permissions: req.user.permissions || [],
+        isSuper: !!req.user.is_super
       }
     });
   } catch (error) {

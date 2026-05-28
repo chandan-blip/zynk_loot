@@ -216,6 +216,21 @@ export const getPredictionLog = (game = null, cardCountType = null, limit = 50) 
   params.set('limit', String(limit));
   return api.get(`/admin/predictions/log?${params.toString()}`);
 };
+// Custom Prediction admin module (manual rig — pick exact result cards)
+export const getCustomPredictionRound = (game, cardCountType) =>
+  api.get(`/admin/predictions/custom/round?game=${encodeURIComponent(game)}&type=${cardCountType}`, { silent: true });
+export const lockCustomPrediction = (game, cardCountType, cards) =>
+  api.post('/admin/predictions/custom', { game, cardCountType, cards });
+
+// Roles & Access (RBAC)
+export const getAdminRoles = () => api.get('/admin/roles');
+export const getAdminRoleModules = () => api.get('/admin/roles/modules');
+export const createAdminRole = (name, permissions) => api.post('/admin/roles', { name, permissions });
+export const updateAdminRole = (id, name, permissions) => api.put(`/admin/roles/${id}`, { name, permissions });
+export const deleteAdminRole = (id) => api.delete(`/admin/roles/${id}`);
+export const getRoleAdmins = () => api.get('/admin/roles/admins');
+export const assignAdminRole = (userId, adminRoleId) => api.put(`/admin/roles/admins/${userId}`, { adminRoleId });
+
 export const getAdminNumbers = (page = 1, limit = 50) => api.get(`/admin/numbers?page=${page}&limit=${limit}`);
 export const getAdminSettings = () => api.get('/admin/settings');
 export const updateSetting = (key, value) => api.put(`/admin/settings/${key}`, { value });

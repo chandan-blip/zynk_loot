@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
+const { hasModule } = require('../config/adminModules');
 
 if (!process.env.JWT_SECRET) {
   console.error('[SECURITY] JWT_SECRET not set! Set JWT_SECRET environment variable before running in production.');
@@ -17,7 +18,11 @@ const authenticateToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     const [users] = await db.pool.query(
-      'SELECT id, username, email, balance, is_admin, is_active FROM users WHERE id = ?',
+      `SELECT u.id, u.username, u.email, u.balance, u.is_admin, u.is_active, u.admin_role_id,
+              r.name AS role_name, r.permissions AS role_permissions, r.is_system AS role_is_system
+         FROM users u
+         LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+        WHERE u.id = ?`,
       [decoded.userId]
     );
 
@@ -29,7 +34,24 @@ const authenticateToken = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Account is deactivated' });
     }
 
-    req.user = users[0];
+    const u = users[0];
+    // Parse the role's module permissions (JSON column may arrive as a string
+    // or already-parsed array depending on the driver). Super = system role or
+    // wildcard permission.
+    let permissions = [];
+    if (u.role_permissions != null) {
+      try {
+        permissions = typeof u.role_permissions === 'string'
+          ? JSON.parse(u.role_permissions)
+          : u.role_permissions;
+      } catch (_) { permissions = []; }
+    }
+    if (!Array.isArray(permissions)) permissions = [];
+    u.permissions = permissions;
+    u.role_name = u.role_name || null;
+    u.is_super = !!u.role_is_system || permissions.includes('*');
+
+    req.user = u;
     next();
   } catch (error) {
     return res.status(403).json({ success: false, message: 'Invalid or expired token' });
@@ -43,6 +65,14 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+// Gate a route (or router) on a specific admin module. Assumes requireAdmin
+// has already run. Super admins always pass. Used by route files whose admin
+// endpoints live outside admin.js (support.js, notifications.js).
+const requireModule = (moduleKey) => (req, res, next) => {
+  if (hasModule(req.user, moduleKey)) return next();
+  return res.status(403).json({ success: false, message: 'You do not have access to this module' });
+};
+
 const generateToken = (userId) => {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 };
@@ -50,6 +80,7 @@ const generateToken = (userId) => {
 module.exports = {
   authenticateToken,
   requireAdmin,
+  requireModule,
   generateToken,
   JWT_SECRET
 };

@@ -32,6 +32,8 @@ import AdminWinners from './pages/admin/AdminWinners';
 import AdminDailyWinners from './pages/admin/AdminDailyWinners';
 import AdminPaymentTemplates from './pages/admin/AdminPaymentTemplates';
 import AdminPrediction from './pages/admin/AdminPrediction';
+import AdminCustomPrediction from './pages/admin/AdminCustomPrediction';
+import AdminRoles from './pages/admin/AdminRoles';
 import AdminSmmQueue from './pages/admin/AdminSmmQueue';
 import AdminPackages from './pages/admin/AdminPackages';
 import AdminOrders from './pages/admin/AdminOrders';
@@ -276,6 +278,8 @@ function App() {
           <Route path="daily-winners" element={<AdminDailyWinners />} />
           <Route path="payment-templates" element={<AdminPaymentTemplates />} />
           <Route path="prediction" element={<AdminPrediction />} />
+          <Route path="custom-prediction" element={<AdminCustomPrediction />} />
+          <Route path="roles" element={<AdminRoles />} />
           <Route path="smm-queue" element={<AdminSmmQueue />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="packages" element={<AdminPackages />} />
