@@ -427,5 +427,11 @@ export const getAdminSmmQueueStats = () => api.get('/admin/smm-queue/stats');
 export const retryAdminSmmQueueRow = (id) => api.post(`/admin/smm-queue/${id}/retry`);
 export const deleteAdminSmmQueueRow = (id) => api.delete(`/admin/smm-queue/${id}`);
 export const clearDoneAdminSmmQueue = () => api.post('/admin/smm-queue/clear-done');
+export const getSmmWebhookMaster = () => api.get('/admin/smm-queue/webhook-master');
+export const setSmmWebhookMaster = (enabled) =>
+  api.put('/admin/smm-queue/webhook-master', { enabled });
+export const getSmmWebhookConfig = () => api.get('/admin/smm-queue/webhook-config');
+export const saveSmmWebhookConfig = (config) =>
+  api.put('/admin/smm-queue/webhook-config', { config });
 
 export default api;

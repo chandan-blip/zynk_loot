@@ -23,6 +23,23 @@ const MAX_ATTEMPTS = 3;
 const STALE_PROCESSING_RETENTION_DAYS = 14;
 const DONE_RETENTION_DAYS = 14;
 
+// Master switch (admin-controlled) for placing SMM orders on posts detected
+// via the Telegram webhook — i.e. posts made directly on the channel, not
+// sent through this app. Defaults OFF: external posts only get ordered once
+// an admin explicitly enables it.
+const WEBHOOK_ENABLED_SETTING_KEY = 'smm_webhook_enabled';
+
+// Per-webhook views/reactions config. API credentials + service IDs are
+// reused from the global SMM panel config; only the enable flags and
+// quantities here are webhook-specific.
+const WEBHOOK_CONFIG_SETTING_KEY = 'smm_webhook_config';
+const DEFAULT_WEBHOOK_SMM_CONFIG = {
+  viewsEnabled: true,
+  viewsQuantity: 1000,
+  reactionsEnabled: true,
+  reactionsQuantity: 100,
+};
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, Math.max(0, ms)));
 }
@@ -42,6 +59,59 @@ class SmmQueueService {
 
   setDailyWinnersService(svc) {
     this.dailyWinnersService = svc;
+  }
+
+  // Master switch for webhook-detected posts. Default OFF when unset.
+  async isWebhookEnabled() {
+    try {
+      const [rows] = await db.pool.query(
+        'SELECT setting_value FROM settings WHERE setting_key = ?',
+        [WEBHOOK_ENABLED_SETTING_KEY]
+      );
+      if (!rows.length || rows[0].setting_value == null) return false;
+      const v = String(rows[0].setting_value).toLowerCase();
+      return v === '1' || v === 'true' || v === 'on' || v === 'yes';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async setWebhookEnabled(enabled) {
+    await db.pool.query(
+      `INSERT INTO settings (setting_key, setting_value, description)
+       VALUES (?, ?, 'Master switch: place SMM orders on posts detected via the Telegram webhook')
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [WEBHOOK_ENABLED_SETTING_KEY, enabled ? '1' : '0']
+    );
+    return !!enabled;
+  }
+
+  async getWebhookSmmConfig() {
+    try {
+      const [rows] = await db.pool.query(
+        'SELECT setting_value FROM settings WHERE setting_key = ?',
+        [WEBHOOK_CONFIG_SETTING_KEY]
+      );
+      if (rows.length && rows[0].setting_value) {
+        return { ...DEFAULT_WEBHOOK_SMM_CONFIG, ...JSON.parse(rows[0].setting_value) };
+      }
+    } catch (_) { /* fall through to defaults */ }
+    return { ...DEFAULT_WEBHOOK_SMM_CONFIG };
+  }
+
+  async setWebhookSmmConfig(config) {
+    const merged = { ...DEFAULT_WEBHOOK_SMM_CONFIG, ...(config || {}) };
+    merged.viewsEnabled = Boolean(merged.viewsEnabled);
+    merged.reactionsEnabled = Boolean(merged.reactionsEnabled);
+    merged.viewsQuantity = Math.max(0, parseInt(merged.viewsQuantity, 10) || 0);
+    merged.reactionsQuantity = Math.max(0, parseInt(merged.reactionsQuantity, 10) || 0);
+    await db.pool.query(
+      `INSERT INTO settings (setting_key, setting_value, description)
+       VALUES (?, ?, 'Webhook-only SMM views/reactions config (enable flags + quantities)')
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [WEBHOOK_CONFIG_SETTING_KEY, JSON.stringify(merged)]
+    );
+    return merged;
   }
 
   // Producer API — called from predictionService / dailyWinnersService
@@ -182,7 +252,14 @@ class SmmQueueService {
     };
 
     try {
-      const result = await this.dailyWinnersService.placeSmmOrdersForPost(row.post_url, log);
+      // Webhook-detected posts use their own views/reactions enable flags +
+      // quantities (API creds + service IDs still come from the global panel
+      // config). All other producers use the global config unchanged.
+      const opts = {};
+      if (row.context_label === 'webhook:channel_post') {
+        opts.configOverride = await this.getWebhookSmmConfig();
+      }
+      const result = await this.dailyWinnersService.placeSmmOrdersForPost(row.post_url, log, opts);
       if (result?.skipped) {
         // Skipped is a definitive "won't try again" outcome (master off,
         // missing api key, no postUrl). Mark done with placed=0.

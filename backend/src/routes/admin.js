@@ -4045,6 +4045,59 @@ router.get('/smm-queue/stats', async (req, res) => {
   }
 });
 
+// Master switch: place SMM orders on posts detected via the Telegram webhook
+// (posts made directly on the channel, not sent through this app).
+router.get('/smm-queue/webhook-master', async (req, res) => {
+  try {
+    const svc = req.app.get('smmQueueService');
+    if (!svc) return res.status(500).json({ success: false, message: 'smmQueueService unavailable' });
+    const enabled = await svc.isWebhookEnabled();
+    res.json({ success: true, data: { enabled } });
+  } catch (error) {
+    console.error('Get SMM webhook master error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/smm-queue/webhook-master', async (req, res) => {
+  try {
+    const svc = req.app.get('smmQueueService');
+    if (!svc) return res.status(500).json({ success: false, message: 'smmQueueService unavailable' });
+    const { enabled } = req.body || {};
+    const saved = await svc.setWebhookEnabled(!!enabled);
+    res.json({ success: true, data: { enabled: saved } });
+  } catch (error) {
+    console.error('Set SMM webhook master error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Webhook-only views/reactions config (enable flags + quantities). Service
+// IDs and API credentials come from the global SMM panel config.
+router.get('/smm-queue/webhook-config', async (req, res) => {
+  try {
+    const svc = req.app.get('smmQueueService');
+    if (!svc) return res.status(500).json({ success: false, message: 'smmQueueService unavailable' });
+    const config = await svc.getWebhookSmmConfig();
+    res.json({ success: true, data: { config } });
+  } catch (error) {
+    console.error('Get SMM webhook config error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/smm-queue/webhook-config', async (req, res) => {
+  try {
+    const svc = req.app.get('smmQueueService');
+    if (!svc) return res.status(500).json({ success: false, message: 'smmQueueService unavailable' });
+    const saved = await svc.setWebhookSmmConfig(req.body?.config || {});
+    res.json({ success: true, data: { config: saved } });
+  } catch (error) {
+    console.error('Set SMM webhook config error:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/smm-queue/:id/retry', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);

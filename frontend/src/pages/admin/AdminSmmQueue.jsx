@@ -18,6 +18,10 @@ import {
   retryAdminSmmQueueRow,
   deleteAdminSmmQueueRow,
   clearDoneAdminSmmQueue,
+  getSmmWebhookMaster,
+  setSmmWebhookMaster,
+  getSmmWebhookConfig,
+  saveSmmWebhookConfig,
 } from '../../services/api';
 
 const STATUS_META = {
@@ -26,6 +30,16 @@ const STATUS_META = {
   done:       { label: 'Done',       bg: 'bg-emerald-500/15', fg: 'text-emerald-300', border: 'border-emerald-500/30', Icon: FiCheck },
   failed:     { label: 'Failed',     bg: 'bg-red-500/15',     fg: 'text-red-300',     border: 'border-red-500/30',     Icon: FiAlertTriangle },
 };
+
+// Derive a human "source" tag from the queue row's context_label so webhook
+// orders (and the app's own posts) are distinguishable in the log.
+function sourceMeta(ctx) {
+  const c = String(ctx || '');
+  if (c.startsWith('webhook')) return { label: 'Webhook',    cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
+  if (c.startsWith('pred'))    return { label: 'Prediction', cls: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+  if (c.startsWith('winners')) return { label: 'Winners',    cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+  return { label: 'Other', cls: 'bg-gray-500/15 text-gray-300 border-gray-500/30' };
+}
 
 function StatCard({ label, value, tone, Icon }) {
   return (
@@ -59,6 +73,13 @@ function AdminSmmQueue() {
   const [status, setStatus] = useState('');
   const [contextSearch, setContextSearch] = useState('');
   const [busy, setBusy] = useState(null);
+  const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookCfg, setWebhookCfg] = useState({
+    viewsEnabled: true, viewsQuantity: 1000,
+    reactionsEnabled: true, reactionsQuantity: 100,
+  });
+  const [webhookCfgSaving, setWebhookCfgSaving] = useState(false);
 
   const fetchRows = useCallback(async (opts = {}) => {
     setLoading(true);
@@ -89,11 +110,20 @@ function AdminSmmQueue() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const fetchWebhookMaster = useCallback(async () => {
+    try {
+      const [m, c] = await Promise.all([getSmmWebhookMaster(), getSmmWebhookConfig()]);
+      setWebhookEnabled(!!m.data?.data?.enabled);
+      if (c.data?.data?.config) setWebhookCfg((prev) => ({ ...prev, ...c.data.data.config }));
+    } catch (_) { /* swallow */ }
+  }, []);
+
   // Initial + periodic refresh — queue moves fast, so poll every 5s while
   // page is open.
   useEffect(() => {
     fetchRows({ page: 1 });
     fetchStats();
+    fetchWebhookMaster();
     const t = setInterval(() => {
       fetchRows();
       fetchStats();
@@ -101,6 +131,35 @@ function AdminSmmQueue() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const toggleWebhookMaster = async () => {
+    const next = !webhookEnabled;
+    setWebhookSaving(true);
+    setWebhookEnabled(next);
+    try {
+      const res = await setSmmWebhookMaster(next);
+      setWebhookEnabled(!!res.data?.data?.enabled);
+      toast.success(`Webhook SMM ${next ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+      setWebhookEnabled(!next);
+      toast.error(err.response?.data?.message || 'Failed to update');
+    } finally {
+      setWebhookSaving(false);
+    }
+  };
+
+  const saveWebhookCfg = async () => {
+    setWebhookCfgSaving(true);
+    try {
+      const res = await saveSmmWebhookConfig(webhookCfg);
+      if (res.data?.data?.config) setWebhookCfg(res.data.data.config);
+      toast.success('Webhook views/reactions saved');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save');
+    } finally {
+      setWebhookCfgSaving(false);
+    }
+  };
 
   const handleFilterChange = (newStatus) => {
     setStatus(newStatus);
@@ -179,6 +238,86 @@ function AdminSmmQueue() {
             Clear done/failed
           </button>
         </div>
+      </div>
+
+      {/* Webhook SMM master switch — gates orders on posts made directly on
+          the channel (detected via the Telegram webhook), independent of the
+          app's own auto-posts. */}
+      <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-dark-600 bg-dark-800/50">
+        <div className="min-w-0 flex-1">
+          <div className="text-white font-bold text-sm flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${webhookEnabled ? 'bg-emerald-400 shadow-[0_0_6px_currentColor]' : 'bg-gray-500'}`} />
+            <span className="truncate">Webhook SMM Master Switch</span>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+            When ON, posts made directly on the channel (not sent from this app) get <b>views/reactions</b> orders automatically. When OFF, only the app's own posts are ordered.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={toggleWebhookMaster}
+          disabled={webhookSaving}
+          className={`shrink-0 relative inline-flex h-6 w-12 items-center rounded-full transition-colors disabled:opacity-50 ${
+            webhookEnabled ? 'bg-emerald-500' : 'bg-dark-600'
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              webhookEnabled ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Webhook views/reactions config — applies to webhook posts only.
+          Service IDs + API credentials come from the global SMM panel config. */}
+      <div className={`rounded-xl border border-dark-600 bg-dark-800/50 p-3 space-y-3 transition-opacity ${webhookEnabled ? '' : 'opacity-60'}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-white font-bold text-sm">Webhook Views &amp; Reactions</div>
+          <button
+            type="button"
+            onClick={saveWebhookCfg}
+            disabled={webhookCfgSaving}
+            className="px-3 py-1.5 rounded-lg bg-accent text-dark-900 text-xs font-bold disabled:opacity-50 hover:opacity-90"
+          >
+            {webhookCfgSaving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[
+            { key: 'Views', enKey: 'viewsEnabled', qtyKey: 'viewsQuantity' },
+            { key: 'Reactions', enKey: 'reactionsEnabled', qtyKey: 'reactionsQuantity' },
+          ].map(({ key, enKey, qtyKey }) => (
+            <div key={key} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-dark-600 bg-dark-900/40">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWebhookCfg((c) => ({ ...c, [enKey]: !c[enKey] }))}
+                  className={`shrink-0 relative inline-flex h-6 w-12 items-center rounded-full transition-colors ${
+                    webhookCfg[enKey] ? 'bg-emerald-500' : 'bg-dark-600'
+                  }`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    webhookCfg[enKey] ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+                <span className="text-sm text-gray-200 font-semibold">{key}</span>
+              </div>
+              <input
+                type="number"
+                min="0"
+                value={webhookCfg[qtyKey]}
+                onChange={(e) => setWebhookCfg((c) => ({ ...c, [qtyKey]: e.target.value }))}
+                disabled={!webhookCfg[enKey]}
+                className="input-premium w-24 text-sm py-1.5 px-2 text-right disabled:opacity-40"
+                placeholder="qty"
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-gray-500 leading-snug">
+          Quantity = units ordered per detected post. Service IDs and API key come from the global SMM panel settings.
+        </p>
       </div>
 
       {/* Stats */}
@@ -286,7 +425,19 @@ function AdminSmmQueue() {
                         {meta.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-300 font-mono text-xs">{r.context_label}</td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const s = sourceMeta(r.context_label);
+                        return (
+                          <div className="flex flex-col gap-0.5">
+                            <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${s.cls}`}>
+                              {s.label}
+                            </span>
+                            <span className="text-gray-400 font-mono text-[11px]">{r.context_label}</span>
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="px-4 py-3">
                       {r.post_url ? (
                         <a

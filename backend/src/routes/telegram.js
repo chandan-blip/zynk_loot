@@ -47,15 +47,17 @@ router.post('/webhook', async (req, res) => {
       const postUrl = buildPostUrl(post.chat, post.message_id);
       if (postUrl) {
         const smmQueueService = req.app.get('smmQueueService');
-        if (smmQueueService) {
+        if (!smmQueueService) {
+          console.warn('[TG-WEBHOOK] smmQueueService not wired — skipped');
+        } else if (!(await smmQueueService.isWebhookEnabled())) {
+          console.log(`[TG-WEBHOOK] master switch OFF — skipped ${postUrl}`);
+        } else {
           const id = await smmQueueService.enqueue({
             postUrl,
             contextLabel: 'webhook:channel_post',
           });
           if (id) console.log(`[TG-WEBHOOK] Enqueued SMM for ${postUrl} (queue#${id})`);
           else console.log(`[TG-WEBHOOK] ${postUrl} already queued — skipped (dedup)`);
-        } else {
-          console.warn('[TG-WEBHOOK] smmQueueService not wired — skipped');
         }
       }
     }

@@ -508,12 +508,27 @@ class DailyWinnersService {
     throw lastErr || new Error(`SMM ${kind} order failed after ${maxAttempts} attempts`);
   }
 
-  async placeSmmOrdersForPost(postUrl, log) {
+  async placeSmmOrdersForPost(postUrl, log, opts = {}) {
     if (!postUrl) {
       log.warn('SMM: Telegram send succeeded but no postUrl was derived — skipping orders (likely missing chat.username on a private channel)');
       return { skipped: true, reason: 'no_post_url', placed: 0 };
     }
-    const cfg = await this.getSmmPanelConfig();
+    let cfg = await this.getSmmPanelConfig();
+    // Webhook posts override the views/reactions enable flags + quantities,
+    // reusing the global panel's API creds + service IDs. The webhook has its
+    // own master switch (checked before enqueue), so it is not gated on the
+    // global `enabled` flag.
+    const ov = opts.configOverride || null;
+    if (ov) {
+      cfg = {
+        ...cfg,
+        enabled: true,
+        viewsEnabled: !!ov.viewsEnabled,
+        viewsQuantity: Math.max(0, parseInt(ov.viewsQuantity, 10) || 0),
+        reactionsEnabled: !!ov.reactionsEnabled,
+        reactionsQuantity: Math.max(0, parseInt(ov.reactionsQuantity, 10) || 0),
+      };
+    }
     if (!cfg.enabled) {
       log.info('SMM: disabled in settings — skipping orders');
       return { skipped: true, reason: 'disabled', placed: 0 };
