@@ -306,15 +306,12 @@ function Layout() {
                 </>
               ) : isAuthenticated ? (
                 <>
-                  {/* Balance Display */}
+                  {/* Balance Display — light border, no heavy box so large amounts can grow freely */}
                   <Link
                     to="/wallet"
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-700/80 border border-dark-600/50 hover:bg-dark-600/80 hover:border-accent/30 transition-all"
+                    className="flex items-baseline gap-1 px-2.5 py-1.5 rounded-lg border border-white/10 hover:border-accent/30 text-accent hover:text-accent-400 transition-colors"
                   >
-                    <div className="w-6 h-6 rounded-md bg-accent/20 flex items-center justify-center">
-                      <span className="text-accent font-bold text-xs">{selectedCurrency?.symbol || '$'}</span>
-                    </div>
-                    <span className="font-bold text-white text-sm">
+                    <span className="font-bold text-sm whitespace-nowrap">
                       {formatCurrency(user?.balance || 0, false)}
                     </span>
                   </Link>

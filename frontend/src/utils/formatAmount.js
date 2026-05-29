@@ -11,29 +11,19 @@ export const INR_CURRENCY = {
   precision: 2,
 };
 
+// Always render the full numeric value with comma grouping and two decimals —
+// no K/M abbreviation. e.g. 10000000 -> "₹10,000,000.00".
 export function formatAmount(amount) {
   const safe = Number(amount);
   const v = !amount || isNaN(safe) ? 0 : safe;
-
-  let formatted;
-  if (v >= 1_000_000) {
-    formatted = (v / 1_000_000).toFixed(2) + 'M';
-  } else if (v >= 1_000) {
-    formatted = (v / 1_000).toFixed(2) + 'K';
-  } else {
-    formatted = v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  }
-
-  return `₹${formatted}`;
+  return `₹${v.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatAmountFull(amount) {
-  const safe = Number(amount);
-  const v = !amount || isNaN(safe) ? 0 : safe;
-  return `₹${v.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatAmount(amount);
 }
 
 // Backward-compat: callers previously passed (amount, selectedCurrency) — the
