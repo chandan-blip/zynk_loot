@@ -381,6 +381,14 @@ export const adminUploadBannerImage = (file) => {
   });
 };
 
+// Third Party Games — public list (Games page) + admin CRUD. Images reuse the
+// shared banner upload endpoint (adminUploadBannerImage).
+export const getThirdPartyGames = () => api.get('/lottery/third-party-games');
+export const adminGetThirdPartyGames = () => api.get('/admin/third-party');
+export const adminCreateThirdPartyGame = (data) => api.post('/admin/third-party', data);
+export const adminUpdateThirdPartyGame = (id, data) => api.put(`/admin/third-party/${id}`, data);
+export const adminDeleteThirdPartyGame = (id) => api.delete(`/admin/third-party/${id}`);
+
 // Websites (landing pages)
 export const adminGetWebsites = () => api.get('/admin/websites');
 export const adminGetWebsite = (id) => api.get(`/admin/websites/${id}`);

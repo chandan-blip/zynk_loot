@@ -15,6 +15,7 @@ dotenv.config({ path: fs.existsSync(rootEnv) ? rootEnv : undefined });
 
 const db = require('./config/database');
 const ensureRbacSchema = require('./utils/ensureRbacSchema');
+const ensureThirdPartySchema = require('./utils/ensureThirdPartySchema');
 const seedAdmin = require('./utils/seedAdmin');
 const seedDemo = require('./utils/seedDemo');
 const authRoutes = require('./routes/auth');
@@ -353,6 +354,9 @@ const startServer = async () => {
 
     // Ensure RBAC schema (admin_roles, users.admin_role_id, Super Admin role)
     await ensureRbacSchema();
+
+    // Ensure third-party games catalog table
+    await ensureThirdPartySchema();
 
     // Seed admin user if not exists
     await seedAdmin();

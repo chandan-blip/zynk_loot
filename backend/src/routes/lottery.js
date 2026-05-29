@@ -31,6 +31,19 @@ router.get('/banners', async (req, res) => {
   }
 });
 
+// Get active third-party games for the Games page "Third Party" tab (public)
+router.get('/third-party-games', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      'SELECT id, name, image_url, game_url FROM third_party_games WHERE is_active = 1 ORDER BY sort_order ASC, id ASC'
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get third-party games error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get third-party games' });
+  }
+});
+
 // Get current draw status
 router.get('/draw', async (req, res) => {
   try {

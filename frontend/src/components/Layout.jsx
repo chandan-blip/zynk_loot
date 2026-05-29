@@ -27,7 +27,7 @@ import {
   FiDownload,
   FiArrowUpRight
 } from 'react-icons/fi';
-import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
+import { GiTwoCoins, GiTrophy, GiCrown } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { sounds } from '../utils/sounds';
@@ -42,6 +42,7 @@ const navItems = [
   { path: '/invest', label: 'Invest', icon: FiTrendingUp },
   { path: '/games', label: 'Games', icon: FiPlay, special: true },
   { path: '/bonus', label: 'Bonus', icon: FiGift, authRequired: true },
+  { path: '/vip', label: 'VIP', icon: GiCrown, authRequired: true, iconClass: 'w-6 h-6', vip: true },
   { path: '/promote', label: 'Promote', icon: FiShare2, authRequired: true },
   // { path: '/leaderboard', label: 'Leaderboard', icon: GiTrophy },
   { path: '/history', label: 'History', icon: FiClock },
@@ -227,7 +228,7 @@ function Layout() {
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-[shimmer_3s_infinite] pointer-events-none" />
                           )}
                           <div className="flex items-center gap-3">
-                            <item.icon className="w-5 h-5" />
+                            <item.icon className={item.iconClass || 'w-5 h-5'} />
                             <span className="font-medium">{item.label}</span>
                             {item.special && !isActive && (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/30 text-purple-200 uppercase tracking-wider">Hot</span>
@@ -414,46 +415,82 @@ function Layout() {
 
         {/* Mobile Bottom Navigation — hidden inside game pages */}
         <nav className={`fixed bottom-0 left-0 right-0 z-40 pb-safe lg:hidden ${location.pathname.startsWith('/games/') ? 'hidden' : ''}`}>
-          <div className="max-w-[1400px] mx-auto">
-            <div className="glass-strong border-t border-white/5  rounded-t-lg overflow-hidden">
-              <div className="flex items-center justify-around h-16">
-                {navItems
-                  .filter(item => item.path !== '/invest')
-                  .map(item => item.path === '/history' ? { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true } : item)
-                  .filter(item => !item.authRequired || isAuthenticated || (isLoading && localStorage.getItem('token')))
-                  .map((item) => {
+          <div className="px-3 pt-1 pb-3">
+            <div className="relative flex items-stretch justify-around h-16 rounded-2xl border border-white/10 glass-strong shadow-[0_10px_30px_-6px_rgba(0,0,0,0.65)] overflow-hidden">
+              {/* Top sheen highlight */}
+              <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+              {navItems
+                .filter(item => item.path !== '/invest')
+                .map(item => item.path === '/history' ? { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true } : item)
+                .filter(item => !item.authRequired || isAuthenticated || (isLoading && localStorage.getItem('token')))
+                .map((item) => {
                   const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));
+                  // Per-item visual theme: Games = purple, VIP = gold, rest = accent.
+                  const theme = item.special
+                    ? {
+                        text: 'text-purple-400',
+                        pill: 'bg-purple-400/15 ring-1 ring-purple-400/30',
+                        glow: 'drop-shadow-[0_0_8px_rgba(192,132,252,0.85)]',
+                        dot: 'bg-purple-400',
+                        idle: { scale: [1, 1.18, 1] },
+                        idleT: { duration: 1.8, repeat: Infinity, ease: 'easeInOut' },
+                      }
+                    : item.vip
+                      ? {
+                          text: 'text-amber-300',
+                          pill: 'bg-amber-300/15 ring-1 ring-amber-300/30',
+                          glow: 'drop-shadow-[0_0_8px_rgba(252,211,77,0.9)]',
+                          dot: 'bg-amber-300',
+                          idle: { scale: [1, 1.1, 1], rotate: [0, -10, 10, 0] },
+                          idleT: { duration: 2.4, repeat: Infinity, ease: 'easeInOut' },
+                        }
+                      : {
+                          text: 'text-accent',
+                          pill: 'bg-accent/15 ring-1 ring-accent/30',
+                          glow: 'drop-shadow-[0_0_8px_rgba(0,212,170,0.75)]',
+                          dot: null,
+                          idle: null,
+                          idleT: null,
+                        };
+                  const highlighted = item.special || item.vip;
                   return (
                     <Link
                       key={item.path}
                       to={item.path}
-                      className="relative flex-1 h-full"
+                      className="relative flex-1 flex items-center justify-center"
                       onClick={() => sounds.tap()}
                     >
+                      {/* Sliding active pill */}
+                      {isActive && (
+                        <motion.div
+                          layoutId="navPill"
+                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                          className={`absolute inset-y-2 inset-x-1 rounded-xl ${theme.pill}`}
+                        />
+                      )}
                       <motion.div
-                        whileTap={{ scale: 0.95 }}
-                        className={`flex flex-col items-center justify-center h-full transition-colors ${
-                          isActive ? 'text-accent'
-                            : item.special ? 'text-purple-400'
-                            : 'text-gray-500 hover:text-gray-300'
+                        whileTap={{ scale: 0.86 }}
+                        className={`relative z-10 flex flex-col items-center justify-center gap-1 transition-colors ${
+                          isActive || highlighted ? theme.text : 'text-gray-500'
                         }`}
                       >
-                        {isActive && (
-                          <motion.div
-                            layoutId="activeTab"
-                            className="absolute top-0 transform translate-y-0 w-12 h-1 bg-accent rounded-b-full"
+                        <motion.span
+                          animate={isActive ? { scale: 1.14, y: -1 } : (highlighted ? theme.idle : { scale: 1, y: 0 })}
+                          transition={isActive ? { type: 'spring', stiffness: 500, damping: 24 } : (highlighted ? theme.idleT : { type: 'spring', stiffness: 500, damping: 24 })}
+                          className="relative"
+                        >
+                          {highlighted && !isActive && (
+                            <span className={`absolute -top-1 -right-1.5 w-1.5 h-1.5 rounded-full ${theme.dot} animate-pulse`} />
+                          )}
+                          <item.icon
+                            className={`${item.iconClass || 'w-5 h-5'} ${(isActive || highlighted) ? theme.glow : ''}`}
                           />
-                        )}
-                        {item.special && !isActive && (
-                          <div className="absolute top-1 right-1/2 translate-x-4 w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-                        )}
-                        <item.icon className={`w-5 h-5 ${isActive ? 'text-accent' : item.special ? 'text-purple-400' : ''}`} />
-                        <span className={`text-[10px] mt-1 font-medium ${item.special && !isActive ? 'text-purple-400' : ''}`}>{item.label}</span>
+                        </motion.span>
+                        <span className="text-[10px] font-semibold leading-none">{item.label}</span>
                       </motion.div>
                     </Link>
                   );
                 })}
-              </div>
             </div>
           </div>
         </nav>

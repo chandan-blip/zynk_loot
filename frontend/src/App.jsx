@@ -44,6 +44,7 @@ import Withdraw from './pages/Withdraw';
 import Checkout from './pages/Checkout';
 import Promote from './pages/Promote';
 import Bonus from './pages/Bonus';
+import Vip from './pages/Vip';
 import Invest from './pages/Invest';
 import Games from './pages/games/Games';
 import Lottery from './pages/games/Lottery';
@@ -65,6 +66,7 @@ import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminWebsites from './pages/admin/AdminWebsites';
 import AdminBanners from './pages/admin/AdminBanners';
+import AdminThirdParty from './pages/admin/AdminThirdParty';
 import AdminWebsiteLeads from './pages/admin/AdminWebsiteLeads';
 import useTracking from './hooks/useTracking';
 import AppLoader from './components/AppLoader';
@@ -145,6 +147,7 @@ const SETTLE_DELAY_MS = 120;
 
 function RouteLoader() {
   const { pathname } = useLocation();
+  const isAdminRoute = pathname.startsWith('/admin');
   const [show, setShow] = useState(true);
   const initialLoadDone = useRef(false);
   const paintedRef = useRef(false);
@@ -219,6 +222,10 @@ function RouteLoader() {
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     };
   }, [pathname]);
+
+  // Admin routes never show the global route loader — they poll continuously,
+  // which would otherwise keep the overlay pinned.
+  if (isAdminRoute) return null;
 
   return <AppLoader show={show} />;
 }
@@ -309,6 +316,7 @@ function App() {
           <Route path="social-links" element={<AdminSocialLinks />} />
           <Route path="websites" element={<AdminWebsites />} />
           <Route path="banners" element={<AdminBanners />} />
+          <Route path="third-party" element={<AdminThirdParty />} />
           <Route path="website-leads" element={<AdminWebsiteLeads />} />
         </Route>
 
@@ -322,6 +330,7 @@ function App() {
           <Route path="profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="promote" element={<PrivateRoute><Promote /></PrivateRoute>} />
           <Route path="bonus" element={<PrivateRoute><Bonus /></PrivateRoute>} />
+          <Route path="vip" element={<PrivateRoute><Vip /></PrivateRoute>} />
           <Route path="invest" element={<Invest />} />
           <Route path="notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="games" element={<Games />} />

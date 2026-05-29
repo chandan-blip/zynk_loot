@@ -3,9 +3,20 @@ import { FiCrosshair, FiRefreshCw, FiCheck, FiClock, FiAlertTriangle, FiTrash2, 
 import toast from 'react-hot-toast';
 import usePageTitle from '../../hooks/usePageTitle';
 import { decodeCard } from '../../components/PlayingCard';
-import UnoCard from '../../components/UnoCard';
+import UnoCard, { decodeUnoCard } from '../../components/UnoCard';
 import { getCustomPredictionRound, getCustomPredictionBets, lockCustomPrediction } from '../../services/api';
 import { formatAmount } from '../../utils/formatAmount';
+
+// Human-readable label for a selected card id, e.g. "A♠" or "Red Skip".
+const pickedCardLabel = (id, uno) => {
+  if (uno) {
+    const c = decodeUnoCard(id);
+    if (c.isWild) return c.label; // 'Wild' or '+4'
+    return `${c.color?.label || ''} ${c.label}`.trim();
+  }
+  const { rank, suit } = decodeCard(id);
+  return `${rank}${suit.symbol}`;
+};
 
 // Compact ₹ amount for tight spaces (card badges): 1234 → "₹1.2k", 0 → "₹0".
 const fmtCompact = (n) => {
@@ -122,7 +133,7 @@ function AdminCustomPrediction() {
       const res = await lockCustomPrediction(game, type, selected);
       const data = res.data?.data || res.data;
       toast.success(`Locked into period ${formatPeriod(data.periodId)}`);
-      setSelected([]);
+      // Keep the pick selected after locking so the "Picked" card stays shown.
       loadRound();
       loadBets();
     } catch (e) {
@@ -149,7 +160,10 @@ function AdminCustomPrediction() {
         </button>
       </div>
 
-      <div className="space-y-4 max-w-2xl">
+      {/* Two columns from tablet up (md+); stacked on mobile. */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        {/* Left column: game/lane selector, round status, card picker */}
+        <div className="md:col-span-2 space-y-4">
         {/* Game selector */}
         <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Game</label>
@@ -203,7 +217,14 @@ function AdminCustomPrediction() {
             )}
           </div>
           <div className="mt-2 flex items-center justify-between text-sm">
-            <span className="font-mono text-gray-300">Period {formatPeriod(roundInfo?.periodId)}</span>
+            <span className="font-bold text-gray-300">
+              Period: {formatPeriod(roundInfo?.periodId)}
+              {selected.length > 0 && (
+                <span className="ml-2 text-gray-400">
+                   Card: <span className="font-black text-accent">{selected.map((id) => pickedCardLabel(id, isUno)).join(', ')}</span>
+                </span>
+              )}
+            </span>
             {secondsLeft != null && (
               <span className="flex items-center gap-1 text-gray-400 text-xs">
                 <FiClock className="w-3.5 h-3.5" /> {secondsLeft}s to reveal
@@ -327,8 +348,10 @@ function AdminCustomPrediction() {
             </button>
           </div>
         </div>
+        </div>
 
-        {/* Live bets on the targeted round */}
+        {/* Right column: live bets on the targeted round (sticky on md+) */}
+        <div className="md:col-span-1 md:sticky md:top-4">
         <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
@@ -374,6 +397,7 @@ function AdminCustomPrediction() {
                 : 'No live bets on this round yet.'}
             </p>
           )}
+        </div>
         </div>
       </div>
     </div>

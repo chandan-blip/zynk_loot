@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiList, FiCrosshair, FiShield } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiList, FiCrosshair, FiShield, FiGrid } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { getAdminSupportUnread } from '../services/api';
@@ -28,6 +28,7 @@ const navItems = [
   { path: '/admin/analytics', label: 'Analytics', icon: FiActivity, module: 'analytics' },
   { path: '/admin/social-links', label: 'Social Links', icon: FiShare2, module: 'social-links' },
   { path: '/admin/banners', label: 'Banners', icon: FiImage, module: 'banners' },
+  { path: '/admin/third-party', label: 'Third Party Games', icon: FiGrid, module: 'third-party' },
   { path: '/admin/websites', label: 'Websites', icon: FiGlobe, module: 'websites' },
   { path: '/admin/website-leads', label: 'Website Leads', icon: FiInbox, module: 'website-leads' },
   { path: '/admin/settings', label: 'Settings', icon: FiSettings, module: 'settings' },

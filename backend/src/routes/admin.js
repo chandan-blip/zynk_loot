@@ -1970,6 +1970,74 @@ router.delete('/banners/:id', async (req, res) => {
   }
 });
 
+// ===== Third Party Games (admin-uploaded catalog — image + optional URL) =====
+// Images reuse the shared /upload/banner endpoint (any admin asset upload).
+router.get('/third-party', async (req, res) => {
+  try {
+    const [rows] = await db.pool.query(
+      'SELECT id, name, image_url, game_url, sort_order, is_active, created_at, updated_at FROM third_party_games ORDER BY sort_order ASC, id ASC'
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get third-party games error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get third-party games' });
+  }
+});
+
+router.post('/third-party', async (req, res) => {
+  try {
+    const { name, image_url, game_url, sort_order, is_active } = req.body;
+    if (!image_url) {
+      return res.status(400).json({ success: false, message: 'image_url is required' });
+    }
+    const [result] = await db.pool.query(
+      'INSERT INTO third_party_games (name, image_url, game_url, sort_order, is_active) VALUES (?, ?, ?, ?, ?)',
+      [name || null, image_url, game_url || null, sort_order || 0, is_active !== false ? 1 : 0]
+    );
+    res.json({ success: true, data: { id: result.insertId } });
+  } catch (error) {
+    console.error('Create third-party game error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create third-party game' });
+  }
+});
+
+router.put('/third-party/:id', async (req, res) => {
+  try {
+    const { name, image_url, game_url, sort_order, is_active } = req.body;
+    await db.pool.query(
+      `UPDATE third_party_games
+       SET name = ?,
+           image_url = COALESCE(?, image_url),
+           game_url = ?,
+           sort_order = COALESCE(?, sort_order),
+           is_active = COALESCE(?, is_active)
+       WHERE id = ?`,
+      [
+        name || null,
+        image_url || null,
+        game_url || null,
+        sort_order,
+        is_active == null ? null : (is_active ? 1 : 0),
+        req.params.id,
+      ]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update third-party game error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update third-party game' });
+  }
+});
+
+router.delete('/third-party/:id', async (req, res) => {
+  try {
+    await db.pool.query('DELETE FROM third_party_games WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete third-party game error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete third-party game' });
+  }
+});
+
 // ===== Websites (landing pages) =====
 const SUBDOMAIN_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 

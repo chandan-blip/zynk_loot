@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiX } from 'react-icons/fi';
@@ -30,16 +30,54 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
   // changes (e.g. a new settled event arrives while the modal is still up).
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  // Auto-close preference — when checked the modal dismisses itself after 5s,
+  // otherwise it stays up until the user closes it manually. Persisted so the
+  // choice sticks across rounds and sessions.
+  const [autoClose, setAutoClose] = useState(() => {
+    try {
+      return localStorage.getItem('gameOverlayAutoClose') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('gameOverlayAutoClose', autoClose ? '1' : '0');
+    } catch {
+      /* ignore storage failures */
+    }
+  }, [autoClose]);
+
+  const [countdown, setCountdown] = useState(5);
   const fingerprint = show && result
     ? `${result.isWin ? 1 : 0}|${result.betAmount ?? ''}|${result.winAmount ?? ''}|${result.result ?? ''}`
     : '';
+  // Play the win/lose sound once per result — keyed only on the fingerprint so
+  // toggling the auto-close checkbox doesn't replay it.
   useEffect(() => {
     if (!fingerprint) return;
     isWin ? sounds.win() : sounds.lose();
-    const timer = setTimeout(() => onCloseRef.current?.(), autoCloseMs);
-    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fingerprint, autoCloseMs]);
+  }, [fingerprint]);
+
+  useEffect(() => {
+    if (!fingerprint) return;
+    if (!autoClose) return;
+    setCountdown(5);
+    const tick = setInterval(() => {
+      setCountdown((s) => {
+        if (s <= 1) {
+          clearInterval(tick);
+          onCloseRef.current?.();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fingerprint, autoClose]);
 
   // Pre-compute random particle / coin trajectories per open so each summon
   // feels different but doesn't reshuffle during the animation.
@@ -77,7 +115,7 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
         glow: 'rgba(245,210,122,0.55)',
         titleStrip: 'linear-gradient(180deg, #fff3b3 0%, #f5d27a 45%, #a17a2c 100%)',
         ribbon: 'linear-gradient(180deg, #fff3b3 0%, #e7c34c 50%, #8a5e16 100%)',
-        verdict: 'WINNER',
+        verdict: 'WIN',
         verdictSub: 'ROYAL PAYOUT',
       }
     : {
@@ -87,7 +125,7 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
         glow: 'rgba(192,57,43,0.5)',
         titleStrip: 'linear-gradient(180deg, #ff8b7b 0%, #c0392b 45%, #4a0e0e 100%)',
         ribbon: 'linear-gradient(180deg, #ff8b7b 0%, #c0392b 50%, #4a0e0e 100%)',
-        verdict: 'BUSTED',
+        verdict: 'LOSS',
         verdictSub: 'TRY AGAIN',
       };
 
@@ -98,11 +136,11 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 !mt-0"
           onClick={onClose}
         >
           {/* Backdrop with blur */}
-          <div className="absolute inset-0 bg-black/85 backdrop-blur-md" />
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
 
           {/* Soft radial halo behind the content */}
           <motion.div
@@ -110,7 +148,7 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
             animate={{ scale: 1.6, opacity: 0.7 }}
             transition={{ duration: 0.7, ease: 'easeOut' }}
             className="absolute w-[520px] h-[520px] rounded-full blur-[120px] pointer-events-none"
-            style={{ background: palette.glow }}
+            // style={{ background: palette.glow }}
           />
 
           {/* Rotating conic spotlight beams (win only) */}
@@ -196,16 +234,6 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
             />
           ))}
 
-          {/* Close button — fixed to the viewport corner so it doesn't shift
-              the perceived vertical centre of the modal content. */}
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="fixed top-4 right-4 z-10 w-9 h-9 rounded-full flex items-center justify-center bg-black/40 hover:bg-black/60 border backdrop-blur-sm transition-colors"
-            style={{ borderColor: `${palette.gold}77`, color: palette.goldLight }}
-          >
-            <FiX className="w-4 h-4" />
-          </button>
 
           {/* CONTENT — floating, no solid container */}
           <motion.div
@@ -280,52 +308,22 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
               {palette.verdictSub}
             </motion.p>
 
-            {/* Gold ribbon with the amount — floating */}
-            <motion.div
+            {/* Amount — floating, bold gilt text */}
+            <motion.p
               initial={{ opacity: 0, y: 18, scale: 0.85 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ delay: 0.6, type: 'spring', damping: 13, stiffness: 200 }}
-              className="relative mt-6 mx-auto inline-block"
+              className="mt-6 text-5xl sm:text-6xl font-black tabular-nums tracking-tight"
+              style={{
+                color: palette.goldLight,
+                textShadow: `0 0 24px ${palette.glow}`,
+                fontFamily: '"Georgia", serif',
+              }}
             >
-              <div
-                className="relative px-7 py-3 rounded-md"
-                style={{
-                  background: palette.ribbon,
-                  boxShadow:
-                    `0 14px 36px rgba(0,0,0,0.65), 0 0 24px ${palette.glow}, inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -3px 6px rgba(0,0,0,0.3)`,
-                }}
-              >
-                {/* Ribbon swallowtails */}
-                <span
-                  className="absolute -left-2 top-1/2 -translate-y-1/2 w-0 h-0"
-                  style={{
-                    borderTop: '16px solid transparent',
-                    borderBottom: '16px solid transparent',
-                    borderRight: `10px solid ${palette.goldDark}`,
-                  }}
-                />
-                <span
-                  className="absolute -right-2 top-1/2 -translate-y-1/2 w-0 h-0"
-                  style={{
-                    borderTop: '16px solid transparent',
-                    borderBottom: '16px solid transparent',
-                    borderLeft: `10px solid ${palette.goldDark}`,
-                  }}
-                />
-                <p
-                  className="text-3xl sm:text-4xl font-black tabular-nums"
-                  style={{
-                    color: '#1a1208',
-                    textShadow: '0 1px 0 rgba(255,255,255,0.35)',
-                    fontFamily: '"Georgia", serif',
-                  }}
-                >
-                  {isWin
-                    ? `+${formatCurrency(result.winAmount)}`
-                    : `−${formatCurrency(result.betAmount)}`}
-                </p>
-              </div>
-            </motion.div>
+              {isWin
+                ? `+${formatCurrency(result.winAmount)}`
+                : `−${formatCurrency(result.betAmount)}`}
+            </motion.p>
 
             {/* Multiplier pill — floating */}
             {isWin && result.multiplier ? (
@@ -416,6 +414,40 @@ function GameResultOverlay({ result, show, onClose, title, autoCloseMs = 4500 })
                 </button>
               </motion.div>
             )}
+
+            {/* Auto-close preference + manual close */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.1 }}
+              className="mt-7 flex flex-col items-center gap-4"
+            >
+              <label
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-2 cursor-pointer select-none text-[11px] uppercase tracking-[0.2em] text-white"
+              >
+                <input
+                  type="checkbox"
+                  checked={autoClose}
+                  onChange={(e) => setAutoClose(e.target.checked)}
+                  className="w-4 h-4 rounded-full cursor-pointer appearance-none border-2 transition-colors"
+                  style={{
+                    borderColor: palette.gold,
+                    background: autoClose ? palette.gold : 'transparent',
+                  }}
+                />
+                {autoClose ? `Auto-close in ${countdown}s` : 'Auto-close in 5s'}
+              </label>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
+                aria-label="Close"
+                className="w-9 h-9 rounded-full flex items-center justify-center bg-black/40 hover:bg-black/60 border backdrop-blur-sm transition-colors"
+                style={{ borderColor: `${palette.gold}77`, color: palette.goldLight }}
+              >
+                <FiX className="w-4 h-4" />
+              </button>
+            </motion.div>
           </motion.div>
         </motion.div>
       )}

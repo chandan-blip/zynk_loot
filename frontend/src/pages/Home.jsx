@@ -28,6 +28,7 @@ import {
   FiDownload,
   FiX,
   FiSmartphone,
+  FiLock,
 } from "react-icons/fi";
 import {
   GiTwoCoins,
@@ -37,7 +38,8 @@ import {
   GiCardJoker,
   GiCardRandom,
 } from "react-icons/gi";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import OnboardingGuide from "../components/OnboardingGuide";
 import FloatingSocialIcons from "../components/FloatingSocialIcons";
 import BannerCarousel from "../components/BannerCarousel";
@@ -58,8 +60,9 @@ import {
   EggHatchPreview,
   FusePreview,
 } from "../components/GamePreviews";
-import { getRecentActivities, getRecentWinners } from "../services/api";
+import { getRecentActivities, getRecentWinners, getThirdPartyGames, getWalletBalance } from "../services/api";
 import socketService from "../services/socket";
+import useStore from "../store/useStore";
 import { useCurrency } from "../contexts/CurrencyContext";
 import usePageTitle from "../hooks/usePageTitle";
 
@@ -109,6 +112,36 @@ function Home() {
   const [recentActivities, setRecentActivities] = useState([]);
   const [lastWinners, setLastWinners] = useState([]);
   const [noticeIdx, setNoticeIdx] = useState(0); // rotating safety-notice index
+
+  // Third-party games (admin catalog) — opening one is gated behind a deposit.
+  const navigate = useNavigate();
+  const { isAuthenticated } = useStore();
+  const [thirdPartyGames, setThirdPartyGames] = useState([]);
+  const [hasDeposited, setHasDeposited] = useState(false);
+  const [depositPrompt, setDepositPrompt] = useState(false);
+
+  useEffect(() => {
+    getThirdPartyGames()
+      .then((res) => setThirdPartyGames(res.data?.data || []))
+      .catch(() => setThirdPartyGames([]));
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) { setHasDeposited(false); return; }
+    getWalletBalance()
+      .then((res) => setHasDeposited((res.data?.data?.totalDeposited || 0) > 0))
+      .catch(() => {});
+  }, [isAuthenticated]);
+
+  const handleThirdPartyClick = (game) => {
+    if (!isAuthenticated) { navigate("/login"); return; }
+    if (!hasDeposited) { setDepositPrompt(true); return; }
+    if (game.game_url) {
+      window.open(game.game_url, "_blank", "noopener,noreferrer");
+    } else {
+      toast("This game is coming soon!", { icon: "🎮" });
+    }
+  };
 
   // Cycle the safety notice every few seconds.
   useEffect(() => {
@@ -287,6 +320,7 @@ function Home() {
       border: "border-emerald-500/30",
       iconColor: "text-emerald-300",
       path: "/games/mutka-king",
+      image: "/games/mutka-king.png",
       Preview: MutkaPreview,
     },
     {
@@ -298,6 +332,7 @@ function Home() {
       border: "border-amber-500/30",
       iconColor: "text-amber-300",
       path: "/games/shuffle-card",
+      image: "/games/suffle-card.png",
       Preview: ShuffleCardPreview,
     },
 
@@ -310,6 +345,7 @@ function Home() {
       border: "border-blue-500/30",
       iconColor: "text-blue-400",
       path: "/games/uno-king",
+      image: "/games/uno-king.png",
       Preview: UnoPreview,
     },
     {
@@ -321,6 +357,7 @@ function Home() {
       border: "border-gold/30",
       iconColor: "text-gold-light",
       path: "/games/lottery",
+      image: "/games/digit-lottery.png",
       Preview: SevenDigitPreview,
     },
   ];
@@ -423,7 +460,7 @@ function Home() {
       <OnboardingGuide />
       <FloatingSocialIcons />
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {/* Banner Carousel */}
         <BannerCarousel />
 
@@ -494,10 +531,10 @@ function Home() {
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_3.5s_infinite] pointer-events-none" />
 
             {/* Top badge */}
-            <div className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-400/20 border border-emerald-400/40 backdrop-blur-sm">
+            {/* <div className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-400/20 border border-emerald-400/40 backdrop-blur-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-emerald-200 text-[9px] font-black uppercase tracking-wider">100% Bonus</span>
-            </div>
+            </div> */}
 
             <div className="relative flex items-center justify-between px-5 py-4 sm:py-5">
               <div className="min-w-0">
@@ -510,7 +547,7 @@ function Home() {
 
                 {/* Bonus chips */}
                 <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                  {['Daily', 'Weekly', 'Monthly', '2× First Deposit'].map((tag) => (
+                  {['Daily', 'Weekly', 'Monthly'].map((tag) => (
                     <span
                       key={tag}
                       className="px-2 py-0.5 rounded-md bg-white/5 border border-emerald-500/20 text-emerald-200/90 text-[10px] font-semibold"
@@ -521,10 +558,10 @@ function Home() {
                 </div>
 
                 {/* CTA */}
-                <span className="inline-flex items-center gap-1 mt-3 text-emerald-300 text-[11px] font-bold">
+                {/* <span className="inline-flex items-center gap-1 mt-3 text-emerald-300 text-[11px] font-bold">
                   Claim now
                   <FiChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                </span>
+                </span> */}
               </div>
 
               <span
@@ -627,43 +664,23 @@ function Home() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 pb-4 pt-1">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 px-4 pb-4 pt-1">
             {lotteryGames.map((game) => (
-              <Link key={game.name} to={game.path} className="block">
-                <div
-                  className={`relative rounded-xl bg-gradient-to-br ${game.color} border ${game.border} p-4 hover:brightness-110 transition-all overflow-hidden min-h-[110px]`}
-                >
-                  {game.Preview ? (
-                    <game.Preview />
-                  ) : (
-                    <game.icon
-                      className={`absolute -right-3 -bottom-3 w-24 h-24 ${game.iconColor} opacity-[0.10]`}
-                    />
-                  )}
-                  <div className="relative flex items-start gap-3">
-                    <div className="w-11 h-11 shrink-0 rounded-lg bg-dark-700/60 border border-white/10 flex items-center justify-center">
-                      <game.icon className={`w-5 h-5 ${game.iconColor}`} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-white text-sm font-bold truncate">
-                          {game.name}
-                        </p>
-                        <span className="text-gold-light text-[10px] font-bold whitespace-nowrap">
-                          {game.maxWin}
-                        </span>
-                      </div>
-                      <p className="text-gray-400 text-[11px] mt-1 flex items-center gap-1">
-                        <FiClock className="w-3 h-3" />
-                        {game.tagline}
-                      </p>
-                      <div className="mt-2.5 inline-flex items-center gap-1 text-accent text-[11px] font-semibold">
-                        <FiPlay className="w-3 h-3" />
-                        Play now <FiChevronRight className="w-3 h-3" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <Link
+                key={game.name}
+                to={game.path}
+                className="group relative block rounded-xl overflow-hidden border border-dark-600 bg-dark-800 aspect-[3/4]"
+              >
+                <img
+                  src={game.image}
+                  alt={game.name}
+                  loading="lazy"
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+                <p className="absolute inset-x-0 bottom-0 p-2 text-[11px] font-bold text-white truncate drop-shadow">
+                  {game.name}
+                </p>
               </Link>
             ))}
           </div>
@@ -684,14 +701,14 @@ function Home() {
               </h3>
             </div>
             <Link
-              to="/games"
+              to="/games?tab=instant"
               className="text-accent text-xs font-medium flex items-center gap-1 hover:underline px-4 py-2.5"
             >
               View All <FiChevronRight className="w-3 h-3" />
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 px-4 pb-4 pt-1">
+          <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-1">
             {instantGames.slice(0, 6).map((game) => (
               <Link key={game.name} to={game.path} className="block">
                 <div
@@ -722,6 +739,60 @@ function Home() {
             ))}
           </div>
         </motion.div>
+
+        {/* Third Party Games */}
+        {thirdPartyGames.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.09 }}
+            className="rounded-xl bg-dark-700/50 overflow-hidden"
+          >
+            <div className="flex items-start justify-between">
+              <div className="bg-dark-800/30 rounded-br-2xl px-4 py-2.5 flex items-center gap-2">
+                <FiGrid className="w-4 h-4 text-accent" />
+                <h3 className="text-white font-semibold text-sm">
+                  Third Party
+                </h3>
+              </div>
+              <Link
+                to="/games?tab=third-party"
+                className="text-accent text-xs font-medium flex items-center gap-1 hover:underline px-4 py-2.5"
+              >
+                View All <FiChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 px-4 pb-4 pt-1">
+              {thirdPartyGames.slice(0, 8).map((game) => (
+                <button
+                  key={game.id}
+                  type="button"
+                  onClick={() => handleThirdPartyClick(game)}
+                  className="group relative rounded-xl overflow-hidden border border-dark-600 bg-dark-800 aspect-[3/4] text-left"
+                >
+                  <img
+                    src={game.image_url}
+                    alt={game.name || "Game"}
+                    loading="lazy"
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+                  {!hasDeposited && (
+                    <div className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 border border-white/10 text-[9px] font-semibold text-amber-300">
+                      <FiLock className="w-2.5 h-2.5" /> Deposit
+                    </div>
+                  )}
+                  {game.name && (
+                    <p className="absolute inset-x-0 bottom-0 p-2 text-[11px] font-bold text-white truncate drop-shadow">
+                      {game.name}
+                    </p>
+                  )}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Recent Winners */}
         <motion.div
@@ -1160,6 +1231,49 @@ function Home() {
                 </button>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Deposit-required gate for third-party games */}
+      <AnimatePresence>
+        {depositPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => setDepositPrompt(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl border border-dark-600 bg-dark-800 p-6 text-center"
+            >
+              <div className="mx-auto w-14 h-14 rounded-2xl bg-accent/15 grid place-items-center mb-4">
+                <FiLock className="w-7 h-7 text-accent" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Deposit to unlock</h3>
+              <p className="text-sm text-gray-400 mt-1.5">
+                Make your first deposit to start playing third-party games.
+              </p>
+              <div className="mt-5 flex gap-2">
+                <button
+                  onClick={() => setDepositPrompt(false)}
+                  className="flex-1 py-2.5 rounded-lg bg-dark-700 border border-dark-600 text-sm font-semibold text-gray-300 hover:text-white"
+                >
+                  Not now
+                </button>
+                <button
+                  onClick={() => navigate("/wallet?tab=buy")}
+                  className="flex-1 py-2.5 rounded-lg bg-accent text-dark-900 text-sm font-bold hover:opacity-90"
+                >
+                  Deposit now
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

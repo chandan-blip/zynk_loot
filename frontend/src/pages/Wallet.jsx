@@ -15,14 +15,9 @@ import {
   FiX,
   FiSend,
   FiTrendingUp,
-  FiAward,
   FiDownload,
   FiSearch,
   FiUser,
-  FiGift,
-  FiTarget,
-  FiZap,
-  FiUsers,
   FiCalendar,
   FiArrowUp,
   FiArrowDown,
@@ -30,7 +25,7 @@ import {
 } from 'react-icons/fi';
 import { SiBitcoin, SiEthereum, SiPaytm, SiGooglepay, SiPhonepe } from 'react-icons/si';
 import { GiTwoCoins } from 'react-icons/gi';
-import { BsBank2, BsTrophy, BsLightning, BsStars } from 'react-icons/bs';
+import { BsBank2 } from 'react-icons/bs';
 import {
   AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -57,6 +52,7 @@ import {
   getUserOrders
 } from '../services/api';
 import usePageTitle from '../hooks/usePageTitle';
+import { getCurrentTier } from '../config/tiers';
 
 const CRYPTO_TYPES = [
   { value: 'BTC', label: 'Bitcoin (BTC)', icon: SiBitcoin },
@@ -65,25 +61,6 @@ const CRYPTO_TYPES = [
   { value: 'BNB', label: 'BNB', icon: FiDollarSign },
   { value: 'SOL', label: 'Solana (SOL)', icon: FiDollarSign },
   { value: 'OTHER', label: 'Other', icon: FiDollarSign },
-];
-
-const TIER_THRESHOLDS = [
-  { name: 'Bronze', min: 0, max: 999, bonus: 0, color: '#CD7F32', icon: '🥉' },
-  { name: 'Silver', min: 1000, max: 4999, bonus: 2, color: '#C0C0C0', icon: '🥈' },
-  { name: 'Gold', min: 5000, max: 19999, bonus: 5, color: '#FFD700', icon: '🥇' },
-  { name: 'Platinum', min: 20000, max: 49999, bonus: 10, color: '#E5E4E2', icon: '💎' },
-  { name: 'Diamond', min: 50000, max: Infinity, bonus: 15, color: '#B9F2FF', icon: '👑' },
-];
-
-const buildAchievements = (formatCurrency) => [
-  { id: 'first_deposit', name: 'First Steps', description: 'Make your first deposit', icon: FiArrowDownCircle, category: 'wallet' },
-  { id: 'first_win', name: 'Lucky Start', description: 'Win your first lottery prize', icon: BsTrophy, category: 'lottery' },
-  { id: 'high_roller', name: 'High Roller', description: `Spend ${formatCurrency(10000)} total`, icon: FiZap, category: 'spending', threshold: 10000 },
-  { id: 'big_spender', name: 'Big Spender', description: `Spend ${formatCurrency(50000)} total`, icon: BsStars, category: 'spending', threshold: 50000 },
-  { id: 'lucky_streak', name: 'Lucky Streak', description: 'Win 3 times in a row', icon: BsLightning, category: 'lottery' },
-  { id: 'social_butterfly', name: 'Social Butterfly', description: 'Transfer to 5 different users', icon: FiUsers, category: 'transfer', threshold: 5 },
-  { id: 'generous', name: 'Generous Soul', description: `Transfer ${formatCurrency(1000)} to others`, icon: FiGift, category: 'transfer', threshold: 1000 },
-  { id: 'collector', name: 'Number Collector', description: 'Own 10 numbers at once', icon: FiTarget, category: 'lottery', threshold: 10 },
 ];
 
 const CHART_COLORS = ['#00D4AA', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'];
@@ -95,13 +72,12 @@ function Wallet() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { updateBalance } = useStore();
   const { selectedCurrency, formatCurrency } = useCurrency();
-  const ACHIEVEMENTS = buildAchievements(formatCurrency);
 
   // Allow other pages to deep-link into a specific tab via `?tab=<id>`.
   // Recognized ids match the tabs list below (buy, deposits, withdrawals,
   // methods, transfer, analytics, rewards). The query is stripped after we
   // pick it up so the URL stays clean.
-  const TAB_IDS = ['buy', 'deposits', 'withdrawals', 'methods', 'transfer', 'analytics', 'rewards'];
+  const TAB_IDS = ['buy', 'deposits', 'withdrawals', 'methods', 'transfer', 'analytics'];
   const initialTab = TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'buy';
   const [activeTab, setActiveTab] = useState(initialTab);
   const tabRefs = useRef({});
@@ -150,15 +126,11 @@ function Wallet() {
   // Analytics states
   const [analyticsRange, setAnalyticsRange] = useState('30');
 
-  // Rewards states
-  const [unlockedAchievements, setUnlockedAchievements] = useState([]);
-
   const [processingPackage, setProcessingPackage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchData();
-    loadAchievements();
   }, []);
 
   const fetchData = async () => {
@@ -205,18 +177,6 @@ function Wallet() {
     setLoading(false);
   };
 
-  const loadAchievements = () => {
-    const saved = localStorage.getItem('achievements');
-    if (saved) {
-      setUnlockedAchievements(JSON.parse(saved));
-    }
-  };
-
-  const saveAchievement = (achievementId) => {
-    const updated = [...unlockedAchievements, achievementId];
-    setUnlockedAchievements(updated);
-    localStorage.setItem('achievements', JSON.stringify(updated));
-  };
 
   // Compute analytics from transactions
   const analytics = useMemo(() => {
@@ -290,24 +250,9 @@ function Wallet() {
     };
   }, [transactions, analyticsRange]);
 
-  // Compute current tier
-  const currentTier = useMemo(() => {
-    const spent = balance.totalSpent || 0;
-    return TIER_THRESHOLDS.find(t => spent >= t.min && spent <= t.max) || TIER_THRESHOLDS[0];
-  }, [balance.totalSpent]);
-
-  const nextTier = useMemo(() => {
-    const idx = TIER_THRESHOLDS.findIndex(t => t.name === currentTier.name);
-    return idx < TIER_THRESHOLDS.length - 1 ? TIER_THRESHOLDS[idx + 1] : null;
-  }, [currentTier]);
-
-  const tierProgress = useMemo(() => {
-    if (!nextTier) return 100;
-    const spent = balance.totalSpent || 0;
-    const range = nextTier.min - currentTier.min;
-    const progress = spent - currentTier.min;
-    return Math.min(100, (progress / range) * 100);
-  }, [balance.totalSpent, currentTier, nextTier]);
+  // Compute current tier (badge shown in the wallet header; full VIP ladder
+  // and achievements live on the dedicated /vip page).
+  const currentTier = useMemo(() => getCurrentTier(balance.totalSpent || 0), [balance.totalSpent]);
 
   // Filtered transfers
   const filteredTransfers = useMemo(() => {
@@ -561,7 +506,6 @@ function Wallet() {
           { id: 'methods', label: 'Methods', icon: FiCreditCard },
           { id: 'transfer', label: 'Transfer', icon: FiSend },
           { id: 'analytics', label: 'Analytics', icon: FiTrendingUp },
-          { id: 'rewards', label: 'Rewards', icon: FiAward },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1240,143 +1184,6 @@ function Wallet() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Rewards Tab */}
-        {activeTab === 'rewards' && (
-          <motion.div
-            key="rewards"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-3"
-          >
-            {/* Tier Progress */}
-            <div className="bg-gradient-to-br from-dark-700 to-dark-800 rounded-xl border border-dark-600 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-4xl">{currentTier.icon}</span>
-                  <div>
-                    <h3 className="text-xl font-bold" style={{ color: currentTier.color }}>{currentTier.name} Tier</h3>
-                    <p className="text-gray-400 text-sm">
-                      {currentTier.bonus > 0 ? `${currentTier.bonus}% bonus on all earnings` : 'Earn bonuses by leveling up!'}
-                    </p>
-                  </div>
-                </div>
-                {nextTier && (
-                  <div className="text-right">
-                    <p className="text-gray-400 text-sm">Next: {nextTier.name}</p>
-                    <p className="text-white font-medium">{formatCurrency(nextTier.min - balance.totalSpent)} to go</p>
-                  </div>
-                )}
-              </div>
-
-              {nextTier && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">{formatCurrency(balance.totalSpent)} / {formatCurrency(nextTier.min)} spent</span>
-                    <span className="text-accent">{tierProgress.toFixed(0)}%</span>
-                  </div>
-                  <div className="h-3 bg-dark-600 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${tierProgress}%` }}
-                      transition={{ duration: 1, ease: 'easeOut' }}
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: currentTier.color }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Tier Benefits */}
-              <div className="mt-6 pt-4 border-t border-dark-600">
-                <h4 className="text-white font-medium mb-3">All Tier Benefits</h4>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  {TIER_THRESHOLDS.map((tier) => (
-                    <div
-                      key={tier.name}
-                      className={`p-3 rounded-lg border ${
-                        tier.name === currentTier.name
-                          ? 'border-accent bg-accent/10'
-                          : balance.totalSpent >= tier.min
-                            ? 'border-green-500/30 bg-green-500/10'
-                            : 'border-dark-500 bg-dark-800 opacity-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span>{tier.icon}</span>
-                        <span className="text-sm font-medium" style={{ color: tier.color }}>{tier.name}</span>
-                      </div>
-                      <p className="text-xs text-gray-400">
-                        {tier.bonus > 0 ? `+${tier.bonus}% bonus` : 'No bonus'}
-                      </p>
-                      <p className="text-xs text-gray-500">{formatCurrency(tier.min)}+</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Achievements */}
-            <div className="bg-dark-700 rounded-xl border border-dark-600 p-6">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <FiAward className="text-accent" />
-                Achievements
-              </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {ACHIEVEMENTS.map((achievement) => {
-                  const isUnlocked = unlockedAchievements.includes(achievement.id);
-                  const Icon = achievement.icon;
-
-                  // Calculate progress for threshold achievements
-                  let progress = 0;
-                  if (achievement.threshold) {
-                    if (achievement.category === 'spending') {
-                      progress = Math.min(100, (balance.totalSpent / achievement.threshold) * 100);
-                    }
-                  }
-
-                  return (
-                    <div
-                      key={achievement.id}
-                      className={`relative p-4 rounded-xl border transition-all ${
-                        isUnlocked
-                          ? 'bg-accent/10 border-accent/30'
-                          : 'bg-dark-800 border-dark-600 opacity-60'
-                      }`}
-                    >
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
-                        isUnlocked ? 'bg-accent/20 text-accent' : 'bg-dark-600 text-gray-500'
-                      }`}>
-                        <Icon className="w-6 h-6" />
-                      </div>
-                      <h4 className="text-white font-medium text-sm">{achievement.name}</h4>
-                      <p className="text-gray-400 text-xs mt-1">{achievement.description}</p>
-
-                      {!isUnlocked && achievement.threshold && progress > 0 && (
-                        <div className="mt-2">
-                          <div className="h-1 bg-dark-600 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-accent/50 rounded-full"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">{progress.toFixed(0)}%</p>
-                        </div>
-                      )}
-
-                      {isUnlocked && (
-                        <div className="absolute top-2 right-2">
-                          <FiCheck className="w-5 h-5 text-accent" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             </div>
           </motion.div>
