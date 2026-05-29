@@ -523,14 +523,14 @@ function Profile() {
                       <div className="flex gap-2 mt-3">
                         <button
                           onClick={() => navigate('/wallet?tab=buy')}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent text-dark-900 hover:bg-accent/90 transition-colors shadow shadow-accent/20"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 transition-colors"
                         >
                           <FiDownload className="w-3.5 h-3.5" />
                           Deposit
                         </button>
                         <button
                           onClick={() => navigate('/wallet?tab=withdrawals')}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-dark-700 hover:bg-dark-600 text-white border border-dark-500 hover:border-accent/40 transition-colors"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border border-yellow-500/30 transition-colors"
                         >
                           <FiArrowUpRight className="w-3.5 h-3.5" />
                           Withdraw

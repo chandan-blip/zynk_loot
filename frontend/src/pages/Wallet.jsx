@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
@@ -25,7 +25,8 @@ import {
   FiUsers,
   FiCalendar,
   FiArrowUp,
-  FiArrowDown
+  FiArrowDown,
+  FiArrowUpRight
 } from 'react-icons/fi';
 import { SiBitcoin, SiEthereum, SiPaytm, SiGooglepay, SiPhonepe } from 'react-icons/si';
 import { GiTwoCoins } from 'react-icons/gi';
@@ -103,6 +104,14 @@ function Wallet() {
   const TAB_IDS = ['buy', 'deposits', 'withdrawals', 'methods', 'transfer', 'analytics', 'rewards'];
   const initialTab = TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'buy';
   const [activeTab, setActiveTab] = useState(initialTab);
+  const tabRefs = useRef({});
+  // Center the active tab within the scrollable tab bar whenever it changes
+  useEffect(() => {
+    const el = tabRefs.current[activeTab];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [activeTab]);
   useEffect(() => {
     if (searchParams.get('tab')) {
       const next = new URLSearchParams(searchParams);
@@ -528,14 +537,16 @@ function Wallet() {
         <div className="mt-4 bottom-4 right-4 grid grid-cols-2 gap-2">
           <button
             onClick={() => setActiveTab('buy')}
-            className="px-4 py-2 shrink-0 rounded-lg bg-dark-600 hover:bg-dark-500 text-white text-sm transition-colors border border-dark-500"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 shrink-0 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-sm font-bold transition-colors border border-emerald-500/30"
           >
+            <FiDownload className="w-4 h-4" />
             Deposit
           </button>
           <button
             onClick={() => navigate('/wallet/withdraw')}
-            className="px-4 py-2 shrink-0 rounded-lg bg-dark-600 hover:bg-dark-500 text-white text-sm transition-colors border border-dark-500"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 shrink-0 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-sm font-bold transition-colors border border-yellow-500/30"
           >
+            <FiArrowUpRight className="w-4 h-4" />
             Withdraw
           </button>
         </div>
@@ -554,6 +565,7 @@ function Wallet() {
         ].map((tab) => (
           <button
             key={tab.id}
+            ref={(el) => (tabRefs.current[tab.id] = el)}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 snap-center px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === tab.id
@@ -777,9 +789,9 @@ function Wallet() {
               <h3 className="text-lg font-semibold text-white">Your Withdrawals</h3>
               <button
                 onClick={() => navigate('/wallet/withdraw')}
-                className="bg-accent text-dark-900 rounded-lg flex items-center justify-center px-4 py-2 text-sm font-semibold hover:bg-accent/90 transition-colors"
+                className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-lg flex items-center justify-center px-4 py-2 text-sm font-bold hover:bg-yellow-500/30 transition-colors"
               >
-                <FiArrowUpCircle className="w-4 h-4 mr-1" /> New Withdrawal
+                <FiArrowUpRight className="w-4 h-4 mr-1" /> New Withdrawal
               </button>
             </div>
 

@@ -200,23 +200,8 @@ export const saveSmmPanel = (config) =>
 export const testTelegramMessage = (text, placeSmmOrders = true) =>
   api.post('/admin/daily-winners/test-telegram', { text, placeSmmOrders });
 
-// Prediction admin module
-export const getPredictionSchedule = () => api.get('/admin/predictions/schedule');
-export const updatePredictionSchedule = (config) =>
-  api.put('/admin/predictions/schedule', { config });
-export const testPredictionSlot = (slotIndex) =>
-  api.post(`/admin/predictions/schedule/test/${slotIndex}`);
-export const getPredictionSmmMaster = () => api.get('/admin/predictions/smm-master');
-export const setPredictionSmmMaster = (enabled) =>
-  api.put('/admin/predictions/smm-master', { enabled });
-export const getPredictionLog = (game = null, cardCountType = null, limit = 50) => {
-  const params = new URLSearchParams();
-  if (game) params.set('game', game);
-  if (cardCountType) params.set('type', String(cardCountType));
-  params.set('limit', String(limit));
-  return api.get(`/admin/predictions/log?${params.toString()}`);
-};
-// Custom Prediction admin module (manual rig — pick exact result cards)
+// Custom Prediction admin module (manual rig — pick exact result cards).
+// The scheduled Telegram-broadcast Prediction module was removed.
 export const getCustomPredictionRound = (game, cardCountType) =>
   api.get(`/admin/predictions/custom/round?game=${encodeURIComponent(game)}&type=${cardCountType}`, { silent: true });
 export const lockCustomPrediction = (game, cardCountType, cards) =>

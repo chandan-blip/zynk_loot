@@ -1,39 +1,54 @@
 const db = require('../config/database');
 const crypto = require('crypto');
 
-// UNO King — 4 PARALLEL server-authoritative 54-card UNO lotteries, one per
-// card_count_type (1, 2, 3, 4). Type N draws N cards from a 54-card UNO deck
-// (52 colored + 2 wilds).
+// UNO King — 4 PARALLEL server-authoritative single-card lotteries, one per
+// DURATION LANE (30s, 1m, 5m, 10m). Each round reveals exactly ONE card from a
+// 54-card UNO deck (52 colored + 2 wilds).
 //
-// Bet kinds (per type N):
-//   cards  — pick 1..N specific ids (0-53); all picked must appear.
-//   color  — 'red'|'yellow'|'green'|'blue'; any dealt card matches.
-//   number — 0..9; any dealt card has that rank-number.
-//   action — 'skip'|'reverse'|'draw_two'; any dealt card is that action.
-//   wild   — any dealt card is a wild (no target).
+// The lane is carried in the `card_count_type` column (values 1..4) — the
+// column is kept for schema/prediction-rig compatibility but now means a lane
+// id, NOT a card count. UNO's card count is always 1. See LANES below.
+//
+// Bet kinds (the one revealed card decides all):
+//   cards  — pick exactly 1 specific card (0-53); wins if it is drawn. 15x
+//   color  — 'red'|'yellow'|'green'|'blue'; wins if the drawn card is that
+//            color (wilds have no color, never match).                  2x
+//   action — 'skip'|'reverse'|'draw_two'; wins if the drawn card is that
+//            action.                                                     5x
+//   wild   — wins if the drawn card is a wild (no target).              50x
 
-const CARD_COUNT_TYPES = [1, 2, 3, 4];
+// Lane id → duration config. Each lane is its own parallel round loop with its
+// own period_id sequence, timing, and history.
+const LANES = [
+  { id: 1, key: '30s', label: '30s', totalMs: 30_000,  bettingMs: 25_000,  lockMs: 5_000 },
+  { id: 2, key: '1m',  label: '1m',  totalMs: 60_000,  bettingMs: 50_000,  lockMs: 10_000 },
+  { id: 3, key: '5m',  label: '5m',  totalMs: 300_000, bettingMs: 285_000, lockMs: 15_000 },
+  { id: 4, key: '10m', label: '10m', totalMs: 600_000, bettingMs: 580_000, lockMs: 20_000 },
+];
+const LANE_IDS = LANES.map((l) => l.id);
+const LANE_BY_ID = new Map(LANES.map((l) => [l.id, l]));
+// Backwards-compatible alias — several callers/iterators still reference the
+// old name; it is now simply the list of lane ids.
+const CARD_COUNT_TYPES = LANE_IDS;
 
 const WIN_PAYOUT_RATIO = 0.9;
 
 const UNO_MULTIPLIERS = {
-  cards:  { 1: 2, 2: 9, 3: 100, 4: 500 },
+  cards:  15,
   color:  2,
-  number: 3,
-  action: 3,
-  wild:   6,
+  action: 5,
+  wild:   50,
 };
 
-const ROUND_TOTAL_MS    = 60_000;
-const BETTING_PHASE_MS  = 50_000;
-const LOCK_PHASE_MS     = 10_000;
 const MAX_BETS_PER_USER = 20;
 const MIN_BET = 1;
 const MAX_BET = 10_000;
 const UNO_DECK_SIZE = 54;
 
+const UNO_COLORS = ['red', 'yellow', 'green', 'blue'];
 const UNO_COLOR_INDEX = { red: 0, yellow: 1, green: 2, blue: 3 };
 const UNO_ACTION_RANK = { skip: 10, reverse: 11, draw_two: 12 };
+const UNO_RANK_ACTION = { 10: 'skip', 11: 'reverse', 12: 'draw_two' };
 
 const isUnoWild  = (id) => id >= 52;
 const unoColorOf = (id) => (isUnoWild(id) ? null : Math.floor(id / 13));
@@ -81,7 +96,7 @@ class UnoKingService {
       console.error('[UNO] Startup cleanup error:', e.message);
     }
 
-    console.log('[UNO] Service started — opening first round per type...');
+    console.log('[UNO] Service started — opening first round per lane...');
     for (const t of CARD_COUNT_TYPES) await this._openRound(t);
   }
 
@@ -129,10 +144,12 @@ class UnoKingService {
     if (!this.running) return;
 
     try {
+      const lane = LANE_BY_ID.get(type);
+      if (!lane) throw new Error(`Unknown lane id ${type}`);
       const periodId = await this._generatePeriodId(type);
       const startedAt = new Date();
-      const lockedAt = new Date(startedAt.getTime() + BETTING_PHASE_MS);
-      const completeAt = new Date(startedAt.getTime() + ROUND_TOTAL_MS);
+      const lockedAt = new Date(startedAt.getTime() + lane.bettingMs);
+      const completeAt = new Date(startedAt.getTime() + lane.totalMs);
 
       const [result] = await db.pool.query(
         `INSERT INTO uno_king_rounds (period_id, card_count_type, status, started_at)
@@ -155,10 +172,10 @@ class UnoKingService {
 
       if (this.io) this.io.emit('uno:round:open', this._publicRoundState(type));
 
-      this._setTimer(type, 'lock', BETTING_PHASE_MS, () =>
+      this._setTimer(type, 'lock', lane.bettingMs, () =>
         this._lockRound(type).catch(err => console.error(`[UNO/${type}] Lock error:`, err))
       );
-      this._setTimer(type, 'complete', ROUND_TOTAL_MS, () =>
+      this._setTimer(type, 'complete', lane.totalMs, () =>
         this._completeRound(type).catch(err => console.error(`[UNO/${type}] Complete error:`, err))
       );
     } catch (err) {
@@ -180,11 +197,12 @@ class UnoKingService {
     console.log(`[UNO/${type}] Round locked ${round.periodId}`);
 
     if (this.io) {
+      const lane = LANE_BY_ID.get(type);
       this.io.emit('uno:round:lock', {
         cardCountType: type,
         roundId: round.id,
         periodId: round.periodId,
-        countdownSeconds: Math.floor(LOCK_PHASE_MS / 1000),
+        countdownSeconds: Math.floor((lane?.lockMs ?? 10_000) / 1000),
       });
     }
   }
@@ -194,29 +212,39 @@ class UnoKingService {
     if (!round) return;
 
     try {
-      // Durable predicted-cards lookup — falls through to prediction_log if
-      // the in-memory Map was wiped by a PM2 restart between broadcast
-      // and now.
+      // Durable lookup — falls through to prediction_log table if the
+      // in-memory Map was wiped by a PM2 restart between broadcast and now.
       let cards = null;
       if (this.predictionService) {
         const { cards: resolved, source } = await this.predictionService
-          .resolveCardsForRound(round.id, 'uno_king', type);
+          .resolveCardsForRound(round.id, 'uno_king', 1);
         if (resolved) {
           cards = resolved;
           console.log(`[UNO/${type}] Used predicted cards (${source}) for round ${round.id}: ${JSON.stringify(cards)}`);
         }
       }
       if (!cards) {
-        console.log(`[UNO/${type}] No predicted cards for round ${round.id} — using random sample`);
-        cards = secureSample(UNO_DECK_SIZE, type);
+        console.log(`[UNO/${type}] No predicted card for round ${round.id} — using random sample`);
+        cards = secureSample(UNO_DECK_SIZE, 1);
       }
-      const cardSet = new Set(cards);
-      const colors = cards.map(unoColorOf);
-      const ranks = cards.map(unoRankOf);
-      const hasAnyWild = cards.some(isUnoWild);
-      const wildCount = cards.filter(isUnoWild).length;
+      // Exactly one card is revealed per round — `card` is the single outcome.
+      const card = cards[0];
+      const wild = isUnoWild(card);
+      const colorIdx = unoColorOf(card);
+      const rankVal = unoRankOf(card);
+      const colorStr = wild ? null : UNO_COLORS[colorIdx];
+      const actionStr = (!wild && UNO_RANK_ACTION[rankVal]) ? UNO_RANK_ACTION[rankVal] : null;
 
-      const resultSummary = { cards, colors, ranks, hasAnyWild, wildCount, cardCountType: type };
+      const resultSummary = {
+        cards,
+        card,
+        isWild: wild,
+        color: colorStr,
+        colorIndex: colorIdx,
+        rank: rankVal,
+        action: actionStr,
+        laneId: type,
+      };
 
       const [bets] = await db.pool.query(
         `SELECT id, user_id, kind, amount, multiplier, details
@@ -238,17 +266,13 @@ class UnoKingService {
 
         let isWin = false;
         if (bet.kind === 'cards' && Array.isArray(details.cards)) {
-          isWin = details.cards.every((c) => cardSet.has(c));
+          isWin = details.cards[0] === card;
         } else if (bet.kind === 'color' && typeof details.color === 'string') {
-          const idx = UNO_COLOR_INDEX[details.color];
-          isWin = idx != null && colors.includes(idx);
-        } else if (bet.kind === 'number' && Number.isInteger(details.number)) {
-          isWin = ranks.includes(details.number);
+          isWin = !wild && colorIdx === UNO_COLOR_INDEX[details.color];
         } else if (bet.kind === 'action' && typeof details.action === 'string') {
-          const r = UNO_ACTION_RANK[details.action];
-          isWin = r != null && ranks.includes(r);
+          isWin = !wild && rankVal === UNO_ACTION_RANK[details.action];
         } else if (bet.kind === 'wild') {
-          isWin = hasAnyWild;
+          isWin = wild;
         }
 
         const winAmount = isWin
@@ -333,7 +357,7 @@ class UnoKingService {
                 balanceBefore.toFixed(2),
                 balanceAfter.toFixed(2),
                 gb.insertId,
-                `UNO King type-${type} win: ${round.periodId}`,
+                `UNO King ${LANE_BY_ID.get(type)?.label || `lane ${type}`} win: ${round.periodId}`,
               ]
             );
           }
@@ -423,7 +447,7 @@ class UnoKingService {
   async _forceFinalize(roundId) {
     await db.pool.query(
       `UPDATE uno_king_bets SET status = 'settled', is_win = 0, win_amount = 0,
-                                settled_at = NOW()
+                                  settled_at = NOW()
         WHERE round_id = ? AND status = 'pending'`,
       [roundId]
     );
@@ -452,8 +476,12 @@ class UnoKingService {
     const lockMs = r.lockedAt.getTime();
     const completeMs = r.completeAt.getTime();
     const phase = now < lockMs ? 'betting' : 'locked';
+    const lane = LANE_BY_ID.get(type);
     return {
       cardCountType: type,
+      laneId: type,
+      laneKey: lane?.key || null,
+      laneLabel: lane?.label || null,
       roundId: r.id,
       periodId: r.periodId,
       status: phase,
@@ -462,24 +490,28 @@ class UnoKingService {
       completeAt: r.completeAt.toISOString(),
       bettingRemainingMs: Math.max(0, lockMs - now),
       totalRemainingMs: Math.max(0, completeMs - now),
-      bettingPhaseMs: BETTING_PHASE_MS,
-      lockPhaseMs: LOCK_PHASE_MS,
-      roundTotalMs: ROUND_TOTAL_MS,
+      bettingPhaseMs: lane?.bettingMs ?? 0,
+      lockPhaseMs: lane?.lockMs ?? 0,
+      roundTotalMs: lane?.totalMs ?? 0,
     };
   }
 
   getAllRoundStates() {
     const out = {};
-    for (const t of CARD_COUNT_TYPES) out[t] = this._publicRoundState(t);
+    for (const t of LANE_IDS) out[t] = this._publicRoundState(t);
     return out;
   }
 
   getCurrentRoundState() {
-    return this._publicRoundState(4) || this._publicRoundState(1);
+    return this._publicRoundState(1) || this._publicRoundState(2);
   }
 
   getCardCountTypes() {
-    return [...CARD_COUNT_TYPES];
+    return [...LANE_IDS];
+  }
+
+  getLanes() {
+    return LANES.map((l) => ({ ...l }));
   }
 
   getMultipliers() {
@@ -487,16 +519,17 @@ class UnoKingService {
   }
 
   async placeBet(userId, betInput) {
-    const type = parseInt(betInput?.cardCountType ?? betInput?.card_count_type, 10);
-    if (!CARD_COUNT_TYPES.includes(type)) throw new Error('cardCountType must be 1, 2, 3, or 4');
+    const type = parseInt(betInput?.cardCountType ?? betInput?.card_count_type ?? betInput?.laneId, 10);
+    if (!LANE_IDS.includes(type)) throw new Error('Invalid lane — must be one of 30s, 1m, 5m, 10m');
+    const laneLabel = LANE_BY_ID.get(type)?.label || `lane ${type}`;
     const round = this.currentRounds.get(type);
     if (!round) {
       throw new Error(
-        `Type-${type} UNO King round has not been opened yet — server may still be starting, or migration 061 has not been applied (check backend logs for "[UNO/${type}] Failed to open round").`
+        `The ${laneLabel} UNO King round has not been opened yet — server may still be starting, or migration 066 has not been applied (check backend logs for "[UNO/${type}] Failed to open round").`
       );
     }
-    if (round.status !== 'betting') throw new Error(`Betting is closed for type-${type} round (status=${round.status})`);
-    if (Date.now() >= round.lockedAt.getTime()) throw new Error(`Betting is closed for type-${type} round (locked)`);
+    if (round.status !== 'betting') throw new Error(`Betting is closed for the ${laneLabel} round (status=${round.status})`);
+    if (Date.now() >= round.lockedAt.getTime()) throw new Error(`Betting is closed for the ${laneLabel} round (locked)`);
 
     const cleanBet = this._validateBet(betInput, type);
 
@@ -547,7 +580,7 @@ class UnoKingService {
           balance,
           newBalance,
           bal.insertId,
-          `UNO King type-${type} bet ${round.periodId}: ${cleanBet.kind}`,
+          `UNO King ${laneLabel} bet ${round.periodId}: ${cleanBet.kind}`,
         ]
       );
 
@@ -583,38 +616,26 @@ class UnoKingService {
     const kind = bet.kind || 'cards';
 
     if (kind === 'cards') {
-      if (!Array.isArray(bet.cards) || bet.cards.length < 1 || bet.cards.length > type) {
-        throw new Error(`Pick 1-${type} cards for this type`);
+      // Exactly one card is revealed per round, so a Cards bet is a single
+      // exact-card guess (0-53) paying 15x.
+      if (!Array.isArray(bet.cards) || bet.cards.length !== 1) {
+        throw new Error('Pick exactly 1 card');
       }
-      const cards = bet.cards.map((c) => {
-        const n = parseInt(c, 10);
-        if (!Number.isInteger(n) || n < 0 || n >= UNO_DECK_SIZE) throw new Error('Invalid card');
-        return n;
-      });
-      if (new Set(cards).size !== cards.length) throw new Error('Duplicate cards');
-      const multiplier = UNO_MULTIPLIERS.cards[cards.length];
-      if (!multiplier) throw new Error('Unsupported pick count');
-      return { kind, amount, multiplier, details: { cards } };
+      const n = parseInt(bet.cards[0], 10);
+      if (!Number.isInteger(n) || n < 0 || n > UNO_DECK_SIZE - 1) throw new Error('Invalid card');
+      return { kind, amount, multiplier: UNO_MULTIPLIERS.cards, details: { cards: [n] } };
     }
 
     if (kind === 'color') {
       if (!Object.prototype.hasOwnProperty.call(UNO_COLOR_INDEX, bet.color)) {
-        throw new Error('Color must be red, yellow, green, or blue');
+        throw new Error('Color must be red, yellow, green or blue');
       }
       return { kind, amount, multiplier: UNO_MULTIPLIERS.color, details: { color: bet.color } };
     }
 
-    if (kind === 'number') {
-      const number = parseInt(bet.number, 10);
-      if (!Number.isInteger(number) || number < 0 || number > 9) {
-        throw new Error('Number must be 0-9');
-      }
-      return { kind, amount, multiplier: UNO_MULTIPLIERS.number, details: { number } };
-    }
-
     if (kind === 'action') {
       if (!Object.prototype.hasOwnProperty.call(UNO_ACTION_RANK, bet.action)) {
-        throw new Error('Action must be skip, reverse, or draw_two');
+        throw new Error('Action must be skip, reverse or draw_two');
       }
       return { kind, amount, multiplier: UNO_MULTIPLIERS.action, details: { action: bet.action } };
     }
@@ -728,3 +749,4 @@ class UnoKingService {
 module.exports = UnoKingService;
 module.exports.UNO_MULTIPLIERS = UNO_MULTIPLIERS;
 module.exports.CARD_COUNT_TYPES = CARD_COUNT_TYPES;
+module.exports.LANES = LANES;

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, ToastBar } from 'react-hot-toast';
 import useStore from './store/useStore';
 import { CurrencyProvider } from './contexts/CurrencyContext';
 import Layout from './components/Layout';
@@ -31,7 +31,6 @@ import AdminWithdrawals from './pages/admin/AdminWithdrawals';
 import AdminWinners from './pages/admin/AdminWinners';
 import AdminDailyWinners from './pages/admin/AdminDailyWinners';
 import AdminPaymentTemplates from './pages/admin/AdminPaymentTemplates';
-import AdminPrediction from './pages/admin/AdminPrediction';
 import AdminCustomPrediction from './pages/admin/AdminCustomPrediction';
 import AdminRoles from './pages/admin/AdminRoles';
 import AdminSmmQueue from './pages/admin/AdminSmmQueue';
@@ -239,12 +238,15 @@ function App() {
   return (
     <CurrencyProvider>
       <Toaster
-        position="top-right"
+        position="top-center"
+        containerStyle={{ top: '50%', left: '50%', right: 'auto', bottom: 'auto', transform: 'translate(-50%, -50%)' }}
         toastOptions={{
           style: {
             background: '#111921',
             color: '#fff',
             border: '1px solid #1e2a36',
+            width: 'max-content',
+            minWidth: "250px"
           },
           success: {
             iconTheme: {
@@ -259,7 +261,20 @@ function App() {
             },
           },
         }}
-      />
+      >
+        {(t) => (
+          <ToastBar
+            toast={t}
+            style={{
+              ...t.style,
+              // Opacity-only fade, ease-in-out (overrides the default slide/scale).
+              animation: 'none',
+              opacity: t.visible ? 1 : 0,
+              transition: 'opacity 0.3s ease-in-out',
+            }}
+          />
+        )}
+      </Toaster>
       <ScrollToTop />
       <TrackingInit />
       <RouteLoader />
@@ -277,7 +292,6 @@ function App() {
           <Route path="winners" element={<AdminWinners />} />
           <Route path="daily-winners" element={<AdminDailyWinners />} />
           <Route path="payment-templates" element={<AdminPaymentTemplates />} />
-          <Route path="prediction" element={<AdminPrediction />} />
           <Route path="custom-prediction" element={<AdminCustomPrediction />} />
           <Route path="roles" element={<AdminRoles />} />
           <Route path="smm-queue" element={<AdminSmmQueue />} />

@@ -3687,93 +3687,9 @@ router.get('/tracking/realtime', async (req, res) => {
   }
 });
 
-// ── Prediction (admin schedule + Telegram broadcast module) ──
-
-router.get('/predictions/schedule', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const [config, defaults] = await Promise.all([
-      svc.getScheduleConfig(),
-      Promise.resolve(svc.getDefaultScheduleConfig()),
-    ]);
-    res.json({ success: true, data: { config, defaults } });
-  } catch (error) {
-    console.error('Get prediction schedule error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.put('/predictions/schedule', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const saved = await svc.setScheduleConfig(req.body?.config || req.body || {});
-    res.json({ success: true, data: { config: saved } });
-  } catch (error) {
-    console.error('Save prediction schedule error:', error);
-    res.status(400).json({ success: false, message: error.message });
-  }
-});
-
-router.post('/predictions/schedule/test/:slotIndex', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const idx = parseInt(req.params.slotIndex, 10);
-    // Fire and forget — the slot run includes async waits up to ~minute. We
-    // ack immediately so the UI doesn't hang; logs trace progress.
-    svc.triggerSlotNow(idx).catch((err) => {
-      console.error(`[PRED] Manual trigger of slot ${idx} failed:`, err.message);
-    });
-    res.json({ success: true, data: { slotIndex: idx, queued: true } });
-  } catch (error) {
-    console.error('Trigger prediction slot error:', error);
-    res.status(400).json({ success: false, message: error.message });
-  }
-});
-
-router.get('/predictions/smm-master', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const enabled = await svc.getSmmEnabled();
-    res.json({ success: true, data: { enabled } });
-  } catch (error) {
-    console.error('Get prediction SMM master error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.put('/predictions/smm-master', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const { enabled } = req.body || {};
-    const saved = await svc.setSmmEnabled(!!enabled);
-    res.json({ success: true, data: { enabled: saved } });
-  } catch (error) {
-    console.error('Set prediction SMM master error:', error);
-    res.status(400).json({ success: false, message: error.message });
-  }
-});
-
-router.get('/predictions/log', async (req, res) => {
-  try {
-    const svc = req.app.get('predictionService');
-    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
-    const game = req.query.game || null;
-    const cardCountType = req.query.type ? parseInt(req.query.type, 10) : null;
-    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
-    const data = await svc.getRecentLog({ game, cardCountType, limit });
-    res.json({ success: true, data });
-  } catch (error) {
-    console.error('Get prediction log error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
 // ── Custom Prediction (admin manual rig — pick exact result cards, no Telegram) ──
+// NOTE: the scheduled Telegram-broadcast "Prediction" module was removed; only
+// the manual per-round card rig below remains.
 
 router.get('/predictions/custom/round', async (req, res) => {
   try {

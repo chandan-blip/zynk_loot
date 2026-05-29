@@ -1113,35 +1113,9 @@ class CronService {
     );
     console.log('[CRON] Winners cleanup job scheduled at 01:00 daily');
 
-    // Register and schedule Prediction Module slot broadcasts (7 daily slots).
-    // The hour for each slot is sourced from settings.prediction_schedule_config
-    // at scheduling time; the cron handler re-reads the config when it fires.
-    if (this.predictionService) {
-      try {
-        const predCfg = await this.predictionService.getScheduleConfig();
-        for (let i = 0; i < 7; i++) {
-          const slot = predCfg.slots[i];
-          if (!slot) continue;
-          const slotIndex = i;
-          const slotCron = `0 ${slot.hour} * * *`;
-          const jobName = `prediction_slot_${i + 1}`;
-          await this.registerJob(jobName, 'prediction_broadcast', slotCron, null, {
-            description: `Prediction Module slot ${i + 1} (${String(slot.hour).padStart(2, '0')}:00) Telegram broadcast`,
-            slotIndex,
-          });
-          this.scheduledJobs.push(
-            cron.schedule(slotCron, async () => {
-              await this.executeWithLogging(jobName, async () => {
-                return await this.predictionService.runScheduledSlot(slotIndex);
-              });
-            }, { timezone })
-          );
-        }
-        console.log(`[CRON] Prediction Module slot jobs scheduled: ${predCfg.slots.map(s => `${String(s.hour).padStart(2, '0')}:00`).join(', ')}`);
-      } catch (err) {
-        console.error('[CRON] Failed to schedule prediction slot jobs:', err.message);
-      }
-    }
+    // The scheduled Prediction Module (Telegram broadcast slot jobs) was
+    // removed. Only the admin's manual Custom Prediction rig remains, which is
+    // triggered on-demand from the admin UI — no cron jobs are needed for it.
 
     // Register and schedule Tracking Aggregation & Cleanup (02:00 daily)
     if (this.trackingService) {

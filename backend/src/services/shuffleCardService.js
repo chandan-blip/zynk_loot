@@ -1,41 +1,42 @@
 const db = require('../config/database');
 const crypto = require('crypto');
 
-// Shuffle Card — 4 PARALLEL server-authoritative 52-card lotteries running
-// simultaneously, one per `card_count_type` (1, 2, 3, 4).
+// Shuffle Card — 4 PARALLEL server-authoritative single-card lotteries, one per
+// DURATION LANE (30s, 1m, 5m, 10m). Each round reveals exactly ONE card from a
+// shuffled 52-card deck.
 //
-//   Type N: each round draws N cards from a shuffled 52-card deck.
-//   All 4 instances run on the same 60s cadence but have independent
-//   period_ids, histories, and result patterns.
+// The lane is carried in the `card_count_type` column (values 1..4) — the
+// column is kept for schema/prediction-rig compatibility but now means a lane
+// id, NOT a card count. Shuffle's card count is always 1. See LANES below.
 //
-//   BETTING (50 s)  → users may place bets on any of the 4 types.
-//   LOCKED (10 s)   → bets disabled, countdown overlay 10..0.
-//   REVEAL          → N cards drawn cryptographically; winners settled.
-//
-// Bet kinds (per type N):
-//   cards  — pick 1..N specific cards (id 0-51); all picked must appear in
-//            the N revealed cards. Multiplier from CARDS_MULTIPLIER[picks].
-//   rank   — pick rank index 0-12; any dealt card matches.
-//   suit   — pick suit 0-3; any dealt card matches.
-//   color  — 'red' | 'black'; any dealt card has that color.
+// Bet kinds (the one revealed card decides all):
+//   cards  — pick exactly 1 specific card; wins if it is the drawn card. 15x
+//   suit   — pick suit 0-3; wins if the drawn card has that suit.          5x
+//   color  — 'red' | 'black'; wins if the drawn card is that color.        2x
 
-const CARD_COUNT_TYPES = [1, 2, 3, 4];
+// Lane id → duration config. Each lane is its own parallel round loop with its
+// own period_id sequence, timing, and history.
+const LANES = [
+  { id: 1, key: '30s', label: '30s', totalMs: 30_000,  bettingMs: 25_000,  lockMs: 5_000 },
+  { id: 2, key: '1m',  label: '1m',  totalMs: 60_000,  bettingMs: 50_000,  lockMs: 10_000 },
+  { id: 3, key: '5m',  label: '5m',  totalMs: 300_000, bettingMs: 285_000, lockMs: 15_000 },
+  { id: 4, key: '10m', label: '10m', totalMs: 600_000, bettingMs: 580_000, lockMs: 20_000 },
+];
+const LANE_IDS = LANES.map((l) => l.id);
+const LANE_BY_ID = new Map(LANES.map((l) => [l.id, l]));
+// Backwards-compatible alias — several callers/iterators still reference the
+// old name; it is now simply the list of lane ids.
+const CARD_COUNT_TYPES = LANE_IDS;
 
 const WIN_PAYOUT_RATIO = 0.9;
 
-// Multipliers per pick-count are uniform across all types where that count is
-// available (i.e. pick 3 in type-3 and pick 3 in type-4 both pay 10x).
 const SHUFFLE_MULTIPLIERS = {
-  cards: { 1: 2, 2: 5, 3: 10, 4: 20 },
-  rank:  4,
-  suit:  2,
+  cards: 15,
+  suit:  5,
   color: 2,
 };
 
-const ROUND_TOTAL_MS    = 60_000;
-const BETTING_PHASE_MS  = 50_000;
-const LOCK_PHASE_MS     = 10_000;
-const MAX_BETS_PER_USER = 20;  // per type per round
+const MAX_BETS_PER_USER = 20;
 const MIN_BET = 1;
 const MAX_BET = 10_000;
 
@@ -43,7 +44,7 @@ const cardSuit = (id) => Math.floor(id / 13);
 const cardRank = (id) => id % 13;
 const isRedCard = (id) => {
   const s = cardSuit(id);
-  return s === 1 || s === 2; // diamonds, hearts
+  return s === 1 || s === 2;
 };
 
 function secureSample(range, count) {
@@ -58,13 +59,8 @@ function secureSample(range, count) {
 class ShuffleCardService {
   constructor(io) {
     this.io = io;
-    // Optional — when wired, the prediction module can stash pre-rolled cards
-    // by round.id and `_completeRound` will use them so the broadcasted
-    // prediction matches what the game actually reveals.
     this.predictionService = null;
-    // Map<type, { id, periodId, status, startedAt, lockedAt, completeAt }>
     this.currentRounds = new Map();
-    // Map<type, { lock, complete, next }> for setTimeout handles
     this.timers = new Map();
     this.running = false;
   }
@@ -73,9 +69,6 @@ class ShuffleCardService {
     this.predictionService = svc;
   }
 
-  // Public accessor used by predictionService.runScheduledSlot to find the
-  // currently-open round per type so its cards can be locked-in before the
-  // broadcast goes out.
   getCurrentRound(type) {
     return this.currentRounds.get(type) || null;
   }
@@ -84,26 +77,20 @@ class ShuffleCardService {
     if (this.running) return;
     this.running = true;
 
-    // Force-finalize any rounds left mid-flight from a previous process.
     try {
       const [stale] = await db.pool.query(
         `SELECT id FROM shuffle_card_rounds WHERE status IN ('betting', 'locked')`
       );
       for (const r of stale) {
-        try {
-          await this._forceFinalize(r.id);
-        } catch (e) {
-          console.error('[SHUFFLE] Failed to finalize stale round', r.id, e.message);
-        }
+        try { await this._forceFinalize(r.id); }
+        catch (e) { console.error('[SHUFFLE] Failed to finalize stale round', r.id, e.message); }
       }
     } catch (e) {
       console.error('[SHUFFLE] Startup cleanup error:', e.message);
     }
 
-    console.log('[SHUFFLE] Service started — opening first round per type...');
-    for (const t of CARD_COUNT_TYPES) {
-      await this._openRound(t);
-    }
+    console.log('[SHUFFLE] Service started — opening first round per lane...');
+    for (const t of CARD_COUNT_TYPES) await this._openRound(t);
   }
 
   stop() {
@@ -125,8 +112,7 @@ class ShuffleCardService {
 
   async _generatePeriodId(type) {
     // Format: YYYYMMDD + 0N + 5-digit daily sequence (15 chars total),
-    // where 0N = zero-padded card_count_type (01..04). E.g. type-3 round
-    // on 2026-05-12 → "2026051203" + "00001".
+    // where 0N = zero-padded card_count_type (01..04).
     const now = new Date();
     const pad = (n, w = 2) => String(n).padStart(w, '0');
     const day = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
@@ -151,10 +137,12 @@ class ShuffleCardService {
     if (!this.running) return;
 
     try {
+      const lane = LANE_BY_ID.get(type);
+      if (!lane) throw new Error(`Unknown lane id ${type}`);
       const periodId = await this._generatePeriodId(type);
       const startedAt = new Date();
-      const lockedAt = new Date(startedAt.getTime() + BETTING_PHASE_MS);
-      const completeAt = new Date(startedAt.getTime() + ROUND_TOTAL_MS);
+      const lockedAt = new Date(startedAt.getTime() + lane.bettingMs);
+      const completeAt = new Date(startedAt.getTime() + lane.totalMs);
 
       const [result] = await db.pool.query(
         `INSERT INTO shuffle_card_rounds (period_id, card_count_type, status, started_at)
@@ -175,14 +163,12 @@ class ShuffleCardService {
 
       console.log(`[SHUFFLE/${type}] Round opened ${periodId} (id=${result.insertId})`);
 
-      if (this.io) {
-        this.io.emit('shuffle:round:open', this._publicRoundState(type));
-      }
+      if (this.io) this.io.emit('shuffle:round:open', this._publicRoundState(type));
 
-      this._setTimer(type, 'lock', BETTING_PHASE_MS, () =>
+      this._setTimer(type, 'lock', lane.bettingMs, () =>
         this._lockRound(type).catch(err => console.error(`[SHUFFLE/${type}] Lock error:`, err))
       );
-      this._setTimer(type, 'complete', ROUND_TOTAL_MS, () =>
+      this._setTimer(type, 'complete', lane.totalMs, () =>
         this._completeRound(type).catch(err => console.error(`[SHUFFLE/${type}] Complete error:`, err))
       );
     } catch (err) {
@@ -204,11 +190,12 @@ class ShuffleCardService {
     console.log(`[SHUFFLE/${type}] Round locked ${round.periodId}`);
 
     if (this.io) {
+      const lane = LANE_BY_ID.get(type);
       this.io.emit('shuffle:round:lock', {
         cardCountType: type,
         roundId: round.id,
         periodId: round.periodId,
-        countdownSeconds: Math.floor(LOCK_PHASE_MS / 1000),
+        countdownSeconds: Math.floor((lane?.lockMs ?? 10_000) / 1000),
       });
     }
   }
@@ -218,36 +205,34 @@ class ShuffleCardService {
     if (!round) return;
 
     try {
-      // Each type draws exactly `type` cards from a 52-card deck. If the
-      // prediction module stashed pre-rolled cards for this round, use them
-      // so the reveal matches what was broadcast. Lookup is durable —
-      // survives PM2 restart by falling back to prediction_log.
+      // Durable lookup — falls through to prediction_log table if the
+      // in-memory Map was wiped by a PM2 restart between broadcast and now.
       let cards = null;
       if (this.predictionService) {
         const { cards: resolved, source } = await this.predictionService
-          .resolveCardsForRound(round.id, 'shuffle_card', type);
+          .resolveCardsForRound(round.id, 'shuffle_card', 1);
         if (resolved) {
           cards = resolved;
           console.log(`[SHUFFLE/${type}] Used predicted cards (${source}) for round ${round.id}: ${JSON.stringify(cards)}`);
         }
       }
       if (!cards) {
-        console.log(`[SHUFFLE/${type}] No predicted cards for round ${round.id} — using random sample`);
-        cards = secureSample(52, type);
+        console.log(`[SHUFFLE/${type}] No predicted card for round ${round.id} — using random sample`);
+        cards = secureSample(52, 1);
       }
-      const cardSet = new Set(cards);
-      const ranks = cards.map(cardRank);
-      const suits = cards.map(cardSuit);
-      const redCount = cards.filter(isRedCard).length;
-      const dominantColor = redCount > type - redCount ? 'red' : 'black';
+      // Exactly one card is revealed per round — `card` is the single outcome.
+      const card = cards[0];
+      const cardRankVal = cardRank(card);
+      const cardSuitVal = cardSuit(card);
+      const cardColor = isRedCard(card) ? 'red' : 'black';
 
       const resultSummary = {
         cards,
-        ranks,
-        suits,
-        redCount,
-        dominantColor,
-        cardCountType: type,
+        card,
+        rank: cardRankVal,
+        suit: cardSuitVal,
+        color: cardColor,
+        laneId: type,
       };
 
       const [bets] = await db.pool.query(
@@ -270,13 +255,11 @@ class ShuffleCardService {
 
         let isWin = false;
         if (bet.kind === 'cards' && Array.isArray(details.cards)) {
-          isWin = details.cards.every((c) => cardSet.has(c));
-        } else if (bet.kind === 'rank' && Number.isInteger(details.rank)) {
-          isWin = ranks.includes(details.rank);
+          isWin = details.cards[0] === card;
         } else if (bet.kind === 'suit' && Number.isInteger(details.suit)) {
-          isWin = suits.includes(details.suit);
+          isWin = cardSuitVal === details.suit;
         } else if (bet.kind === 'color') {
-          isWin = details.color === 'red' ? redCount >= 1 : redCount < type;
+          isWin = details.color === cardColor;
         }
 
         const winAmount = isWin
@@ -317,9 +300,7 @@ class ShuffleCardService {
             'SELECT balance FROM users WHERE id = ? FOR UPDATE',
             [userId]
           );
-          if (rows.length > 0) {
-            userBalances.set(userId, parseFloat(rows[0].balance));
-          }
+          if (rows.length > 0) userBalances.set(userId, parseFloat(rows[0].balance));
         }
 
         for (const s of settlements) {
@@ -337,9 +318,7 @@ class ShuffleCardService {
               s.userId,
               s.amount.toFixed(2),
               s.winAmount.toFixed(2),
-              s.isWin
-                ? Math.floor((s.winAmount / Math.max(s.amount, 0.01)) * 100) / 100
-                : 0,
+              s.isWin ? Math.floor((s.winAmount / Math.max(s.amount, 0.01)) * 100) / 100 : 0,
               cards.join(','),
               s.isWin ? 1 : 0,
               JSON.stringify({
@@ -365,7 +344,7 @@ class ShuffleCardService {
                 balanceBefore.toFixed(2),
                 balanceAfter.toFixed(2),
                 gb.insertId,
-                `Shuffle Card type-${type} win: ${round.periodId}`,
+                `Shuffle Card ${LANE_BY_ID.get(type)?.label || `lane ${type}`} win: ${round.periodId}`,
               ]
             );
           }
@@ -394,13 +373,7 @@ class ShuffleCardService {
       const userOutcomes = new Map();
       for (const s of settlements) {
         const arr = userOutcomes.get(s.userId) || [];
-        arr.push({
-          kind: s.kind,
-          details: s.details,
-          amount: s.amount,
-          isWin: s.isWin,
-          winAmount: s.winAmount,
-        });
+        arr.push({ kind: s.kind, details: s.details, amount: s.amount, isWin: s.isWin, winAmount: s.winAmount });
         userOutcomes.set(s.userId, arr);
       }
 
@@ -453,7 +426,6 @@ class ShuffleCardService {
     }
 
     this.currentRounds.delete(type);
-
     this._setTimer(type, 'next', 3500, () => {
       this._openRound(type).catch(err => console.error(`[SHUFFLE/${type}] Open next round error:`, err));
     });
@@ -462,7 +434,7 @@ class ShuffleCardService {
   async _forceFinalize(roundId) {
     await db.pool.query(
       `UPDATE shuffle_card_bets SET status = 'settled', is_win = 0, win_amount = 0,
-                                    settled_at = NOW()
+                                  settled_at = NOW()
         WHERE round_id = ? AND status = 'pending'`,
       [roundId]
     );
@@ -491,8 +463,12 @@ class ShuffleCardService {
     const lockMs = r.lockedAt.getTime();
     const completeMs = r.completeAt.getTime();
     const phase = now < lockMs ? 'betting' : 'locked';
+    const lane = LANE_BY_ID.get(type);
     return {
       cardCountType: type,
+      laneId: type,
+      laneKey: lane?.key || null,
+      laneLabel: lane?.label || null,
       roundId: r.id,
       periodId: r.periodId,
       status: phase,
@@ -501,30 +477,28 @@ class ShuffleCardService {
       completeAt: r.completeAt.toISOString(),
       bettingRemainingMs: Math.max(0, lockMs - now),
       totalRemainingMs: Math.max(0, completeMs - now),
-      bettingPhaseMs: BETTING_PHASE_MS,
-      lockPhaseMs: LOCK_PHASE_MS,
-      roundTotalMs: ROUND_TOTAL_MS,
+      bettingPhaseMs: lane?.bettingMs ?? 0,
+      lockPhaseMs: lane?.lockMs ?? 0,
+      roundTotalMs: lane?.totalMs ?? 0,
     };
   }
 
-  // Returns { 1: state, 2: state, 3: state, 4: state } — one entry per active
-  // type. Missing entries mean that type is between rounds.
   getAllRoundStates() {
     const out = {};
-    for (const t of CARD_COUNT_TYPES) {
-      out[t] = this._publicRoundState(t);
-    }
+    for (const t of LANE_IDS) out[t] = this._publicRoundState(t);
     return out;
   }
 
-  // Back-compat for callers that asked for a single round; returns the default
-  // type-3 round if it exists, otherwise the first active type.
   getCurrentRoundState() {
-    return this._publicRoundState(3) || this._publicRoundState(1);
+    return this._publicRoundState(1) || this._publicRoundState(2);
   }
 
   getCardCountTypes() {
-    return [...CARD_COUNT_TYPES];
+    return [...LANE_IDS];
+  }
+
+  getLanes() {
+    return LANES.map((l) => ({ ...l }));
   }
 
   getMultipliers() {
@@ -532,22 +506,17 @@ class ShuffleCardService {
   }
 
   async placeBet(userId, betInput) {
-    const type = parseInt(betInput?.cardCountType ?? betInput?.card_count_type, 10);
-    if (!CARD_COUNT_TYPES.includes(type)) {
-      throw new Error('cardCountType must be 1, 2, 3, or 4');
-    }
+    const type = parseInt(betInput?.cardCountType ?? betInput?.card_count_type ?? betInput?.laneId, 10);
+    if (!LANE_IDS.includes(type)) throw new Error('Invalid lane — must be one of 30s, 1m, 5m, 10m');
+    const laneLabel = LANE_BY_ID.get(type)?.label || `lane ${type}`;
     const round = this.currentRounds.get(type);
     if (!round) {
       throw new Error(
-        `Type-${type} round has not been opened yet — server may still be starting, or migration 059 has not been applied (check backend logs for "[SHUFFLE/${type}] Failed to open round").`
+        `The ${laneLabel} Shuffle Card round has not been opened yet — server may still be starting, or migration 065 has not been applied (check backend logs for "[SHUFFLE/${type}] Failed to open round").`
       );
     }
-    if (round.status !== 'betting') {
-      throw new Error(`Betting is closed for type-${type} round (status=${round.status})`);
-    }
-    if (Date.now() >= round.lockedAt.getTime()) {
-      throw new Error(`Betting is closed for type-${type} round (locked)`);
-    }
+    if (round.status !== 'betting') throw new Error(`Betting is closed for the ${laneLabel} round (status=${round.status})`);
+    if (Date.now() >= round.lockedAt.getTime()) throw new Error(`Betting is closed for the ${laneLabel} round (locked)`);
 
     const cleanBet = this._validateBet(betInput, type);
 
@@ -598,15 +567,13 @@ class ShuffleCardService {
           balance,
           newBalance,
           bal.insertId,
-          `Shuffle Card type-${type} bet ${round.periodId}: ${cleanBet.kind}`,
+          `Shuffle Card ${laneLabel} bet ${round.periodId}: ${cleanBet.kind}`,
         ]
       );
 
       await conn.commit();
 
-      if (this.io) {
-        this.io.to(`user:${userId}`).emit('balance:update', { balance: newBalance });
-      }
+      if (this.io) this.io.to(`user:${userId}`).emit('balance:update', { balance: newBalance });
 
       return {
         betId: bal.insertId,
@@ -636,24 +603,14 @@ class ShuffleCardService {
     const kind = bet.kind || 'cards';
 
     if (kind === 'cards') {
-      if (!Array.isArray(bet.cards) || bet.cards.length < 1 || bet.cards.length > type) {
-        throw new Error(`Pick 1-${type} cards for this type`);
+      // Exactly one card is revealed per round, so a Cards bet is a single
+      // exact-card guess paying 15x.
+      if (!Array.isArray(bet.cards) || bet.cards.length !== 1) {
+        throw new Error('Pick exactly 1 card');
       }
-      const cards = bet.cards.map((c) => {
-        const n = parseInt(c, 10);
-        if (!Number.isInteger(n) || n < 0 || n > 51) throw new Error('Invalid card');
-        return n;
-      });
-      if (new Set(cards).size !== cards.length) throw new Error('Duplicate cards');
-      const multiplier = SHUFFLE_MULTIPLIERS.cards[cards.length];
-      if (!multiplier) throw new Error('Unsupported pick count');
-      return { kind, amount, multiplier, details: { cards } };
-    }
-
-    if (kind === 'rank') {
-      const rank = parseInt(bet.rank, 10);
-      if (!Number.isInteger(rank) || rank < 0 || rank > 12) throw new Error('Invalid rank');
-      return { kind, amount, multiplier: SHUFFLE_MULTIPLIERS.rank, details: { rank } };
+      const n = parseInt(bet.cards[0], 10);
+      if (!Number.isInteger(n) || n < 0 || n > 51) throw new Error('Invalid card');
+      return { kind, amount, multiplier: SHUFFLE_MULTIPLIERS.cards, details: { cards: [n] } };
     }
 
     if (kind === 'suit') {
@@ -772,3 +729,4 @@ class ShuffleCardService {
 module.exports = ShuffleCardService;
 module.exports.SHUFFLE_MULTIPLIERS = SHUFFLE_MULTIPLIERS;
 module.exports.CARD_COUNT_TYPES = CARD_COUNT_TYPES;
+module.exports.LANES = LANES;

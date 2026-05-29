@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiArrowLeft, FiPlus, FiTrendingUp, FiAward, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiArrowLeft, FiPlus, FiTrendingUp, FiAward, FiX, FiChevronLeft, FiChevronRight, FiInfo, FiDownload, FiArrowUpRight, FiVolume2 } from 'react-icons/fi';
 import { GiCardJoker } from 'react-icons/gi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -19,51 +19,48 @@ import BetStepper from '../../components/BetStepper';
 import GameResultOverlay from '../../components/GameResultOverlay';
 import usePageTitle from '../../hooks/usePageTitle';
 
-// UNO multipliers — picks bet scales geometrically; group bets are uniform.
-const CARD_MULTIPLIERS = { 1: 2, 2: 9, 3: 100, 4: 500 };
-const PICK_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple', 4: 'Four' };
-const KIND_MULTIPLIERS = { color: 2, number: 3, action: 3, wild: 6 };
-
-const BET_KINDS = [
-  { id: 'cards',  label: 'Cards' },
-  { id: 'color',  label: 'Color' },
-  { id: 'number', label: 'Number' },
-  { id: 'action', label: 'Action' },
-  { id: 'wild',   label: 'Wild' },
+// UNO King runs 4 parallel DURATION lanes. Each round reveals ONE card from a
+// 54-card UNO deck. The lane id (1..4) is carried in the legacy `cardCountType`.
+const LANES = [
+  { id: 1, label: '30s' },
+  { id: 2, label: '1m' },
+  { id: 3, label: '5m' },
+  { id: 4, label: '10m' },
 ];
+const LANE_LABEL = { 1: '30s', 2: '1m', 3: '5m', 4: '10m' };
+
+// Flat multipliers — one card decides everything.
+const UNO_MULTIPLIERS = { cards: 15, color: 2, action: 5, wild: 50 };
 
 const ACTIONS = [
-  { id: 'skip',     label: 'Skip',    rank: 10 },
-  { id: 'reverse',  label: 'Reverse', rank: 11 },
-  { id: 'draw_two', label: '+2',      rank: 12 },
+  { id: 'skip',     label: 'Skip',    rankIdx: 10 },
+  { id: 'reverse',  label: 'Reverse', rankIdx: 11 },
+  { id: 'draw_two', label: '+2',      rankIdx: 12 },
 ];
 
 const QUICK_AMOUNTS = [10, 50, 100, 500];
 
-// History pattern strip — one tile per dealt card colored by its UNO color
-// (or slate for wilds).
-function unoTone(card) {
-  if (card.isWild) return 'bg-slate-900 text-white';
-  switch (card.color?.id) {
-    case 0: return 'bg-red-500/85 text-white';
-    case 1: return 'bg-yellow-400/90 text-black';
-    case 2: return 'bg-green-500/85 text-white';
-    case 3: return 'bg-blue-500/85 text-white';
-    default: return 'bg-dark-700 text-white';
-  }
-}
+// Rotating safety notices shown in the announcement banner under the balance.
+const SAFETY_NOTICES = [
+  'Always play only on our real and official website — lootmarket.store. Any other site or app using our name is fake.',
+  "Don't trust any other platform, group, or person claiming to be us — we operate only through lootmarket.store.",
+  "Never pay or scan any QR code shared on Telegram, WhatsApp, or DM — these are scams and your money will be lost.",
+  'We never ask for payments outside the official site. All deposits and withdrawals happen only inside your wallet here.',
+  'Beware of fake agents, cloned websites, and impersonators. When in doubt, type lootmarket.store directly in your browser.',
+];
 
 function formatPeriodId(periodId) {
   if (!periodId) return '—';
   return String(periodId);
 }
 
-function CardChipMini({ id }) {
-  // Real UNO sprite at xs size so slip lists show actual card art.
+// Real UNO card art used in slips, history and last-revealed. `w` sets the
+// pixel width since these contexts want a fixed small card.
+function UnoMiniCard({ id, w = 34 }) {
   return (
-    <div className="inline-block align-middle">
-      <UnoCard id={id} faceUp={true} size="xs" />
-    </div>
+    <span className="inline-block shrink-0" style={{ width: w }}>
+      <UnoCard id={id} faceUp size="fill" />
+    </span>
   );
 }
 
@@ -71,40 +68,36 @@ function SlipTarget({ slip }) {
   if (slip.kind === 'cards') {
     return (
       <div className="flex flex-wrap gap-0.5">
-        {slip.cards.map((cid) => <CardChipMini key={cid} id={cid} />)}
+        {slip.cards.map((cid) => <UnoMiniCard key={cid} id={cid} w={28} />)}
       </div>
     );
   }
   if (slip.kind === 'color') {
-    const c = UNO_COLORS.find((x) => x.name === slip.color);
+    const col = UNO_COLORS.find((c) => c.name === slip.color);
     return (
       <span
         className="inline-flex items-center px-2 h-6 rounded border font-bold text-[10px] capitalize text-white"
-        style={{ background: c?.main || '#444', borderColor: c?.dark || '#222' }}
+        style={{ background: col ? `${col.main}30` : undefined, borderColor: col ? `${col.main}80` : undefined, color: col?.main }}
       >
         {slip.color}
       </span>
     );
   }
-  if (slip.kind === 'number') {
-    return (
-      <span className="inline-flex items-center px-1.5 h-6 rounded border bg-cyan-500/15 border-cyan-500/40 text-cyan-300 font-bold text-[10px]">
-        Number {slip.number}
-      </span>
-    );
-  }
   if (slip.kind === 'action') {
-    const action = ACTIONS.find((a) => a.id === slip.action);
+    const a = ACTIONS.find((x) => x.id === slip.action);
     return (
-      <span className="inline-flex items-center px-1.5 h-6 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold text-[10px]">
-        {action?.label || slip.action}
+      <span className="inline-flex items-center px-2 h-6 rounded border border-slate-500/40 bg-slate-700/50 text-slate-100 font-bold text-[10px]">
+        {a?.label || slip.action}
       </span>
     );
   }
   if (slip.kind === 'wild') {
     return (
-      <span className="inline-flex items-center px-1.5 h-6 rounded bg-slate-900/70 border border-purple-500/40 text-purple-300 font-bold text-[10px]">
-        ★ Wild
+      <span
+        className="inline-flex items-center px-2 h-6 rounded border border-white/20 text-white font-bold text-[10px]"
+        style={{ background: 'linear-gradient(135deg,#dc2626,#f5c518 40%,#16a34a 70%,#2563eb)' }}
+      >
+        Wild
       </span>
     );
   }
@@ -112,117 +105,95 @@ function SlipTarget({ slip }) {
 }
 
 function slipKindLabel(slip) {
-  if (slip.kind === 'cards')  return PICK_LABELS[slip.cards.length] || '—';
+  if (slip.kind === 'cards')  return 'Card';
   if (slip.kind === 'color')  return 'Color';
-  if (slip.kind === 'number') return 'Number';
   if (slip.kind === 'action') return 'Action';
   if (slip.kind === 'wild')   return 'Wild';
   return slip.kind;
 }
 
-// Three face-down cards that gently tilt and shimmer during the betting window
-// so the user feels the deck is alive while they choose bets.
-// Renders `count` face-down or face-up UNO cards based on the active type.
-// Mixes one wild into the placeholders so the back-of-deck hints at the full
-// 54-card UNO deck.
-const PLACEHOLDER_IDS = [0, 13, 26, 52];
-function UnoStage({ revealed, locking, count = 4 }) {
-  const safeCount = Math.max(1, Math.min(4, count));
-  const placeholders = PLACEHOLDER_IDS.slice(0, safeCount);
-  const mid = (safeCount - 1) / 2;
-  const cardClass = safeCount >= 3 ? '!w-[72px] sm:!w-[120px]' : '';
+// A small 3D metallic clock — brushed-steel bezel with green accent hands.
+function Clock3D({ size = 26, active = false, idKey = '' }) {
+  const g = (s) => `ukclock-${idKey}-${s}`;
+  const faceTop = active ? '#1d2b3a' : '#16232e';
+  const faceBot = '#0a1118';
+  const hand = active ? '#93c5fd' : '#3b82f6';
+  const tick = active ? 'rgba(147,197,253,0.7)' : 'rgba(59,130,246,0.6)';
   return (
-    <div className="relative h-44 sm:h-56 flex items-center justify-center">
-      <motion.div
-        className="absolute inset-0 pointer-events-none"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
-        style={{
-          background: 'conic-gradient(from 0deg, transparent 0deg, rgba(245,210,122,0.10) 30deg, transparent 60deg, transparent 180deg, rgba(0,212,170,0.10) 210deg, transparent 240deg)',
-          maskImage: 'radial-gradient(closest-side, black 30%, transparent 75%)',
-          WebkitMaskImage: 'radial-gradient(closest-side, black 30%, transparent 75%)',
-        }}
-      />
-      <div className={`relative flex items-center justify-center ${safeCount >= 3 ? 'gap-2 sm:gap-5' : 'gap-3 sm:gap-5'}`}>
-        {placeholders.map((pid, i) => {
-          const cardId = revealed && revealed[i] != null ? revealed[i] : pid;
-          const faceUp = !!(revealed && revealed[i] != null);
-          return (
-            <motion.div
-              key={`${safeCount}-${i}`}
-              initial={{ y: 20, opacity: 0, rotate: 0 }}
-              animate={
-                faceUp
-                  ? { y: 0, opacity: 1, rotate: (i - mid) * 6 }
-                  : locking
-                    ? { y: [0, -6, 0], opacity: 1, rotate: [(i - mid) * 6, (i - mid) * 8, (i - mid) * 6] }
-                    : { y: [0, -4, 0, 4, 0], opacity: 1, rotate: [(i - mid) * 4, (i - mid) * 8, (i - mid) * 4] }
-              }
-              transition={{
-                duration: locking ? 0.6 : 3.2,
-                repeat: faceUp ? 0 : Infinity,
-                ease: 'easeInOut',
-                delay: i * 0.12,
-              }}
-            >
-              <UnoCard id={cardId} faceUp={faceUp} size="lg" className={cardClass} delay={i * 0.18} />
-            </motion.div>
-          );
-        })}
-      </div>
-    </div>
+    <svg width={size} height={size} viewBox="0 0 40 40" className="relative drop-shadow-[0_2px_3px_rgba(0,0,0,0.55)]">
+      <defs>
+        <linearGradient id={g('bezel')} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#e2e8f0" />
+          <stop offset="28%" stopColor="#94a3b8" />
+          <stop offset="55%" stopColor="#475569" />
+          <stop offset="80%" stopColor="#243544" />
+          <stop offset="100%" stopColor="#cbd5e1" />
+        </linearGradient>
+        <radialGradient id={g('face')} cx="50%" cy="38%" r="65%">
+          <stop offset="0%" stopColor={faceTop} />
+          <stop offset="100%" stopColor={faceBot} />
+        </radialGradient>
+        <linearGradient id={g('glare')} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
+          <stop offset="45%" stopColor="rgba(255,255,255,0.06)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </linearGradient>
+      </defs>
+      <circle cx="20" cy="20" r="19" fill={`url(#${g('bezel')})`} />
+      <circle cx="20" cy="20" r="19" fill="none" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+      <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+      <circle cx="20" cy="20" r="14.5" fill={`url(#${g('face')})`} stroke="rgba(0,0,0,0.4)" strokeWidth="0.6" />
+      {Array.from({ length: 12 }).map((_, i) => {
+        const a = (i * 30 * Math.PI) / 180;
+        const r1 = 13.5, r2 = i % 3 === 0 ? 11 : 12.2;
+        return (
+          <line
+            key={i}
+            x1={20 + r1 * Math.sin(a)}
+            y1={20 - r1 * Math.cos(a)}
+            x2={20 + r2 * Math.sin(a)}
+            y2={20 - r2 * Math.cos(a)}
+            stroke={tick}
+            strokeWidth={i % 3 === 0 ? 1.1 : 0.6}
+            strokeLinecap="round"
+          />
+        );
+      })}
+      <line x1="20" y1="20" x2="14" y2="13.5" stroke={hand} strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="20" y1="20" x2="27" y2="13" stroke={hand} strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="20" cy="20" r="1.6" fill={hand} stroke="rgba(0,0,0,0.4)" strokeWidth="0.4" />
+      <ellipse cx="16" cy="14" rx="11" ry="8" fill={`url(#${g('glare')})`} opacity="0.7" />
+    </svg>
   );
 }
 
-// UnoCardChip — real sprite with hover/scale + selection ring + check pip.
-function UnoCardChip({ id, selected, disabled, onClick, size = 'fill' }) {
+// 54-card UNO grid (0-53) using real card art. Single-select exact-card pick.
+function UnoCardPickerGrid({ selectedSet, onToggle, allDisabled }) {
   return (
-    <motion.div
-      whileHover={!disabled && !selected ? { y: -2 } : undefined}
-      whileTap={!disabled ? { scale: 0.92 } : undefined}
-      animate={{ scale: selected ? 1.06 : 1 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-      onClick={!disabled ? onClick : undefined}
-      className={`relative ${disabled ? 'opacity-40 grayscale cursor-not-allowed' : 'cursor-pointer hover:brightness-[1.05]'}`}
-      style={{ willChange: 'transform' }}
-    >
-      <UnoCard id={id} faceUp={true} size={size} selected={selected} />
-      {selected && (
-        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-accent text-dark-900 flex items-center justify-center text-[11px] font-black leading-none shadow-lg ring-2 ring-dark-700 z-10">
-          ✓
-        </span>
-      )}
-    </motion.div>
-  );
-}
-
-// 54-card UNO grid — 13 columns × 4 rows of colored cards, plus a final row
-// with the 2 wilds at the end.
-function CardPickerGrid({ selectedSet, onToggle, allDisabled }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="grid gap-1 sm:gap-1.5" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
-        {Array.from({ length: 52 }).map((_, id) => (
-          <UnoCardChip
+    <div className="grid gap-1 sm:gap-1.5" style={{ gridTemplateColumns: 'repeat(9, minmax(0, 1fr))' }}>
+      {Array.from({ length: 54 }).map((_, id) => {
+        const sel = selectedSet.has(id);
+        const c = decodeUnoCard(id);
+        return (
+          <UnoCard
             key={id}
             id={id}
-            selected={selectedSet.has(id)}
-            disabled={allDisabled}
-            onClick={() => onToggle(id)}
+            faceUp
+            size="fill"
+            selected={sel}
+            dimmed={allDisabled}
+            onClick={() => !allDisabled && onToggle(id)}
+            className={`transition-transform ${allDisabled ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'} ${sel ? 'scale-105' : ''}`}
           />
-        ))}
-      </div>
-      <div className="grid gap-1 sm:gap-1.5 grid-cols-2 max-w-[24%]">
-        <UnoCardChip id={52} selected={selectedSet.has(52)} disabled={allDisabled} onClick={() => onToggle(52)} />
-        <UnoCardChip id={53} selected={selectedSet.has(53)} disabled={allDisabled} onClick={() => onToggle(53)} />
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-function ColorPicker({ value, onChange, disabled }) {
+function UnoColorPicker({ value, onChange, disabled }) {
   return (
-    <div className="grid grid-cols-4 gap-2 sm:gap-3">
+    <div className="grid grid-cols-4 gap-2">
       {UNO_COLORS.map((c) => {
         const sel = value === c.name;
         return (
@@ -231,12 +202,12 @@ function ColorPicker({ value, onChange, disabled }) {
             type="button"
             onClick={() => !disabled && onChange(c.name)}
             disabled={disabled}
-            className={`h-16 sm:h-20 rounded-lg flex items-center justify-center text-white font-black text-sm capitalize transition-all ${
-              sel ? 'ring-2 ring-accent shadow-lg' : ''
+            className={`h-12 rounded-lg flex items-center justify-center text-sm font-black capitalize transition-all border ${
+              sel ? 'ring-2 ring-white border-white shadow-lg' : 'border-white/20 hover:brightness-110'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-            style={{ background: `linear-gradient(160deg, ${c.main} 0%, ${c.dark} 100%)` }}
+            style={{ background: c.main, color: c.id === 1 ? '#1a1208' : '#ffffff' }}
           >
-            {c.label}
+            {c.name}
           </button>
         );
       })}
@@ -244,69 +215,47 @@ function ColorPicker({ value, onChange, disabled }) {
   );
 }
 
-function NumberPicker({ value, onChange, disabled }) {
+function UnoActionPicker({ value, onChange, disabled }) {
+  // Each action shows a representative real card (the red one) — the bet wins
+  // on that action in ANY color.
   return (
-    <div className="grid gap-1 sm:gap-1.5 grid-cols-10">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <button
-          key={i}
-          type="button"
-          onClick={() => !disabled && onChange(i)}
-          disabled={disabled}
-          className={`aspect-square rounded-md flex items-center justify-center text-lg font-black transition-all ${
-            value === i
-              ? 'bg-accent text-dark-900 ring-2 ring-accent shadow-lg'
-              : 'bg-white text-gray-900 hover:brightness-95'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {i}
-        </button>
-      ))}
+    <div className="grid grid-cols-3 gap-2">
+      {ACTIONS.map((a) => {
+        const sel = value === a.id;
+        return (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => !disabled && onChange(a.id)}
+            disabled={disabled}
+            className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
+              sel ? 'border-transparent bg-accent/15 ring-1 ring-accent/50' : 'border-dark-600/60 bg-dark-800/40 hover:bg-dark-700/50'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className="w-[42px]"><UnoCard id={a.rankIdx} faceUp size="fill" selected={sel} /></span>
+            <span className="text-[11px] font-bold text-white">{a.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function ActionPicker({ value, onChange, disabled }) {
+function UnoWildPicker({ value, onChange, disabled }) {
+  // Shows both real wild cards — the bet wins if the drawn card is any wild.
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {ACTIONS.map((a) => (
-        <button
-          key={a.id}
-          type="button"
-          onClick={() => !disabled && onChange(a.id)}
-          disabled={disabled}
-          className={`h-16 sm:h-20 rounded-lg flex items-center justify-center font-black text-sm transition-all ${
-            value === a.id
-              ? 'bg-accent text-dark-900 ring-2 ring-accent shadow-lg'
-              : 'bg-amber-500/20 text-amber-200 border border-amber-500/40 hover:bg-amber-500/30'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {a.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function WildPicker({ value, onChange, disabled }) {
-  const sel = !!value;
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => !disabled && onChange(!sel)}
-        disabled={disabled}
-        className={`w-full h-20 sm:h-24 rounded-lg flex items-center justify-center font-black text-base transition-all text-white ${
-          sel ? 'ring-2 ring-accent shadow-lg' : ''
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        style={{ background: 'conic-gradient(from 0deg, #dc2626, #f5c518, #16a34a, #2563eb, #dc2626)' }}
-      >
-        <span className="bg-black/60 px-4 py-2 rounded-lg">★ Any Wild · 6x</span>
-      </button>
-      <p className="text-[10px] text-gray-500 mt-1.5 text-center">
-        Wins if any dealt card is a Wild or Wild +4 (id 52 or 53).
-      </p>
-    </div>
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!value)}
+      disabled={disabled}
+      className={`w-full flex items-center justify-center gap-3 p-2 rounded-lg border transition-all ${
+        value ? 'border-transparent bg-accent/15 ring-1 ring-accent/50' : 'border-dark-600/60 bg-dark-800/40 hover:bg-dark-700/50'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+    >
+      <span className="w-[42px]"><UnoCard id={52} faceUp size="fill" selected={value} /></span>
+      <span className="w-[42px]"><UnoCard id={53} faceUp size="fill" selected={value} /></span>
+      <span className="text-sm font-black uppercase tracking-wide text-white">Wild</span>
+    </button>
   );
 }
 
@@ -315,24 +264,18 @@ export default function UnoKing() {
   const { user, checkAuth } = useStore();
   const { formatCurrency } = useCurrency();
 
-  // ── Per-type state (UNO King now runs 4 parallel instances: 1c/2c/3c/4c) ──
-  // Active type drives which round/stage/picker the user sees. Cards-bet pick
-  // count is capped at the active type (type-3 → max 3 picks).
-  const CARD_COUNT_TYPES = [1, 2, 3, 4];
+  // ── Per-lane state (UNO King runs 4 parallel duration lanes: 30s/1m/5m/10m) ──
+  const LANE_IDS = LANES.map((l) => l.id);
   const [activeType, setActiveType] = useState(1);
 
-  // Map<type, ...> slices so socket events for different types don't clobber
-  // each other.
-  const [roundsByType, setRoundsByType] = useState({});         // round metadata per type
-  const [phasesByType, setPhasesByType] = useState({});         // 'betting'|'locked'|'reveal'
-  const [revealedByType, setRevealedByType] = useState({});     // last revealed cards per type
-  const [lastResultByType, setLastResultByType] = useState({}); // most-recent reveal summary per type
-  const [pendingSlipsByType, setPendingSlipsByType] = useState({}); // user slips placed this round, per type
+  const [roundsByType, setRoundsByType] = useState({});
+  const [phasesByType, setPhasesByType] = useState({});
+  const [revealedByType, setRevealedByType] = useState({});
+  const [lastResultByType, setLastResultByType] = useState({});
+  const [pendingSlipsByType, setPendingSlipsByType] = useState({});
 
-  // Derived from active type
   const round = roundsByType[activeType] || null;
   const phase = phasesByType[activeType] || 'betting';
-  const revealedCards = revealedByType[activeType] || null;
   const lastResult = lastResultByType[activeType] || null;
   const pendingSlips = pendingSlipsByType[activeType] || [];
 
@@ -343,26 +286,22 @@ export default function UnoKing() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const HISTORY_PAGE_SIZE = 10;
   const [myBets, setMyBets] = useState([]);
-  const [resultModal, setResultModal] = useState(null); // user-specific outcome
+  const [historyTab, setHistoryTab] = useState('game'); // 'game' | 'bet'
+  const [howToOpen, setHowToOpen] = useState(false);
+  const [noticeIdx, setNoticeIdx] = useState(0);
+  const [resultModal, setResultModal] = useState(null);
   const [lockRemaining, setLockRemaining] = useState(0);
 
   // Bet builder state
   const [betKind, setBetKind] = useState('cards');
   const [selected, setSelected] = useState([]);
-  // Sync pick cap with active type — picking up to N cards in a type-N round.
-  const pickTarget = activeType;
   const [pickedColor, setPickedColor] = useState(null);
-  const [pickedNumber, setPickedNumber] = useState(null);
   const [pickedAction, setPickedAction] = useState(null);
   const [pickedWild, setPickedWild] = useState(false);
   const [amount, setAmount] = useState('10');
   const [submitting, setSubmitting] = useState(false);
-  // Mobile bottom-sheet visibility for the bet controls
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // Setter helpers that update only the slot for the round's type — they take
-  // an explicit `type` so socket handlers can hit the right pane even when the
-  // user is currently viewing a different tab.
   const setRoundForType    = (type, r) => setRoundsByType(prev => ({ ...prev, [type]: r }));
   const setPhaseForType    = (type, p) => setPhasesByType(prev => ({ ...prev, [type]: p }));
   const setRevealedForType = (type, c) => setRevealedByType(prev => ({ ...prev, [type]: c }));
@@ -376,13 +315,22 @@ export default function UnoKing() {
   const tickRef = useRef(null);
   const historyPageRef = useRef(1);
   useEffect(() => { historyPageRef.current = historyPage; }, [historyPage]);
-  // Mirror activeType into a ref so long-lived socket handlers see the
-  // current tab instead of the captured-at-mount value.
+  useEffect(() => {
+    const t = setInterval(() => {
+      setNoticeIdx((i) => (i + 1) % SAFETY_NOTICES.length);
+    }, 4000);
+    return () => clearInterval(t);
+  }, []);
   const activeTypeRef = useRef(1);
   useEffect(() => { activeTypeRef.current = activeType; }, [activeType]);
-  // Tracks the last whole-second we played a countdown sound for, so each
-  // tick from 5..0 fires exactly once even though the timer ticks at 200ms.
   const lastBeepSecRef = useRef(null);
+
+  const clearBuilder = () => {
+    setSelected([]);
+    setPickedColor(null);
+    setPickedAction(null);
+    setPickedWild(false);
+  };
 
   const loadHistoryPage = useCallback(async (page = 1, typeOverride = null) => {
     setHistoryLoading(true);
@@ -395,7 +343,6 @@ export default function UnoKing() {
       setHistoryPage(payload.page || page);
       setHistoryTotalPages(payload.totalPages || 1);
       setHistoryTotal(payload.total || items.length);
-      // Latest reveal for this type lives on page 1 slot 0.
       if ((payload.page || page) === 1 && items.length > 0) {
         setLastResultForType(type, {
           roundId: items[0].roundId,
@@ -416,7 +363,6 @@ export default function UnoKing() {
     } catch {}
   }, [user, activeType]);
 
-  // Initial fetch + socket subscriptions
   useEffect(() => {
     const token = localStorage.getItem('token');
     socketService.connect(token);
@@ -424,7 +370,7 @@ export default function UnoKing() {
     getUnoKingState()
       .then((res) => {
         const rounds = res.data?.data?.rounds || {};
-        for (const t of CARD_COUNT_TYPES) {
+        for (const t of LANE_IDS) {
           const r = rounds[t];
           if (r) {
             setRoundForType(t, r);
@@ -450,13 +396,7 @@ export default function UnoKing() {
       setPhaseForType(t, 'betting');
       setRevealedForType(t, null);
       setPendingSlipsForType(t, []);
-      if (t === activeTypeRef.current) {
-        setSelected([]);
-        setPickedColor(null);
-        setPickedNumber(null);
-        setPickedAction(null);
-        setPickedWild(false);
-      }
+      if (t === activeTypeRef.current) clearBuilder();
     });
     const unsubLock = socketService.onUnoRoundLock?.((data) => {
       const t = data?.cardCountType;
@@ -498,9 +438,6 @@ export default function UnoKing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When the user switches type tab, reload history & my-bets filtered to that
-  // type so the "Pattern History" and "Your Recent Bets" panels match the
-  // round they're now viewing.
   useEffect(() => {
     setHistoryPage(1);
     loadHistoryPage(1, activeType);
@@ -508,7 +445,6 @@ export default function UnoKing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeType]);
 
-  // Tick every 200ms for smooth countdowns
   useEffect(() => {
     const tick = () => {
       if (!round) return;
@@ -519,20 +455,12 @@ export default function UnoKing() {
       setLockRemaining(remaining);
       if (phase === 'betting' && now >= lockMs) setPhaseForType(activeType, 'locked');
 
-      // Final 5-second countdown SFX. Ticks fire once per integer second
-      // 5..2, then a dramatic "drop" sound at the last tick (1s) so the
-      // moment feels conclusive before the reveal at 0. Reset once we
-      // leave the window.
       const wholeSec = Math.ceil(remaining / 1000);
       if (remaining > 0 && wholeSec <= 5) {
         if (lastBeepSecRef.current !== wholeSec) {
           lastBeepSecRef.current = wholeSec;
-          if (wholeSec === 1) {
-            sounds.countdownGo?.();
-          } else {
-            // step grows as we approach the drop (6 - sec) → 1..4
-            sounds.countdownTick?.(6 - wholeSec);
-          }
+          if (wholeSec === 1) sounds.countdownGo?.();
+          else sounds.countdownTick?.(6 - wholeSec);
         }
       } else if (wholeSec > 5) {
         lastBeepSecRef.current = null;
@@ -543,35 +471,30 @@ export default function UnoKing() {
     return () => clearInterval(tickRef.current);
   }, [round, phase]);
 
-  // Locked when the round is past betting, OR the active type's round hasn't
-  // loaded yet (page just opened / between rounds) — guards against bets that
-  // would 400 with "Type-N round has not been opened yet".
   const isLocked = phase !== 'betting' || !round;
 
-  const pickCount = selected.length;
   const currentAmount = parseFloat(amount) || 0;
   let currentMultiplier = 0;
   let currentPickLabel = '—';
   let isPickValid = false;
   if (betKind === 'cards') {
-    currentMultiplier = CARD_MULTIPLIERS[pickCount] || 0;
-    currentPickLabel = PICK_LABELS[pickCount] || '—';
-    isPickValid = pickCount > 0;
+    currentMultiplier = UNO_MULTIPLIERS.cards;
+    if (selected.length === 1) {
+      const c = decodeUnoCard(selected[0]);
+      currentPickLabel = c.isWild ? c.label : `${c.color.label} ${c.label}`;
+    }
+    isPickValid = selected.length === 1;
   } else if (betKind === 'color') {
-    currentMultiplier = KIND_MULTIPLIERS.color;
-    currentPickLabel = pickedColor || '—';
+    currentMultiplier = UNO_MULTIPLIERS.color;
+    currentPickLabel = pickedColor ? (UNO_COLORS.find((c) => c.name === pickedColor)?.label || pickedColor) : '—';
     isPickValid = pickedColor != null;
-  } else if (betKind === 'number') {
-    currentMultiplier = KIND_MULTIPLIERS.number;
-    currentPickLabel = pickedNumber != null ? String(pickedNumber) : '—';
-    isPickValid = pickedNumber != null;
   } else if (betKind === 'action') {
-    currentMultiplier = KIND_MULTIPLIERS.action;
+    currentMultiplier = UNO_MULTIPLIERS.action;
     currentPickLabel = pickedAction ? (ACTIONS.find((a) => a.id === pickedAction)?.label || pickedAction) : '—';
     isPickValid = pickedAction != null;
   } else if (betKind === 'wild') {
-    currentMultiplier = KIND_MULTIPLIERS.wild;
-    currentPickLabel = pickedWild ? 'Any Wild' : '—';
+    currentMultiplier = UNO_MULTIPLIERS.wild;
+    currentPickLabel = pickedWild ? 'Wild' : '—';
     isPickValid = pickedWild;
   }
   const projectedWin = currentMultiplier * currentAmount;
@@ -584,36 +507,31 @@ export default function UnoKing() {
   const toggleCard = (id) => {
     if (isLocked) return;
     setSelected((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= pickTarget) {
-        toast.error(`This tab is set to ${pickTarget} ${pickTarget === 1 ? 'card' : 'cards'} — switch the tab to pick more.`);
-        return prev;
-      }
+      if (prev.includes(id)) return [];
       sounds.tap?.();
-      return [...prev, id];
+      return [id];
     });
   };
 
-  // Switching the type tab switches which round the user is viewing/betting.
-  // Also trims any over-selection so the picker can't keep cards beyond the
-  // new type's max picks (e.g. switching from type-4 to type-2 keeps the first
-  // 2 selections).
   const handlePickTarget = (n) => {
-    if (!CARD_COUNT_TYPES.includes(n)) return;
+    if (!LANE_IDS.includes(n)) return;
     setActiveType(n);
-    setSelected((prev) => prev.slice(0, n));
   };
+
+  // Exclusive section selection — picking in one section clears the others.
+  const pickCard   = (id)  => { setPickedColor(null); setPickedAction(null); setPickedWild(false); setBetKind('cards'); toggleCard(id); };
+  const pickColor  = (v)   => { setSelected([]); setPickedAction(null); setPickedWild(false); setPickedColor(v); setBetKind('color'); };
+  const pickAction = (v)   => { setSelected([]); setPickedColor(null); setPickedWild(false); setPickedAction(v); setBetKind('action'); };
+  const pickWild   = (v)   => { setSelected([]); setPickedColor(null); setPickedAction(null); setPickedWild(v); setBetKind('wild'); };
 
   const placeBet = async () => {
     if (!user) { toast.error('Please log in to play'); return; }
     if (isLocked) { toast.error('Betting is locked for this round'); return; }
     if (!isPickValid) {
       toast.error(
-        betKind === 'cards' ? 'Pick at least 1 card' :
-        betKind === 'color'  ? 'Pick a color' :
-        betKind === 'number' ? 'Pick a number 0-9' :
-        betKind === 'action' ? 'Pick an action' :
-                               'Tap the Wild button to confirm'
+        betKind === 'cards' ? 'Pick a card' :
+        betKind === 'color' ? 'Pick a color' :
+        betKind === 'action' ? 'Pick an action' : 'Tap Wild to bet'
       );
       return;
     }
@@ -621,11 +539,9 @@ export default function UnoKing() {
     if (currentAmount > 10000) { toast.error('Max bet is 10,000'); return; }
 
     const payload = { kind: betKind, amount: currentAmount, cardCountType: activeType };
-    if (betKind === 'cards') payload.cards = [...selected].sort((a, b) => a - b);
-    else if (betKind === 'color')  payload.color  = pickedColor;
-    else if (betKind === 'number') payload.number = pickedNumber;
+    if (betKind === 'cards') payload.cards = [...selected];
+    else if (betKind === 'color')  payload.color = pickedColor;
     else if (betKind === 'action') payload.action = pickedAction;
-    // wild has no target field
 
     setSubmitting(true);
     sounds.click?.();
@@ -637,20 +553,15 @@ export default function UnoKing() {
         kind: betKind,
         amount: currentAmount,
         multiplier: currentMultiplier,
-        ...(betKind === 'cards' ? { cards: payload.cards } : {}),
-        ...(betKind === 'color'  ? { color: pickedColor }   : {}),
-        ...(betKind === 'number' ? { number: pickedNumber } : {}),
+        ...(betKind === 'cards'  ? { cards: payload.cards } : {}),
+        ...(betKind === 'color'  ? { color: pickedColor } : {}),
         ...(betKind === 'action' ? { action: pickedAction } : {}),
       };
       setPendingSlipsForType(activeType, (prev) => [...prev, slip]);
-      // Clear builder
-      setSelected([]);
-      setPickedColor(null);
-      setPickedNumber(null);
-      setPickedAction(null);
-      setPickedWild(false);
+      clearBuilder();
       checkAuth?.();
-      toast.success(`Bet placed: ${currentAmount} Z (type ${activeType})`);
+      refreshMyBets(activeType); // show the bet in Bet History instantly
+      toast.success(`Bet placed: ${currentAmount} Z (${LANE_LABEL[activeType]})`);
       setSheetOpen(false);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to place bet');
@@ -659,19 +570,13 @@ export default function UnoKing() {
     }
   };
 
-  const closeResultModal = () => {
-    setResultModal(null);
-  };
+  const closeResultModal = () => setResultModal(null);
 
-  // Countdown values rounded
   const lockSecs = Math.ceil(lockRemaining / 1000);
-  // Pretty 10-0 countdown during locked phase
   const lockPhaseSec = Math.max(0, Math.min(10, lockSecs));
 
   return (
     <div className="space-y-3">
-      {/* Header — just the back link; game name + period live inside the
-          stage block to keep the chrome minimal. */}
       <div className="flex items-center">
         <Link to="/games" className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
           <FiArrowLeft className="w-4 h-4" />
@@ -679,219 +584,122 @@ export default function UnoKing() {
         </Link>
       </div>
 
-      {/* Two-column responsive layout: on md+ the history/your-bets panels
-          sit on the left and the live game moves to the right column. On
-          mobile the game stays first (default order) so users see the stage
-          before scrolling into history. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
        <div className="space-y-3 min-w-0 md:order-2">
 
-      {/* Last revealed cards — sits above the live stage so the player always
-          sees the most recent result without scrolling to the history table. */}
-      {lastResult && (() => {
-        const last = lastResult;
-        const cards = last.cards || [];
-        return (
-          <motion.div
-            key={last.roundId}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="rounded-xl bg-dark-800/60 border border-dark-600/50 px-3 py-2 flex items-center justify-between gap-3"
+      {/* Balance */}
+      <div className="rounded-xl bg-dark-800/60 border border-dark-600/50 px-4 py-6 space-y-5">
+        <div className="text-center">
+          <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+            Balance
+          </div>
+          <div className="text-3xl font-black text-white truncate mt-1">
+            {formatCurrency(user?.balance || 0, false)}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            to="/wallet"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-sm font-bold"
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-widest">
-                Last
-              </span>
-              <span className="text-gray-400 font-mono text-[11px] truncate">
-                {formatPeriodId(last.periodId)}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {cards.map((cid, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ scale: 0.85, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: i * 0.06 }}
-                >
-                  <UnoCard id={cid} faceUp={true} size="xs" />
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        );
-      })()}
+            <FiDownload className="w-4 h-4" />
+            Deposit
+          </Link>
+          <Link
+            to="/wallet/withdraw"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 border border-yellow-500/30 transition-colors text-sm font-bold"
+          >
+            <FiArrowUpRight className="w-4 h-4" />
+            Withdraw
+          </Link>
+        </div>
+      </div>
 
-      {/* Stage block — UNO-arcade style: bright 4-color UNO frame, deep navy
-          interior, blocky bold marquee, and tabs colored to match the four UNO
-          colors (1c→Red, 2c→Yellow, 3c→Green, 4c→Blue). Distinct from
-          Shuffle's casino-gold and Mutka's copper-clay aesthetics. */}
+      {/* Safety notice */}
+      <div className="rounded-xl border border-dark-600/50 bg-dark-800/60 px-2.5 py-1.5 flex items-center gap-2 overflow-hidden">
+        <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full bg-amber-500/20 text-amber-300">
+          <FiVolume2 className="w-4 h-4" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={noticeIdx}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.4, ease: 'easeInOut' }}
+              className="text-[11px] font-semibold text-amber-200 leading-snug line-clamp-2"
+            >
+              {SAFETY_NOTICES[noticeIdx]}
+            </motion.p>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Duration-lane tabs */}
+      <div className="grid grid-cols-4 gap-2">
+        {LANES.map(({ id: n, label: laneLabel }) => {
+          const active = activeType === n;
+          const tabPhase = phasesByType[n] || 'betting';
+          const phaseLabel = tabPhase === 'locked' ? 'Locked' : tabPhase === 'reveal' ? 'Reveal' : 'Open';
+          const phaseDot = tabPhase === 'locked' ? 'bg-amber-400' : tabPhase === 'reveal' ? 'bg-rose-400' : 'bg-emerald-400';
+          return (
+            <button
+              key={n}
+              type="button"
+              onClick={() => handlePickTarget(n)}
+              title={`${laneLabel} round · ${tabPhase}`}
+              className={`group relative flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl border transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 ${
+                active
+                  ? 'border-blue-500/60 bg-blue-500/15 shadow-[0_6px_20px_-8px_rgba(37,99,235,0.6)] ring-1 ring-blue-500/40'
+                  : 'border-dark-600/60 bg-dark-800/50 hover:border-blue-500/40 hover:bg-dark-700/50'
+              }`}
+            >
+              <Clock3D size={30} active={active} idKey={n} />
+              <span className={`text-base font-black leading-none tracking-wide ${active ? 'text-white' : 'text-gray-200 group-hover:text-white'}`}>
+                {laneLabel}
+              </span>
+              <span className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-[0.15em] ${active ? 'text-blue-200' : 'text-gray-500'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${phaseDot} shadow-[0_0_5px_currentColor]`} />
+                {phaseLabel}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Stage block */}
       <div
-        className="relative overflow-hidden rounded-2xl p-[3px]"
-        style={{
-          // Bright 4-color UNO conic gradient as the outer frame
-          background:
-            'conic-gradient(from 0deg, #dc2626 0deg, #dc2626 90deg, #f5c518 90deg, #f5c518 180deg, #16a34a 180deg, #16a34a 270deg, #2563eb 270deg, #2563eb 360deg)',
-          boxShadow:
-            '0 24px 60px -20px rgba(0,0,0,0.75), 0 0 30px rgba(220,38,38,0.12), 0 0 30px rgba(37,99,235,0.12)',
-        }}
+        className="relative overflow-hidden rounded-2xl border border-blue-500/25 bg-dark-800/60"
+        style={{ boxShadow: '0 16px 40px -24px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(34,197,94,0.04)' }}
       >
         <div
-          className="relative rounded-[13px] overflow-hidden"
-          style={{
-            // Deep navy/black arcade backdrop
-            background:
-              'radial-gradient(ellipse at 50% -10%, rgba(220,38,38,0.18) 0%, transparent 50%),' +
-              'radial-gradient(ellipse at 50% 110%, rgba(37,99,235,0.18) 0%, transparent 55%),' +
-              'linear-gradient(180deg, #0a0a1a 0%, #050511 50%, #02020a 100%)',
-            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), inset 0 0 50px rgba(0,0,0,0.6)',
-          }}
-        >
-          {/* Dense pixel-grid texture — gives it a slight arcade screen feel */}
-          <div
-            className="absolute inset-0 pointer-events-none opacity-[0.06]"
-            style={{
-              backgroundImage:
-                'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),' +
-                'linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)',
-              backgroundSize: '12px 12px',
-            }}
-          />
-
-          {/* Corner stars — wild-card motif in the four UNO colors */}
-          <span className="pointer-events-none absolute top-2 left-3 text-red-500/60 text-xl font-black select-none">★</span>
-          <span className="pointer-events-none absolute top-2 right-3 text-yellow-400/60 text-xl font-black select-none">★</span>
-          <span className="pointer-events-none absolute bottom-2 left-3 text-green-500/60 text-xl font-black select-none">★</span>
-          <span className="pointer-events-none absolute bottom-2 right-3 text-blue-500/60 text-xl font-black select-none">★</span>
-
-          <div className="relative p-4">
-            {/* Marquee header — bold blocky UNO-style title + LCD-style period */}
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <GiCardJoker
-                  className="w-6 h-6 shrink-0"
-                  style={{
-                    color: '#f5c518',
-                    filter: 'drop-shadow(0 0 8px rgba(220,38,38,0.7)) drop-shadow(0 0 4px rgba(245,197,24,0.5))',
-                  }}
-                />
-                <h1
-                  className="font-black text-base sm:text-xl truncate uppercase tracking-tight"
-                  style={{
-                    color: '#ffffff',
-                    textShadow:
-                      '-2px 0 0 #dc2626, 2px 2px 0 #f5c518, 4px 4px 0 rgba(0,0,0,0.6)',
-                    fontFamily: '"Arial Black", "Helvetica", sans-serif',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  UNO KING
+          className="absolute inset-x-0 top-0 h-24 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(37,99,235,0.18) 0%, transparent 70%)' }}
+        />
+        <div className="relative p-4">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/30 shrink-0">
+                <GiCardJoker className="w-5 h-5 text-blue-400" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="font-black text-base sm:text-lg leading-none truncate text-white tracking-tight">
+                  UNO <span className="text-blue-400">King</span>
                 </h1>
-              </div>
-              {/* LCD-style yellow period display */}
-              <div
-                className="shrink-0 px-3 py-1 rounded-md border-2 text-right"
-                style={{
-                  background: 'linear-gradient(180deg, #1a1a00 0%, #000000 100%)',
-                  borderColor: '#f5c518',
-                  boxShadow: '0 0 8px rgba(245,197,24,0.4), inset 0 0 8px rgba(0,0,0,0.8)',
-                }}
-              >
-                <p className="text-[9px] text-yellow-400/70 uppercase tracking-[0.18em] leading-none">
-                  TYPE {activeType}
-                </p>
-                <p
-                  className="font-mono text-[11px] font-black leading-tight"
-                  style={{
-                    color: '#f5c518',
-                    textShadow: '0 0 6px rgba(245,197,24,0.7)',
-                  }}
-                >
-                  {formatPeriodId(round?.periodId)}
-                </p>
+                <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] mt-0.5">Card draw</p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setHowToOpen(true)}
+              className="flex items-center gap-1 shrink-0 px-2 py-0.5 rounded-full border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 transition-colors text-[9px] font-bold uppercase tracking-wide"
+            >
+              <FiInfo className="w-3 h-3" />
+              How to play
+            </button>
+          </div>
 
-            {/* Card-count type tabs — each tab keyed to one UNO color so the
-                row visually echoes a hand of UNO cards. */}
-            {(() => {
-              const UNO_TAB_COLORS = {
-                1: { main: '#dc2626', dark: '#7f1d1d', name: 'red' },
-                2: { main: '#f5c518', dark: '#854d0e', name: 'yellow' },
-                3: { main: '#16a34a', dark: '#14532d', name: 'green' },
-                4: { main: '#2563eb', dark: '#1e3a8a', name: 'blue' },
-              };
-              return (
-                <div className="grid grid-cols-4 gap-2 mb-3">
-                  {CARD_COUNT_TYPES.map((n) => {
-                    const active = activeType === n;
-                    const tabRound = roundsByType[n];
-                    const tabPhase = phasesByType[n] || 'betting';
-                    const phaseColor =
-                      tabPhase === 'locked'
-                        ? 'bg-amber-400'
-                        : tabPhase === 'reveal'
-                          ? 'bg-purple-400'
-                          : 'bg-emerald-400';
-                    const col = UNO_TAB_COLORS[n];
-                    return (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => handlePickTarget(n)}
-                        title={`${n}-card game · ${tabPhase}`}
-                        className="relative flex flex-col items-center justify-center py-2 rounded-lg border-2 text-xs font-bold transition-all overflow-hidden"
-                        style={
-                          active
-                            ? {
-                                background: `linear-gradient(160deg, ${col.main} 0%, ${col.dark} 100%)`,
-                                borderColor: '#ffffff',
-                                color: n === 2 ? '#1a1208' : '#ffffff',
-                                boxShadow: `0 6px 14px rgba(0,0,0,0.6), 0 0 0 2px ${col.main}77, inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -3px 8px rgba(0,0,0,0.3)`,
-                              }
-                            : {
-                                background: `linear-gradient(160deg, ${col.dark}33 0%, rgba(0,0,0,0.45) 80%)`,
-                                borderColor: `${col.main}66`,
-                                color: col.main,
-                                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04)',
-                              }
-                        }
-                      >
-                        {/* Color-coded swatch in the bottom-left */}
-                        <span
-                          className="pointer-events-none absolute bottom-1 left-1 w-2 h-2 rounded-full"
-                          style={{ background: col.main, boxShadow: `0 0 6px ${col.main}` }}
-                        />
-                        <span
-                          className="relative text-[11px] leading-none font-black uppercase tracking-tight"
-                          style={{ fontFamily: '"Arial Black", sans-serif', fontStyle: 'italic' }}
-                        >
-                          {PICK_LABELS[n] || `${n} Card`}
-                        </span>
-                        <span
-                          className={`relative text-[9px] mt-1 font-mono uppercase tracking-wider ${
-                            active && n === 2 ? 'text-[#3a2810]/90' : ''
-                          }`}
-                          style={!active || n !== 2 ? { color: 'rgba(255,255,255,0.7)' } : undefined}
-                        >
-                          {n}c
-                        </span>
-                        {tabRound && (
-                          <span
-                            className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${phaseColor} shadow-[0_0_4px_currentColor]`}
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-
-        {/* Beautiful inline countdown — full-width rectangle with flipping
-            digit tiles, a thin progress sweep underneath, and phase-aware
-            color/urgency pulses. */}
         {(() => {
           const totalSec = Math.max(0, Math.ceil(lockRemaining / 1000));
           const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
@@ -903,217 +711,111 @@ export default function UnoKing() {
           let ringFrom = '#10b981';
           let ringTo = '#34d399';
           let glow = 'rgba(16, 185, 129, 0.45)';
-          if (isLockPhase) {
-            ringFrom = '#f59e0b';
-            ringTo = '#fbbf24';
-            glow = 'rgba(245, 158, 11, 0.55)';
-          } else if (isReveal) {
-            ringFrom = '#8b5cf6';
-            ringTo = '#a78bfa';
-            glow = 'rgba(139, 92, 246, 0.45)';
-          } else if (urgent) {
-            ringFrom = '#ef4444';
-            ringTo = '#f87171';
-            glow = 'rgba(239, 68, 68, 0.6)';
-          }
+          if (isLockPhase) { ringFrom = '#f59e0b'; ringTo = '#fbbf24'; glow = 'rgba(245, 158, 11, 0.55)'; }
+          else if (isReveal) { ringFrom = '#8b5cf6'; ringTo = '#a78bfa'; glow = 'rgba(139, 92, 246, 0.45)'; }
+          else if (urgent) { ringFrom = '#ef4444'; ringTo = '#f87171'; glow = 'rgba(239, 68, 68, 0.6)'; }
 
           const tileStyle = {
-            width: 44,
-            height: 56,
+            width: 34,
+            height: 48,
             background: `linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)`,
           };
-          const digitStyle = {
-            fontSize: 32,
-            lineHeight: 1,
-            textShadow: `0 0 14px ${glow}`,
-          };
+          const digitStyle = { fontSize: 26, lineHeight: 1, textShadow: `0 0 14px ${glow}` };
 
           return (
-            <div className="mt-3 mb-2 relative">
-              <div className="relative w-full rounded-2xl px-4 py-3 overflow-hidden">
-                {/* Urgency ambient glow */}
+            <div className="mt-3 mb-2 relative grid grid-cols-2 gap-2 items-stretch">
+              {/* Left column — last 4 revealed cards for this lane */}
+              <div className="flex flex-col justify-end">
+                <div className="grid grid-cols-4 gap-1.5 pb-1.5">
+                  {Array.from({ length: 4 }).map((_, i) => {
+                    const cid = history[3 - i]?.cards?.[0];
+                    if (cid == null) {
+                      return <span key={i} className="aspect-[5/7] rounded-md bg-dark-700/40 border border-dark-600/40" />;
+                    }
+                    return <UnoCard key={i} id={cid} faceUp size="fill" />;
+                  })}
+                </div>
+              </div>
+
+              {/* Right column — countdown timer + period id */}
+              <div className="relative rounded-2xl overflow-hidden flex flex-col justify-center">
                 {urgent && (
                   <motion.div
                     className="absolute inset-0 pointer-events-none"
                     animate={{ opacity: [0.25, 0.55, 0.25] }}
                     transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{
-                      background: `radial-gradient(circle at 50% 50%, ${ringFrom}33 0%, transparent 70%)`,
-                    }}
+                    style={{ background: `radial-gradient(circle at 50% 50%, ${ringFrom}33 0%, transparent 70%)` }}
                   />
                 )}
-
-                {/* Drifting twinkles */}
-                <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <motion.span
-                      key={i}
-                      className="absolute w-1 h-1 rounded-full"
-                      style={{
-                        background: ringTo,
-                        boxShadow: `0 0 6px ${ringTo}`,
-                        top: `${12 + i * 18}%`,
-                        left: '-5%',
-                      }}
-                      animate={{ x: ['0%', '2400%'], opacity: [0, 1, 1, 0] }}
-                      transition={{
-                        duration: 4 + i * 0.6,
-                        repeat: Infinity,
-                        ease: 'linear',
-                        delay: i * 0.7,
-                      }}
-                    />
-                  ))}
-                </div>
-
-                {/* Digit row — fills the width */}
-                <div className="relative flex items-center justify-center gap-1.5 sm:gap-2">
-                  {isReveal ? (
-                    <motion.span
-                      key="reveal-go"
-                      initial={{ scale: 0.6, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ duration: 0.4 }}
-                      className="font-black tracking-[0.3em]"
-                      style={{
-                        fontSize: 36,
-                        color: 'white',
-                        textShadow: `0 0 24px ${glow}`,
-                      }}
-                    >
-                      RESULT
-                    </motion.span>
-                  ) : (
-                    <>
-                      {[mm[0], mm[1], ':', ss[0], ss[1]].map((ch, idx) => {
-                        if (ch === ':') {
-                          return (
-                            <motion.span
-                              key="colon"
-                              className="font-black text-white/70 tabular-nums"
-                              style={{ fontSize: 32, lineHeight: 1 }}
-                              animate={{ opacity: [1, 0.2, 1] }}
-                              transition={{ duration: 1, repeat: Infinity }}
-                            >
-                              :
-                            </motion.span>
-                          );
-                        }
-                        return (
-                          <div
-                            key={`tile-${idx}`}
-                            className="relative inline-flex items-center justify-center rounded-lg overflow-hidden"
-                            style={tileStyle}
+                <div className="relative flex items-center justify-end gap-1.5 sm:gap-2">
+                  {[mm[0], mm[1], ':', ss[0], ss[1]].map((ch, idx) => {
+                    if (ch === ':') {
+                      return (
+                        <motion.span
+                          key="colon"
+                          className="font-black text-white/70 tabular-nums"
+                          style={{ fontSize: 32, lineHeight: 1 }}
+                          animate={{ opacity: [1, 0.2, 1] }}
+                          transition={{ duration: 1, repeat: Infinity }}
+                        >
+                          :
+                        </motion.span>
+                      );
+                    }
+                    return (
+                      <div
+                        key={`tile-${idx}`}
+                        className="relative inline-flex items-center justify-center rounded-lg overflow-hidden"
+                        style={tileStyle}
+                      >
+                        <span className="absolute left-0 right-0 top-1/2 h-px pointer-events-none" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                        <AnimatePresence mode="popLayout" initial={false}>
+                          <motion.span
+                            key={ch}
+                            initial={{ y: 18, opacity: 0, scale: 0.7 }}
+                            animate={{ y: 0, opacity: 1, scale: 1 }}
+                            exit={{ y: -18, opacity: 0, scale: 1.15 }}
+                            transition={{ duration: 0.3, ease: 'easeOut' }}
+                            className="font-black tabular-nums text-white"
+                            style={digitStyle}
                           >
-                            <span
-                              className="absolute left-0 right-0 top-1/2 h-px pointer-events-none"
-                              style={{ background: 'rgba(255,255,255,0.06)' }}
-                            />
-                            <AnimatePresence mode="popLayout" initial={false}>
-                              <motion.span
-                                key={ch}
-                                initial={{ y: 18, opacity: 0, scale: 0.7 }}
-                                animate={{ y: 0, opacity: 1, scale: 1 }}
-                                exit={{ y: -18, opacity: 0, scale: 1.15 }}
-                                transition={{ duration: 0.3, ease: 'easeOut' }}
-                                className="font-black tabular-nums text-white"
-                                style={digitStyle}
-                              >
-                                {ch}
-                              </motion.span>
-                            </AnimatePresence>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
+                            {ch}
+                          </motion.span>
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
                 </div>
-
+                <p
+                  className="relative text-right text-orange-50 font-mono font-black text-md sm:text-xl tabular-nums tracking-wide"
+                  style={{ textShadow: '0 1px 0 rgba(0,0,0,0.6), 0 0 12px rgba(232,167,106,0.45)' }}
+                >
+                  {formatPeriodId(round?.periodId)}
+                </p>
               </div>
             </div>
           );
         })()}
-
-            <UnoStage
-              revealed={phase === 'reveal' ? revealedCards : null}
-              locking={phase === 'locked'}
-              count={activeType}
-            />
           </div>
-        </div>
       </div>
 
-      {/* Bet controls — inline on tablet/desktop. On mobile only the bet-kind
-          tabs are visible inline; tapping any tab opens the bottom sheet
-          containing the picker + amount form for that kind. */}
+      {/* Bet controls — Card / Color / Action / Wild in one block. */}
       {(() => {
-        const renderTabs = (onTabClick) => (
-          <div className="flex border-b border-dark-600/60">
-            {BET_KINDS.map((k) => (
-              <button
-                key={k.id}
-                type="button"
-                onClick={() => {
-                  setBetKind(k.id);
-                  onTabClick?.(k.id);
-                }}
-                className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors ${
-                  betKind === k.id ? 'text-accent border-b-2 border-accent bg-dark-800/40' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                {k.label}
-              </button>
-            ))}
-          </div>
-        );
-
-        // Picker grid for the active bet kind. `onPicked` lets mobile auto-
-        // open the bottom sheet the moment the user makes a selection.
         const renderPicker = (onPicked) => (
-          <div className="p-3 sm:p-4">
-            {betKind === 'cards' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-[10px] text-gray-500">
-                  <span>
-                    Type-{activeType} round — pick up to <b className="text-white">{pickTarget}</b> card{pickTarget === 1 ? '' : 's'}
-                  </span>
-                  <span>{selected.length}/{pickTarget} picked · {CARD_MULTIPLIERS[Math.max(selected.length, 1)] || 0}x on match</span>
-                </div>
-                <CardPickerGrid
-                  selectedSet={new Set(selected)}
-                  onToggle={(id) => { toggleCard(id); onPicked?.(); }}
-                  allDisabled={isLocked}
-                />
-              </div>
-            )}
-            {betKind === 'color' && (
-              <ColorPicker
-                value={pickedColor}
-                onChange={(v) => { setPickedColor(v); onPicked?.(); }}
-                disabled={isLocked}
+          <div className="p-1 space-y-1">
+            {/* Color */}
+            <div className={`rounded-xl border p-2.5 transition-all ${betKind === 'color' && pickedColor != null ? 'border-transparent bg-accent/10' : 'border-dark-600/60 bg-dark-800/40'}`}>
+              <UnoColorPicker value={betKind === 'color' ? pickedColor : null} onChange={(v) => { pickColor(v); onPicked?.(); }} disabled={isLocked} />
+            </div>
+
+            {/* Card (exact) */}
+            <div className={`rounded-xl border p-2.5 transition-all ${betKind === 'cards' && selected.length > 0 ? 'border-transparent bg-accent/10' : 'border-dark-600/60 bg-dark-800/40'}`}>
+              <UnoCardPickerGrid
+                selectedSet={new Set(betKind === 'cards' ? selected : [])}
+                onToggle={(id) => { pickCard(id); onPicked?.(); }}
+                allDisabled={isLocked}
               />
-            )}
-            {betKind === 'number' && (
-              <NumberPicker
-                value={pickedNumber}
-                onChange={(v) => { setPickedNumber(v); onPicked?.(); }}
-                disabled={isLocked}
-              />
-            )}
-            {betKind === 'action' && (
-              <ActionPicker
-                value={pickedAction}
-                onChange={(v) => { setPickedAction(v); onPicked?.(); }}
-                disabled={isLocked}
-              />
-            )}
-            {betKind === 'wild' && (
-              <WildPicker
-                value={pickedWild}
-                onChange={(v) => { setPickedWild(v); onPicked?.(); }}
-                disabled={isLocked}
-              />
-            )}
+            </div>
           </div>
         );
 
@@ -1157,9 +859,6 @@ export default function UnoKing() {
           </div>
         );
 
-        // Shared 10..0 countdown overlay shown over the picker block during
-        // the lock phase. Sits over both the mobile-inline picker and the
-        // desktop bet panel.
         const lockOverlay = (
           <AnimatePresence>
             {phase === 'locked' && (
@@ -1181,7 +880,7 @@ export default function UnoKing() {
                 >
                   {lockPhaseSec}
                 </motion.div>
-                <p className="text-gray-300 text-xs mt-2">Cards revealing in {lockPhaseSec}s</p>
+                <p className="text-gray-300 text-xs mt-2">Card revealing in {lockPhaseSec}s</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1189,24 +888,17 @@ export default function UnoKing() {
 
         return (
           <>
-            {/* Inline (tablet/desktop) — hidden on mobile. Tabs + body. */}
             <div className="relative rounded-xl bg-dark-700/50 overflow-hidden hidden sm:block">
               {lockOverlay}
-              {renderTabs()}
               {renderPicker()}
               {stakeForm}
             </div>
 
-            {/* Mobile — inline tabs + picker grid. Tapping any option in the
-                grid opens the bottom sheet to enter the stake amount. */}
-            <div className="sm:hidden relative rounded-xl bg-dark-700/50 overflow-hidden">
+            <div className="sm:hidden relative rounded-xl border border-accent/25 bg-gradient-to-b from-dark-700/60 to-dark-800/70 overflow-hidden">
               {lockOverlay}
-              {renderTabs()}
               {renderPicker(() => !isLocked && setSheetOpen(true))}
             </div>
 
-            {/* Pending slips — always visible inline so the user can track
-                their bets without re-opening the bottom sheet on mobile. */}
             {pendingSlips.length > 0 && (
               <div className="rounded-xl bg-dark-700/50 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-600/50">
@@ -1230,7 +922,6 @@ export default function UnoKing() {
               </div>
             )}
 
-            {/* Mobile bottom-sheet */}
             <AnimatePresence>
               {sheetOpen && (
                 <motion.div
@@ -1239,10 +930,7 @@ export default function UnoKing() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                 >
-                  <motion.div
-                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                    onClick={() => setSheetOpen(false)}
-                  />
+                  <motion.div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSheetOpen(false)} />
                   <motion.div
                     initial={{ y: '100%' }}
                     animate={{ y: 0 }}
@@ -1250,13 +938,12 @@ export default function UnoKing() {
                     transition={{ type: 'spring', stiffness: 360, damping: 32 }}
                     className="relative bg-dark-800 rounded-t-2xl border-t border-dark-600/60 max-h-[88vh] flex flex-col"
                   >
-                    {/* Drag handle + header */}
                     <div className="px-4 pt-2 pb-1 flex flex-col items-center">
                       <div className="w-10 h-1 rounded-full bg-dark-500 mb-2" />
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-2">
                           <GiCardJoker className="w-4 h-4 text-amber-300" />
-                          <h3 className="text-white font-semibold text-sm">Place a bet</h3>
+                          <h3 className="text-white font-semibold text-sm">Place a bet · {currentPickLabel}</h3>
                         </div>
                         <button
                           type="button"
@@ -1268,7 +955,6 @@ export default function UnoKing() {
                         </button>
                       </div>
                     </div>
-                    {renderTabs()}
                     <div className="overflow-y-auto">
                       {renderPicker()}
                       {stakeForm}
@@ -1282,16 +968,35 @@ export default function UnoKing() {
       })()}
        </div>
 
-       {/* Left column on md+ (history + your bets); appears below game on mobile */}
+       {/* Left column on md+ (history + your bets) */}
        <div className="space-y-3 min-w-0 md:order-1">
 
-      {/* History — pattern table, newest first, paginated */}
       <div className="rounded-xl bg-dark-700/50 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-600/50">
-          <div className="flex items-center gap-2">
-            <FiTrendingUp className="w-4 h-4 text-accent" />
-            <h3 className="text-white font-semibold text-sm">Pattern History</h3>
-          </div>
+        <div className="flex border-b border-dark-600/50">
+          <button
+            type="button"
+            onClick={() => setHistoryTab('game')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              historyTab === 'game' ? 'text-white bg-dark-800/40 border-b-2 border-accent' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <FiTrendingUp className={`w-4 h-4 ${historyTab === 'game' ? 'text-accent' : ''}`} />
+            Game History
+          </button>
+          <button
+            type="button"
+            onClick={() => setHistoryTab('bet')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              historyTab === 'bet' ? 'text-white bg-dark-800/40 border-b-2 border-gold-light' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <FiAward className={`w-4 h-4 ${historyTab === 'bet' ? 'text-gold-light' : ''}`} />
+            Bet History
+          </button>
+        </div>
+
+        {historyTab === 'game' && (<>
+        <div className="flex items-center justify-end px-4 py-2 border-b border-dark-600/50">
           <span className="text-[10px] text-gray-500 uppercase tracking-wide">{historyTotal} rounds</span>
         </div>
 
@@ -1303,52 +1008,41 @@ export default function UnoKing() {
               <thead className="bg-dark-800/40 text-gray-400">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold">Period</th>
-                  <th className="px-2 py-2 text-center font-semibold">Type</th>
-                  <th className="px-3 py-2 text-left font-semibold">Cards</th>
-                  <th className="px-2 py-2 text-center font-semibold">Colors</th>
+                  <th className="px-2 py-2 text-center font-semibold">Lane</th>
+                  <th className="px-3 py-2 text-left font-semibold">Card</th>
+                  <th className="px-2 py-2 text-center font-semibold">Color</th>
                   <th className="px-2 py-2 text-center font-semibold">Wild?</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-600/40">
                 {history.map((h) => {
-                  const cards = h.cards || [];
-                  const decoded = cards.map(decodeUnoCard);
-                  const hasWild = decoded.some((c) => c.isWild);
+                  const cid = (h.cards || [])[0];
+                  const c = cid != null ? decodeUnoCard(cid) : null;
                   return (
                     <tr key={h.roundId} className="hover:bg-dark-800/30">
                       <td className="px-3 py-2 text-accent font-mono">{formatPeriodId(h.periodId)}</td>
                       <td className="px-2 py-2 text-center">
                         <span className="inline-block px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/30 text-[10px] font-black uppercase">
-                          {h.cardCountType}c
+                          {LANE_LABEL[h.cardCountType] || `${h.cardCountType}`}
                         </span>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center gap-1">
-                          {cards.map((cid, i) => (
-                            <UnoCard key={i} id={cid} faceUp={true} size="xs" />
-                          ))}
-                        </div>
+                        {c ? <UnoMiniCard id={cid} w={28} /> : '—'}
                       </td>
-                      <td className="px-2 py-2">
-                        <div className="flex items-center justify-center gap-1">
-                          {decoded.map((c, i) => (
-                            <span
-                              key={i}
-                              className={`w-4 h-4 rounded ${unoTone(c)} flex items-center justify-center text-[9px] font-bold`}
-                              title={c.isWild ? 'Wild' : (c.color?.label || '')}
-                            >
-                              {c.isWild ? '★' : (c.color?.label?.[0] || '?')}
-                            </span>
-                          ))}
-                        </div>
+                      <td className="px-2 py-2 text-center">
+                        {c && !c.isWild ? (
+                          <span className="inline-block w-4 h-4 rounded" style={{ background: c.color.main }} title={c.color.label} />
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-center">
                         <span
                           className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            hasWild ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-700/60 text-gray-200'
+                            c?.isWild ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-700/60 text-gray-200'
                           }`}
                         >
-                          {hasWild ? 'YES' : 'NO'}
+                          {c?.isWild ? 'YES' : 'NO'}
                         </span>
                       </td>
                     </tr>
@@ -1359,7 +1053,6 @@ export default function UnoKing() {
           </div>
         )}
 
-        {/* Pagination footer */}
         {historyTotalPages > 1 && (
           <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-dark-600/40 bg-dark-800/30">
             <button
@@ -1383,86 +1076,82 @@ export default function UnoKing() {
             </button>
           </div>
         )}
-      </div>
+        </>)}
 
-      {/* Your recent bets across rounds */}
-      <div className="rounded-xl bg-dark-700/50 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-600/50">
-          <div className="flex items-center gap-2">
-            <FiAward className="w-4 h-4 text-gold-light" />
-            <h3 className="text-white font-semibold text-sm">Your Recent Bets</h3>
-          </div>
+        {historyTab === 'bet' && (<>
+        <div className="flex items-center justify-end px-4 py-2 border-b border-dark-600/50">
           <span className="text-[10px] text-gray-500 uppercase tracking-wide">{myBets.length} bets</span>
         </div>
         {myBets.length === 0 ? (
           <div className="p-6 text-center text-gray-500 text-sm">No bets yet.</div>
         ) : (
-          <div className="overflow-x-auto max-h-80 overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-dark-800/40 text-gray-400 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold">Period</th>
-                  <th className="px-2 py-2 text-center font-semibold">Type</th>
-                  <th className="px-3 py-2 text-left font-semibold">Bet</th>
-                  <th className="px-2 py-2 text-right font-semibold">Stake</th>
-                  <th className="px-2 py-2 text-right font-semibold">Outcome</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-600/40">
-                {myBets.map((b) => {
-                  const slip = { kind: b.kind, ...(b.details || {}) };
-                  // Type column = the round's card_count_type the bet was placed
-                  // in (always 1c..4c). Kind chip in the Bet cell shows the
-                  // bet's category (Single/Dual/Triple/Four for cards, or
-                  // Color/Number/Action/Wild).
-                  const cct = b.cardCountType || (b.details?.cards?.length || 0);
-                  const kindChip = slipKindLabel(slip);
-                  return (
-                    <tr key={b.betId} className="hover:bg-dark-800/30">
-                      <td className="px-3 py-2 text-accent font-mono text-[10px] whitespace-nowrap">
-                        {formatPeriodId(b.periodId)}
-                      </td>
-                      <td className="px-2 py-2 text-center whitespace-nowrap">
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-accent/20 text-accent border border-accent/30">
-                          {cct}c
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[9px] text-gray-300 uppercase font-bold shrink-0">
-                            {kindChip}
-                          </span>
-                          <SlipTarget slip={slip} />
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 text-right text-white font-semibold whitespace-nowrap">
-                        {formatCurrency(b.amount)}
-                      </td>
-                      <td className="px-2 py-2 text-right whitespace-nowrap">
-                        {b.status === 'pending' ? (
-                          <span className="inline-block px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 text-[10px] font-bold uppercase">
-                            Pending
-                          </span>
-                        ) : b.isWin ? (
-                          <span className="text-emerald-400 font-bold">+{formatCurrency(b.winAmount || 0)}</span>
-                        ) : (
-                          <span className="inline-block px-2 py-0.5 rounded bg-red-500/15 text-red-300 text-[10px] font-bold uppercase">
-                            Lost
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="max-h-96 overflow-y-auto divide-y divide-dark-600/40">
+            {myBets.map((b) => {
+              const slip = { kind: b.kind, ...(b.details || {}) };
+              const laneLabel = LANE_LABEL[b.cardCountType] || '—';
+              const kindChip = slipKindLabel(slip);
+              const revealed = b.cards || [];
+              return (
+                <details key={b.betId} className="group">
+                  {/* Collapsed summary row — period id + win amount */}
+                  <summary className="flex items-center gap-2 px-3 py-2.5 cursor-pointer list-none hover:bg-dark-800/30">
+                    <FiChevronRight className="w-3.5 h-3.5 text-gray-500 group-open:rotate-90 transition-transform shrink-0" />
+                    <span className="font-mono text-[11px] text-blue-400 shrink-0">{formatPeriodId(b.periodId)}</span>
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30 shrink-0">
+                      {laneLabel}
+                    </span>
+                    <span className="ml-auto shrink-0 text-right">
+                      {b.status === 'pending' ? (
+                        <span className="inline-block px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 text-[10px] font-bold uppercase">Pending</span>
+                      ) : b.isWin ? (
+                        <span className="text-emerald-400 text-xs font-bold">+{formatCurrency(b.winAmount || 0)}</span>
+                      ) : (
+                        <span className="inline-block px-2 py-0.5 rounded bg-red-500/15 text-red-300 text-[10px] font-bold uppercase">Lost</span>
+                      )}
+                    </span>
+                  </summary>
+
+                  {/* Expanded detail */}
+                  <div className="px-3 pb-3 pt-1 bg-dark-800/30 text-[11px] text-gray-300 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-gray-500">Bet</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-dark-700 text-[9px] text-gray-300 uppercase font-bold">{kindChip}</span>
+                        <SlipTarget slip={slip} />
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2"><span className="text-gray-500">Lane</span><span>{laneLabel}</span></div>
+                    <div className="flex justify-between gap-2"><span className="text-gray-500">Stake</span><span className="text-white font-semibold">{formatCurrency(b.amount)}</span></div>
+                    <div className="flex justify-between gap-2"><span className="text-gray-500">Multiplier</span><span className="text-gold-light font-bold">{b.multiplier}x</span></div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-gray-500">Result card</span>
+                      <span className="flex items-center gap-1">
+                        {revealed.length === 0 ? <span className="text-gray-500">—</span> : revealed.map((cid) => <UnoMiniCard key={cid} id={cid} w={26} />)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-500">Outcome</span>
+                      <span>
+                        {b.status === 'pending' ? <span className="text-yellow-300 font-bold">Pending</span>
+                          : b.isWin ? <span className="text-emerald-400 font-bold">Won +{formatCurrency(b.winAmount || 0)}</span>
+                          : <span className="text-red-300 font-bold">Lost</span>}
+                      </span>
+                    </div>
+                    {b.createdAt && (
+                      <div className="flex justify-between gap-2"><span className="text-gray-500">Placed</span><span className="text-gray-400">{new Date(b.createdAt).toLocaleString()}</span></div>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
           </div>
         )}
+        </>)}
       </div>
        </div>
       </div>
 
-      {/* Rules + FAQ — payout reference and common questions. */}
+      {/* Rules */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="rounded-xl bg-dark-700/50 overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
@@ -1471,63 +1160,33 @@ export default function UnoKing() {
           </div>
           <div className="p-4 space-y-3 text-xs text-gray-300">
             <p className="text-gray-400 leading-relaxed">
-              UNO King runs <b className="text-white">4 parallel games</b> — pick a type tab (1c / 2c / 3c / 4c) at the top of the stage. A type-N game reveals N cards from a shuffled <b className="text-white">54-card UNO deck</b> (52 colored + 2 wilds) each round. Place bets before the round locks — winnings pay your stake × the multiplier on a hit.
+              UNO King runs <b className="text-white">4 parallel lanes</b> — pick a duration tab (<b className="text-white">30s / 1m / 5m / 10m</b>). Each lane reveals <b className="text-white">one card</b> from a 54-card UNO deck every round. Place bets before the round locks — winnings pay your stake × the multiplier on a hit.
             </p>
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Cards bet — multiplier per match count</p>
-              <div className="grid grid-cols-4 gap-2">
-                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">1 match</p>
-                  <p className="text-gold-light font-black">2x</p>
-                </div>
-                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">2 match</p>
-                  <p className="text-gold-light font-black">9x</p>
-                </div>
-                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">3 match</p>
-                  <p className="text-gold-light font-black">100x</p>
-                </div>
-                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">4 match</p>
-                  <p className="text-gold-light font-black">500x</p>
-                </div>
-              </div>
-              <p className="text-[10px] text-gray-500 mt-1">Type-N game allows picking 1..N cards. Picks must all appear in the dealt N to win.</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Group bets (any dealt card matches)</p>
-              <div className="grid grid-cols-4 gap-2">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Bet types & payouts</p>
+              <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
                   <p className="text-[10px] text-gray-400">Color</p>
-                  <p className="text-gold-light font-black">2x</p>
+                  <p className="text-gold-light font-black">{UNO_MULTIPLIERS.color}x</p>
                 </div>
                 <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">Number</p>
-                  <p className="text-gold-light font-black">3x</p>
-                </div>
-                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">Action</p>
-                  <p className="text-gold-light font-black">3x</p>
-                </div>
-                <div className="rounded-lg bg-dark-800/60 border border-dark-600/40 px-2 py-1.5 text-center">
-                  <p className="text-[10px] text-gray-400">Wild</p>
-                  <p className="text-gold-light font-black">6x</p>
+                  <p className="text-[10px] text-gray-400">Card</p>
+                  <p className="text-gold-light font-black">{UNO_MULTIPLIERS.cards}x</p>
                 </div>
               </div>
+              <p className="text-[10px] text-gray-500 mt-1"><b>Color</b> = red/yellow/green/blue of the drawn card · <b>Card</b> = the exact card.</p>
             </div>
             <ul className="text-gray-400 space-y-1 list-disc list-inside">
-              <li>Each card_count_type has its own period_id, round timer, and history.</li>
+              <li>Each lane (30s / 1m / 5m / 10m) has its own period, round timer, and history.</li>
               <li>Min bet <b className="text-white">1</b>, max bet <b className="text-white">10,000</b> per slip.</li>
-              <li>Place as many slips as you like per type — they all settle when that type's round reveals.</li>
-              <li>Bets close when the countdown locks; reveal happens shortly after.</li>
+              <li>Place as many slips as you like per lane — they all settle when that lane's round reveals.</li>
+              <li>Bets close when the countdown locks; the single card reveals shortly after.</li>
             </ul>
           </div>
         </div>
-
       </div>
 
-      {/* General FAQ — applies across the platform */}
+      {/* FAQ */}
       <div className="rounded-xl bg-dark-700/50 overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-dark-600/50">
           <FiAward className="w-4 h-4 text-gold-light" />
@@ -1535,30 +1194,12 @@ export default function UnoKing() {
         </div>
         <div className="divide-y divide-dark-600/40">
           {[
-            {
-              q: 'Are the games provably fair?',
-              a: 'Outcomes are generated server-side using cryptographic randomness. Round seeds and results are stored so any draw can be audited.',
-            },
-            {
-              q: 'Can I cancel a placed bet?',
-              a: 'No — once a slip is submitted it is locked into the round. Double-check your stake and selection before placing.',
-            },
-            {
-              q: 'How fast are winnings credited?',
-              a: 'Wins are credited to your wallet automatically the moment the round settles. The balance widget updates in real-time over the socket.',
-            },
-            {
-              q: 'What are the global stake limits?',
-              a: 'Min 1 and max 10,000 per slip on most games. Some games (Lottery, Lucky Spin) use their own ticket pricing — check that game for specifics.',
-            },
-            {
-              q: 'Can I play multiple games at once?',
-              a: 'Yes. Each game runs on its own round/timer and your wallet is shared, so you can keep slips active across several games simultaneously.',
-            },
-            {
-              q: 'Where can I see my history?',
-              a: 'Every game page has a "Your Recent Bets" panel with the last 20+ outcomes. Your full transaction log is on the Profile page.',
-            },
+            { q: 'Are the games provably fair?', a: 'Outcomes are generated server-side using cryptographic randomness. Round seeds and results are stored so any draw can be audited.' },
+            { q: 'Can I cancel a placed bet?', a: 'No — once a slip is submitted it is locked into the round. Double-check your stake and selection before placing.' },
+            { q: 'How fast are winnings credited?', a: 'Wins are credited to your wallet automatically the moment the round settles. The balance widget updates in real-time over the socket.' },
+            { q: 'What are the global stake limits?', a: 'Min 1 and max 10,000 per slip on most games. Some games use their own ticket pricing — check that game for specifics.' },
+            { q: 'Can I play multiple games at once?', a: 'Yes. Each game runs on its own round/timer and your wallet is shared, so you can keep slips active across several games simultaneously.' },
+            { q: 'Where can I see my history?', a: 'Every game page has a Bet History tab with your recent outcomes. Your full transaction log is on the Profile page.' },
           ].map((item, i) => (
             <details key={i} className="group">
               <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer list-none hover:bg-dark-800/30">
@@ -1573,8 +1214,66 @@ export default function UnoKing() {
         </div>
       </div>
 
-      {/* Win/Loss overlay — uses the shared component so the modal animation
-          and styling matches every other game (Mutka King, Coin Flip, etc.). */}
+      {/* How-to-play modal */}
+      <AnimatePresence>
+        {howToOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setHowToOpen(false)} />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 12 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+              className="relative w-full max-w-sm rounded-2xl border border-blue-500/30 bg-dark-800 shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-dark-600/50 bg-gradient-to-r from-blue-500/10 to-transparent">
+                <div className="flex items-center gap-2">
+                  <FiInfo className="w-4 h-4 text-blue-400" />
+                  <h3 className="text-white font-bold text-sm">How to play</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHowToOpen(false)}
+                  className="w-7 h-7 rounded-full bg-dark-700 flex items-center justify-center text-gray-300 hover:text-white"
+                  aria-label="Close"
+                >
+                  <FiX className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 space-y-3 text-xs text-gray-300">
+                <p className="leading-relaxed">
+                  Pick a duration lane (<b className="text-white">30s / 1m / 5m / 10m</b>). Each round, <b className="text-white">one UNO card</b> is drawn. Bet before the round locks — a hit pays your stake <b className="text-white">× multiplier</b>.
+                </p>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Bet types & payouts</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-dark-900/60 border border-dark-600/40 px-2 py-2 text-center">
+                      <p className="text-[10px] text-gray-400">Color</p>
+                      <p className="text-gold-light font-black text-sm">{UNO_MULTIPLIERS.color}x</p>
+                      <p className="text-[9px] text-gray-500 mt-0.5">red/yellow/green/blue</p>
+                    </div>
+                    <div className="rounded-lg bg-dark-900/60 border border-dark-600/40 px-2 py-2 text-center">
+                      <p className="text-[10px] text-gray-400">Card</p>
+                      <p className="text-gold-light font-black text-sm">{UNO_MULTIPLIERS.cards}x</p>
+                      <p className="text-[9px] text-gray-500 mt-0.5">exact card</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Example: bet <b className="text-white">100</b> on a color and hit — you win <b className="text-emerald-400">{100 * UNO_MULTIPLIERS.color}</b>. Place as many slips as you like per lane; they all settle when the card reveals.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Win/Loss overlay */}
       <GameResultOverlay
         result={resultModal ? {
           isWin: resultModal.isWin,
@@ -1583,7 +1282,10 @@ export default function UnoKing() {
           multiplier: (resultModal.totalBet || 0) > 0
             ? Math.round((resultModal.totalWin / resultModal.totalBet) * 100) / 100
             : 0,
-          result: (resultModal.cards || []).map((id) => decodeUnoCard(id).label).join(' '),
+          result: (resultModal.cards || []).map((id) => {
+            const c = decodeUnoCard(id);
+            return c.isWild ? c.label : `${c.color.label} ${c.label}`;
+          }).join(' '),
         } : null}
         show={!!resultModal}
         onClose={closeResultModal}

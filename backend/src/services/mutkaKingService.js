@@ -1,29 +1,41 @@
 const db = require('../config/database');
 const crypto = require('crypto');
 
-// Mutka King — 4 PARALLEL server-authoritative 52-card lotteries, one per
-// card_count_type (1, 2, 3, 4). Type N draws N cards from a shuffled deck.
+// Mutka King — 4 PARALLEL server-authoritative single-card lotteries, one per
+// DURATION LANE (30s, 1m, 5m, 10m). Each round reveals exactly ONE card from a
+// shuffled 52-card deck.
 //
-// Bet kinds (per type N):
-//   cards  — pick 1..N specific cards; all picked must appear.
-//   rank   — pick rank index 0-12; any dealt card matches.
-//   suit   — pick suit 0-3; any dealt card matches.
-//   color  — 'red' | 'black'; any dealt card has that color.
+// The lane is carried in the `card_count_type` column (values 1..4) — the
+// column is kept for schema/prediction-rig compatibility but now means a lane
+// id, NOT a card count. Mutka's card count is always 1. See LANES below.
+//
+// Bet kinds (the one revealed card decides all):
+//   cards  — pick exactly 1 specific card; wins if it is the drawn card. 15x
+//   suit   — pick suit 0-3; wins if the drawn card has that suit.          5x
+//   color  — 'red' | 'black'; wins if the drawn card is that color.        2x
 
-const CARD_COUNT_TYPES = [1, 2, 3, 4];
+// Lane id → duration config. Each lane is its own parallel round loop with its
+// own period_id sequence, timing, and history.
+const LANES = [
+  { id: 1, key: '30s', label: '30s', totalMs: 30_000,  bettingMs: 25_000,  lockMs: 5_000 },
+  { id: 2, key: '1m',  label: '1m',  totalMs: 60_000,  bettingMs: 50_000,  lockMs: 10_000 },
+  { id: 3, key: '5m',  label: '5m',  totalMs: 300_000, bettingMs: 285_000, lockMs: 15_000 },
+  { id: 4, key: '10m', label: '10m', totalMs: 600_000, bettingMs: 580_000, lockMs: 20_000 },
+];
+const LANE_IDS = LANES.map((l) => l.id);
+const LANE_BY_ID = new Map(LANES.map((l) => [l.id, l]));
+// Backwards-compatible alias — several callers/iterators still reference the
+// old name; it is now simply the list of lane ids.
+const CARD_COUNT_TYPES = LANE_IDS;
 
 const WIN_PAYOUT_RATIO = 0.9;
 
 const MUTKA_MULTIPLIERS = {
-  cards: { 1: 2, 2: 9, 3: 100, 4: 500 },
-  rank:  3,
-  suit:  2,
+  cards: 15,
+  suit:  5,
   color: 2,
 };
 
-const ROUND_TOTAL_MS    = 60_000;
-const BETTING_PHASE_MS  = 50_000;
-const LOCK_PHASE_MS     = 10_000;
 const MAX_BETS_PER_USER = 20;
 const MIN_BET = 1;
 const MAX_BET = 10_000;
@@ -125,10 +137,12 @@ class MutkaKingService {
     if (!this.running) return;
 
     try {
+      const lane = LANE_BY_ID.get(type);
+      if (!lane) throw new Error(`Unknown lane id ${type}`);
       const periodId = await this._generatePeriodId(type);
       const startedAt = new Date();
-      const lockedAt = new Date(startedAt.getTime() + BETTING_PHASE_MS);
-      const completeAt = new Date(startedAt.getTime() + ROUND_TOTAL_MS);
+      const lockedAt = new Date(startedAt.getTime() + lane.bettingMs);
+      const completeAt = new Date(startedAt.getTime() + lane.totalMs);
 
       const [result] = await db.pool.query(
         `INSERT INTO mutka_king_rounds (period_id, card_count_type, status, started_at)
@@ -151,10 +165,10 @@ class MutkaKingService {
 
       if (this.io) this.io.emit('mutka:round:open', this._publicRoundState(type));
 
-      this._setTimer(type, 'lock', BETTING_PHASE_MS, () =>
+      this._setTimer(type, 'lock', lane.bettingMs, () =>
         this._lockRound(type).catch(err => console.error(`[MUTKA/${type}] Lock error:`, err))
       );
-      this._setTimer(type, 'complete', ROUND_TOTAL_MS, () =>
+      this._setTimer(type, 'complete', lane.totalMs, () =>
         this._completeRound(type).catch(err => console.error(`[MUTKA/${type}] Complete error:`, err))
       );
     } catch (err) {
@@ -176,11 +190,12 @@ class MutkaKingService {
     console.log(`[MUTKA/${type}] Round locked ${round.periodId}`);
 
     if (this.io) {
+      const lane = LANE_BY_ID.get(type);
       this.io.emit('mutka:round:lock', {
         cardCountType: type,
         roundId: round.id,
         periodId: round.periodId,
-        countdownSeconds: Math.floor(LOCK_PHASE_MS / 1000),
+        countdownSeconds: Math.floor((lane?.lockMs ?? 10_000) / 1000),
       });
     }
   }
@@ -195,23 +210,30 @@ class MutkaKingService {
       let cards = null;
       if (this.predictionService) {
         const { cards: resolved, source } = await this.predictionService
-          .resolveCardsForRound(round.id, 'mutka_king', type);
+          .resolveCardsForRound(round.id, 'mutka_king', 1);
         if (resolved) {
           cards = resolved;
           console.log(`[MUTKA/${type}] Used predicted cards (${source}) for round ${round.id}: ${JSON.stringify(cards)}`);
         }
       }
       if (!cards) {
-        console.log(`[MUTKA/${type}] No predicted cards for round ${round.id} — using random sample`);
-        cards = secureSample(52, type);
+        console.log(`[MUTKA/${type}] No predicted card for round ${round.id} — using random sample`);
+        cards = secureSample(52, 1);
       }
-      const cardSet = new Set(cards);
-      const ranks = cards.map(cardRank);
-      const suits = cards.map(cardSuit);
-      const redCount = cards.filter(isRedCard).length;
-      const dominantColor = redCount > type - redCount ? 'red' : 'black';
+      // Exactly one card is revealed per round — `card` is the single outcome.
+      const card = cards[0];
+      const cardRankVal = cardRank(card);
+      const cardSuitVal = cardSuit(card);
+      const cardColor = isRedCard(card) ? 'red' : 'black';
 
-      const resultSummary = { cards, ranks, suits, redCount, dominantColor, cardCountType: type };
+      const resultSummary = {
+        cards,
+        card,
+        rank: cardRankVal,
+        suit: cardSuitVal,
+        color: cardColor,
+        laneId: type,
+      };
 
       const [bets] = await db.pool.query(
         `SELECT id, user_id, kind, amount, multiplier, details
@@ -233,13 +255,11 @@ class MutkaKingService {
 
         let isWin = false;
         if (bet.kind === 'cards' && Array.isArray(details.cards)) {
-          isWin = details.cards.every((c) => cardSet.has(c));
-        } else if (bet.kind === 'rank' && Number.isInteger(details.rank)) {
-          isWin = ranks.includes(details.rank);
+          isWin = details.cards[0] === card;
         } else if (bet.kind === 'suit' && Number.isInteger(details.suit)) {
-          isWin = suits.includes(details.suit);
+          isWin = cardSuitVal === details.suit;
         } else if (bet.kind === 'color') {
-          isWin = details.color === 'red' ? redCount >= 1 : redCount < type;
+          isWin = details.color === cardColor;
         }
 
         const winAmount = isWin
@@ -324,7 +344,7 @@ class MutkaKingService {
                 balanceBefore.toFixed(2),
                 balanceAfter.toFixed(2),
                 gb.insertId,
-                `Mutka King type-${type} win: ${round.periodId}`,
+                `Mutka King ${LANE_BY_ID.get(type)?.label || `lane ${type}`} win: ${round.periodId}`,
               ]
             );
           }
@@ -443,8 +463,12 @@ class MutkaKingService {
     const lockMs = r.lockedAt.getTime();
     const completeMs = r.completeAt.getTime();
     const phase = now < lockMs ? 'betting' : 'locked';
+    const lane = LANE_BY_ID.get(type);
     return {
       cardCountType: type,
+      laneId: type,
+      laneKey: lane?.key || null,
+      laneLabel: lane?.label || null,
       roundId: r.id,
       periodId: r.periodId,
       status: phase,
@@ -453,24 +477,28 @@ class MutkaKingService {
       completeAt: r.completeAt.toISOString(),
       bettingRemainingMs: Math.max(0, lockMs - now),
       totalRemainingMs: Math.max(0, completeMs - now),
-      bettingPhaseMs: BETTING_PHASE_MS,
-      lockPhaseMs: LOCK_PHASE_MS,
-      roundTotalMs: ROUND_TOTAL_MS,
+      bettingPhaseMs: lane?.bettingMs ?? 0,
+      lockPhaseMs: lane?.lockMs ?? 0,
+      roundTotalMs: lane?.totalMs ?? 0,
     };
   }
 
   getAllRoundStates() {
     const out = {};
-    for (const t of CARD_COUNT_TYPES) out[t] = this._publicRoundState(t);
+    for (const t of LANE_IDS) out[t] = this._publicRoundState(t);
     return out;
   }
 
   getCurrentRoundState() {
-    return this._publicRoundState(4) || this._publicRoundState(1);
+    return this._publicRoundState(1) || this._publicRoundState(2);
   }
 
   getCardCountTypes() {
-    return [...CARD_COUNT_TYPES];
+    return [...LANE_IDS];
+  }
+
+  getLanes() {
+    return LANES.map((l) => ({ ...l }));
   }
 
   getMultipliers() {
@@ -478,16 +506,17 @@ class MutkaKingService {
   }
 
   async placeBet(userId, betInput) {
-    const type = parseInt(betInput?.cardCountType ?? betInput?.card_count_type, 10);
-    if (!CARD_COUNT_TYPES.includes(type)) throw new Error('cardCountType must be 1, 2, 3, or 4');
+    const type = parseInt(betInput?.cardCountType ?? betInput?.card_count_type ?? betInput?.laneId, 10);
+    if (!LANE_IDS.includes(type)) throw new Error('Invalid lane — must be one of 30s, 1m, 5m, 10m');
+    const laneLabel = LANE_BY_ID.get(type)?.label || `lane ${type}`;
     const round = this.currentRounds.get(type);
     if (!round) {
       throw new Error(
-        `Type-${type} Mutka King round has not been opened yet — server may still be starting, or migration 060 has not been applied (check backend logs for "[MUTKA/${type}] Failed to open round").`
+        `The ${laneLabel} Mutka King round has not been opened yet — server may still be starting, or migration 064 has not been applied (check backend logs for "[MUTKA/${type}] Failed to open round").`
       );
     }
-    if (round.status !== 'betting') throw new Error(`Betting is closed for type-${type} round (status=${round.status})`);
-    if (Date.now() >= round.lockedAt.getTime()) throw new Error(`Betting is closed for type-${type} round (locked)`);
+    if (round.status !== 'betting') throw new Error(`Betting is closed for the ${laneLabel} round (status=${round.status})`);
+    if (Date.now() >= round.lockedAt.getTime()) throw new Error(`Betting is closed for the ${laneLabel} round (locked)`);
 
     const cleanBet = this._validateBet(betInput, type);
 
@@ -538,7 +567,7 @@ class MutkaKingService {
           balance,
           newBalance,
           bal.insertId,
-          `Mutka King type-${type} bet ${round.periodId}: ${cleanBet.kind}`,
+          `Mutka King ${laneLabel} bet ${round.periodId}: ${cleanBet.kind}`,
         ]
       );
 
@@ -574,24 +603,14 @@ class MutkaKingService {
     const kind = bet.kind || 'cards';
 
     if (kind === 'cards') {
-      if (!Array.isArray(bet.cards) || bet.cards.length < 1 || bet.cards.length > type) {
-        throw new Error(`Pick 1-${type} cards for this type`);
+      // Exactly one card is revealed per round, so a Cards bet is a single
+      // exact-card guess paying 15x.
+      if (!Array.isArray(bet.cards) || bet.cards.length !== 1) {
+        throw new Error('Pick exactly 1 card');
       }
-      const cards = bet.cards.map((c) => {
-        const n = parseInt(c, 10);
-        if (!Number.isInteger(n) || n < 0 || n > 51) throw new Error('Invalid card');
-        return n;
-      });
-      if (new Set(cards).size !== cards.length) throw new Error('Duplicate cards');
-      const multiplier = MUTKA_MULTIPLIERS.cards[cards.length];
-      if (!multiplier) throw new Error('Unsupported pick count');
-      return { kind, amount, multiplier, details: { cards } };
-    }
-
-    if (kind === 'rank') {
-      const rank = parseInt(bet.rank, 10);
-      if (!Number.isInteger(rank) || rank < 0 || rank > 12) throw new Error('Invalid rank');
-      return { kind, amount, multiplier: MUTKA_MULTIPLIERS.rank, details: { rank } };
+      const n = parseInt(bet.cards[0], 10);
+      if (!Number.isInteger(n) || n < 0 || n > 51) throw new Error('Invalid card');
+      return { kind, amount, multiplier: MUTKA_MULTIPLIERS.cards, details: { cards: [n] } };
     }
 
     if (kind === 'suit') {
@@ -710,3 +729,4 @@ class MutkaKingService {
 module.exports = MutkaKingService;
 module.exports.MUTKA_MULTIPLIERS = MUTKA_MULTIPLIERS;
 module.exports.CARD_COUNT_TYPES = CARD_COUNT_TYPES;
+module.exports.LANES = LANES;

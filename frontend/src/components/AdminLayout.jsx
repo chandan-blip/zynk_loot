@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiTarget, FiList, FiCrosshair, FiShield } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiList, FiCrosshair, FiShield } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { getAdminSupportUnread } from '../services/api';
@@ -14,7 +14,6 @@ const navItems = [
   { path: '/admin/winners', label: 'Winners', icon: FiAward, module: 'winners' },
   { path: '/admin/daily-winners', label: 'Daily Winners', icon: FiSend, module: 'daily-winners' },
   { path: '/admin/payment-templates', label: 'Payment Templates', icon: FiSmartphone, module: 'payment-templates' },
-  { path: '/admin/prediction', label: 'Prediction', icon: FiTarget, module: 'prediction' },
   { path: '/admin/custom-prediction', label: 'Custom Prediction', icon: FiCrosshair, module: 'custom-prediction' },
   { path: '/admin/smm-queue', label: 'SMM Queue', icon: FiList, module: 'smm-queue' },
   { path: '/admin/users', label: 'Users', icon: FiUsers, module: 'users' },

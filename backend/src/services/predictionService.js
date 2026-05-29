@@ -30,6 +30,16 @@ const DECK_SIZES = {
   uno_king:     54,
 };
 
+// Mutka King's card_count_type (1..4) is a DURATION lane, not a card count.
+// It always draws a single card. Used for prediction labels + sample sizing.
+const MUTKA_LANE_LABELS = { 1: '30s', 2: '1m', 3: '5m', 4: '10m' };
+// How many cards a (game, type) prediction should pre-roll. Every game now
+// runs DURATION lanes that reveal exactly ONE card per round, so this is
+// always 1 — the `type` (1..4) is a lane id, not a card count.
+function predictionCardCount(/* game, cardCountType */) {
+  return 1;
+}
+
 const SMM_MASTER_SETTING_KEY = 'prediction_smm_enabled';
 const SCHEDULE_SETTING_KEY = 'prediction_schedule_config';
 
@@ -639,8 +649,10 @@ class PredictionService {
       throw new Error(`Every card id must be an integer in 0..${deckSize - 1}`);
     }
     if (new Set(ids).size !== ids.length) throw new Error('cards must be unique');
-    if (ids.length !== type) {
-      throw new Error(`Pick exactly ${type} card(s) for a ${type}-card round`);
+    // Every game now runs DURATION lanes that reveal exactly ONE card per
+    // round, so `type` (1..4) is a lane id, not a card count — always 1 card.
+    if (ids.length !== 1) {
+      throw new Error('Pick exactly 1 card for this round');
     }
     return { type, ids };
   }
@@ -852,7 +864,7 @@ class PredictionService {
   async _sendPredictionPost({ token, chatId, game, cardCountType, message, slotHour }) {
     const deckSize = DECK_SIZES[game];
     if (!deckSize) throw new Error(`Unsupported game "${game}"`);
-    const cards = secureSample(deckSize, cardCountType);
+    const cards = secureSample(deckSize, predictionCardCount(game, cardCountType));
 
     // Lock this prediction to the next real round so the game's reveal matches
     // what we broadcast. Only valid while the round is still in `betting` —
@@ -896,15 +908,19 @@ class PredictionService {
 
     const cardsLine = formatCardsForGame(game, cards);
     const CARD_TYPE_LABELS = { 1: 'Single', 2: 'Double', 3: 'Triple', 4: 'Quadruple' };
-    const cardType = CARD_TYPE_LABELS[cardCountType] || 'Single';
+    // For Mutka King the type is a duration lane (30s/1m/5m/10m) and a single
+    // card is revealed; other games show the card-count label.
+    const isMutka = game === 'mutka_king';
+    const typeTag = isMutka ? (MUTKA_LANE_LABELS[cardCountType] || '30s') : `${cardCountType}C`;
+    const typeLine = isMutka ? 'Single Card' : `${CARD_TYPE_LABELS[cardCountType] || 'Single'} Cards`;
     // Period ids are `YYYYMMDDTTNNNNN` — strip the YYYYMMDD prefix so the
     // broadcast only shows the slot/sequence suffix (`TTNNNNN`). Leave
     // synthetic/non-standard ids untouched.
     const shortPeriod = /^\d{8}/.test(periodId) ? periodId.slice(8) : periodId;
     const header =
       `🎯<b>Sure Shot</b>🎯\n` +
-      `<b>${gameLabel(game)} (${cardCountType}C)</b>\n` +
-      `<b>${cardType} Cards</b>\n` +
+      `<b>${gameLabel(game)} (${typeTag})</b>\n` +
+      `<b>${typeLine}</b>\n` +
       `Period: <b>${shortPeriod}</b>\n` +
       `Cards: <b>${cardsLine}</b>`;
     const body = message ? `\n${message}` : '';

@@ -308,6 +308,7 @@ router.get('/mutka-king/state', async (req, res) => {
       data: {
         rounds: svc?.getAllRoundStates() || {},
         cardCountTypes: svc?.getCardCountTypes() || [1, 2, 3, 4],
+        lanes: svc?.getLanes?.() || null,
         multipliers: svc?.getMultipliers() || null,
       },
     });
@@ -373,6 +374,7 @@ router.get('/uno-king/state', async (req, res) => {
       data: {
         rounds: svc?.getAllRoundStates() || {},
         cardCountTypes: svc?.getCardCountTypes() || [1, 2, 3, 4],
+        lanes: svc?.getLanes?.() || null,
         multipliers: svc?.getMultipliers() || null,
       },
     });
@@ -438,6 +440,7 @@ router.get('/shuffle-card/state', async (req, res) => {
       data: {
         rounds: svc?.getAllRoundStates() || {},
         cardCountTypes: svc?.getCardCountTypes() || [1, 2, 3, 4],
+        lanes: svc?.getLanes?.() || null,
         multipliers: svc?.getMultipliers() || null,
       },
     });

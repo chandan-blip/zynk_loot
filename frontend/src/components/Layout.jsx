@@ -23,7 +23,9 @@ import {
   FiInfo,
   FiHeart,
   FiLock,
-  FiGift
+  FiGift,
+  FiDownload,
+  FiArrowUpRight
 } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
@@ -168,23 +170,33 @@ function Layout() {
                   {/* Balance Card */}
                   <div className="relative p-4 rounded-lg bg-gradient-to-br from-dark-600 to-dark-700 border border-white/5 overflow-hidden">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-accent/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                    <div className="relative flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
-                          <span className="text-accent font-bold">{selectedCurrency?.symbol || '$'}</span>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Balance</p>
-                          <p className="text-xl font-bold text-white">
-                            {formatCurrency(user?.balance || 0, false)}
-                          </p>
-                        </div>
+                    <div className="relative flex items-center gap-3">
+                      <div className="w-10 h-10 shrink-0 rounded-lg bg-accent/20 flex items-center justify-center">
+                        <span className="text-accent font-bold">{selectedCurrency?.symbol || '$'}</span>
                       </div>
-                      <Link to="/wallet" onClick={closeSidebar} className="btn-premium px-4 py-2 text-sm">
-                        <span className="flex items-center gap-1">
-                          <FiPlus className="w-4 h-4" />
-                          Buy
-                        </span>
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500">Balance</p>
+                        <p className="text-xl font-bold text-white truncate">
+                          {formatCurrency(user?.balance || 0, false)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="relative grid grid-cols-2 gap-2 mt-3">
+                      <Link
+                        to="/wallet"
+                        onClick={closeSidebar}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-sm font-bold"
+                      >
+                        <FiDownload className="w-4 h-4" />
+                        Deposit
+                      </Link>
+                      <Link
+                        to="/wallet/withdraw"
+                        onClick={closeSidebar}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 border border-yellow-500/30 transition-colors text-sm font-bold"
+                      >
+                        <FiArrowUpRight className="w-4 h-4" />
+                        Withdraw
                       </Link>
                     </div>
                   </div>
@@ -309,7 +321,7 @@ function Layout() {
                   {/* Balance Display — light border, no heavy box so large amounts can grow freely */}
                   <Link
                     to="/wallet"
-                    className="flex items-baseline gap-1 px-2.5 py-1.5 rounded-lg border border-white/10 hover:border-accent/30 text-accent hover:text-accent-400 transition-colors"
+                    className="flex items-baseline gap-1 px-2.5 py-2 rounded-lg border border-white/10 hover:border-accent/30 text-white hover:text-gray-200 transition-colors"
                   >
                     <span className="font-bold text-sm whitespace-nowrap">
                       {formatCurrency(user?.balance || 0, false)}
@@ -403,7 +415,7 @@ function Layout() {
         {/* Mobile Bottom Navigation — hidden inside game pages */}
         <nav className={`fixed bottom-0 left-0 right-0 z-40 pb-safe lg:hidden ${location.pathname.startsWith('/games/') ? 'hidden' : ''}`}>
           <div className="max-w-[1400px] mx-auto">
-            <div className="glass-strong border-t border-white/5 mx-2 mb-2 rounded-lg overflow-hidden">
+            <div className="glass-strong border-t border-white/5  rounded-t-lg overflow-hidden">
               <div className="flex items-center justify-around h-16">
                 {navItems
                   .filter(item => !item.authRequired || isAuthenticated || (isLoading && localStorage.getItem('token')))

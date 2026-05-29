@@ -12,8 +12,11 @@ const GAMES = [
   { id: 'mutka_king',   label: 'Mutka King',   deck: 52, uno: false },
   { id: 'uno_king',     label: 'UNO King',     deck: 54, uno: true },
 ];
+// Every game now runs 4 DURATION lanes (the `type` 1..4 is a lane id, not a
+// card count) and reveals exactly ONE card per round.
 const TYPES = [1, 2, 3, 4];
-const TYPE_LABELS = { 1: 'Single', 2: 'Dual', 3: 'Triple', 4: 'Four' };
+const LANE_LABELS = { 1: '30s', 2: '1m', 3: '5m', 4: '10m' };
+const requiredCountFor = () => 1;
 
 // Per-game stage theme so the right-hand preview matches the live game look.
 const THEMES = {
@@ -45,6 +48,7 @@ function AdminCustomPrediction() {
 
   const gameMeta = GAMES.find((g) => g.id === game) || GAMES[0];
   const isUno = gameMeta.uno;
+  const requiredCount = requiredCountFor();
   const theme = THEMES[game];
 
   // Reset the pick whenever the deck (game) or the required count (type) changes.
@@ -75,13 +79,13 @@ function AdminCustomPrediction() {
   const toggle = (id) => {
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length < type) return [...prev, id];
+      if (prev.length < requiredCount) return [...prev, id];
       // Full — roll: drop the oldest pick and append the new one.
       return [...prev.slice(1), id];
     });
   };
 
-  const complete = selected.length === type;
+  const complete = selected.length === requiredCount;
   const secondsLeft = roundInfo?.completeAt
     ? Math.max(0, Math.round((new Date(roundInfo.completeAt).getTime() - now) / 1000))
     : null;
@@ -148,8 +152,10 @@ function AdminCustomPrediction() {
               ))}
             </div>
 
-            {/* Type selector */}
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Card type</label>
+            {/* Duration-lane selector */}
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">
+              Duration lane
+            </label>
             <div className="grid grid-cols-4 gap-2">
               {TYPES.map((t) => (
                 <button
@@ -161,7 +167,7 @@ function AdminCustomPrediction() {
                       : 'bg-dark-900 text-gray-300 border-dark-600 hover:border-accent/50'
                   }`}
                 >
-                  {t}C · {TYPE_LABELS[t]}
+                  {LANE_LABELS[t]}
                 </button>
               ))}
             </div>
@@ -199,10 +205,10 @@ function AdminCustomPrediction() {
           <div className="bg-dark-800 border border-dark-600 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                Pick exactly {type} card{type > 1 ? 's' : ''}
+                Pick exactly {requiredCount} card{requiredCount > 1 ? 's' : ''}
               </span>
               <span className={`text-xs font-black ${complete ? 'text-emerald-400' : 'text-gray-400'}`}>
-                {selected.length} / {type}
+                {selected.length} / {requiredCount}
               </span>
             </div>
 
@@ -271,7 +277,7 @@ function AdminCustomPrediction() {
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-dark-900 text-sm font-black disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-95"
               >
                 <FiCheck className="w-4 h-4" />
-                {submitting ? 'Locking…' : complete ? 'Lock these cards' : `Pick ${type - selected.length} more`}
+                {submitting ? 'Locking…' : complete ? 'Lock these cards' : `Pick ${requiredCount - selected.length} more`}
               </button>
             </div>
           </div>
@@ -283,7 +289,7 @@ function AdminCustomPrediction() {
             <div className="flex items-center justify-between mb-3">
               <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Result preview</span>
               <span className="text-xs font-bold" style={{ color: theme.accent }}>
-                {gameMeta.label} · {type}C {TYPE_LABELS[type]}
+                {gameMeta.label} · {LANE_LABELS[type]}
               </span>
             </div>
 
@@ -307,7 +313,7 @@ function AdminCustomPrediction() {
                     </span>
                   ))
                 )}
-                {Array.from({ length: type }).map((_, i) => {
+                {Array.from({ length: requiredCount }).map((_, i) => {
                   const id = selected[i];
                   const filled = id != null;
                   const placeholder = (isUno ? UNO_PLACEHOLDERS : STD_PLACEHOLDERS)[i] ?? 0;
@@ -354,8 +360,8 @@ function AdminCustomPrediction() {
                 <span className="font-mono text-gray-300 text-xs">Period {formatPeriod(lastResult.periodId)}</span>
               </div>
               <p className="text-xs text-gray-400">
-                {(GAMES.find((g) => g.id === lastResult.game) || {}).label} · {lastResult.type}C —
-                cards <span className="text-white font-bold">{(lastResult.cards || []).map((id) => labelFor(lastResult.game, id)).join('  ')}</span> will reveal when this round completes.
+                {(GAMES.find((g) => g.id === lastResult.game) || {}).label} · {LANE_LABELS[lastResult.type]} —
+                card <span className="text-white font-bold">{(lastResult.cards || []).map((id) => labelFor(lastResult.game, id)).join('  ')}</span> will reveal when this round completes.
               </p>
             </div>
           )}
