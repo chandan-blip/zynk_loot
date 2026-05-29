@@ -418,6 +418,8 @@ function Layout() {
             <div className="glass-strong border-t border-white/5  rounded-t-lg overflow-hidden">
               <div className="flex items-center justify-around h-16">
                 {navItems
+                  .filter(item => item.path !== '/invest')
+                  .map(item => item.path === '/history' ? { path: '/wallet', label: 'Wallet', icon: FiCreditCard, authRequired: true } : item)
                   .filter(item => !item.authRequired || isAuthenticated || (isLoading && localStorage.getItem('token')))
                   .map((item) => {
                   const isActive = location.pathname === item.path || (item.path === '/games' && location.pathname.startsWith('/games'));

@@ -206,6 +206,9 @@ export const getCustomPredictionRound = (game, cardCountType) =>
   api.get(`/admin/predictions/custom/round?game=${encodeURIComponent(game)}&type=${cardCountType}`, { silent: true });
 export const lockCustomPrediction = (game, cardCountType, cards) =>
   api.post('/admin/predictions/custom', { game, cardCountType, cards });
+// Live in-flight bets + per-card payout exposure for the current round.
+export const getCustomPredictionBets = (game, cardCountType) =>
+  api.get(`/admin/predictions/custom/bets?game=${encodeURIComponent(game)}&type=${cardCountType}`, { silent: true });
 
 // Roles & Access (RBAC)
 export const getAdminRoles = () => api.get('/admin/roles');

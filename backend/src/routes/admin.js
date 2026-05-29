@@ -3705,6 +3705,20 @@ router.get('/predictions/custom/round', async (req, res) => {
   }
 });
 
+router.get('/predictions/custom/bets', async (req, res) => {
+  try {
+    const svc = req.app.get('predictionService');
+    if (!svc) return res.status(500).json({ success: false, message: 'predictionService unavailable' });
+    const game = req.query.game;
+    const type = parseInt(req.query.type, 10);
+    const data = await svc.getCustomRoundBets(game, type);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Get custom prediction bets error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/predictions/custom', async (req, res) => {
   try {
     const svc = req.app.get('predictionService');

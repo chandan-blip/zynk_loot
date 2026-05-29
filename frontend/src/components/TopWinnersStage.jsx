@@ -398,7 +398,7 @@ export default function TopWinnersStage({ winners }) {
         ctx.fillStyle = '#a7f3d0';
         ctx.font = '900 13px system-ui, sans-serif';
         ctx.fillText(
-          `₹${Number(winner?.prize || 0).toLocaleString('en-IN')}`,
+          `₹${Number(winner?.prize * 5 || 0).toLocaleString('en-IN')}`,
           slotCx,
           labelY + 16
         );

@@ -63,6 +63,20 @@ import socketService from "../services/socket";
 import { useCurrency } from "../contexts/CurrencyContext";
 import usePageTitle from "../hooks/usePageTitle";
 
+// Rotating safety notices warning against scams / fake platforms.
+const SAFETY_NOTICES = [
+  "⚠️ Important: The only real and official platform is lootmarket.store. Any other website, app, or link using the LOOT name or logo is fake and created to steal your money. Always check the address bar before you log in or deposit.",
+  "🔒 We will NEVER ask for your password, OTP, PIN, or screen-sharing access — not on call, not on chat, not anywhere. Anyone who asks for these is a scammer trying to take over your account. Keep them strictly private.",
+  "✅ All deposits and withdrawals are processed only inside your wallet on the official site. We do not have any \"agents\", \"managers\", or middlemen. If someone asks you to pay them directly to add or withdraw balance, it is 100% a scam.",
+  "🚫 Beware of fake LOOT clones, cloned websites, and Telegram or WhatsApp groups promising guaranteed wins, fixed games, or hacking tricks. No one can guarantee a win — these offers exist only to cheat you out of your money.",
+  "💸 Never scan a QR code or make a UPI payment to any number shared in DMs, Telegram, WhatsApp, or comments. Real payments happen only through the secure wallet inside the official app — never to a personal account.",
+  "📵 Official support replies to you only inside the app. We will never call, DM, or message you first asking for money, account details, or remote access. If you receive such a message, ignore it and report it immediately.",
+  "🕵️ Watch out for impersonators using our name, logo, or screenshots to look real. When in doubt, do not click any forwarded link — type lootmarket.store directly into your browser and bookmark it so you always reach the genuine site.",
+  "🛡️ Protect your account: use a strong, unique password, never let anyone log in on your behalf, and never share your login. Your account and your balance are your responsibility — keep your credentials to yourself at all times.",
+  "🎁 If an offer sounds too good to be true — free cash for sharing your password, 'double your deposit instantly', or 'guaranteed jackpot' — it is a scam. Genuine bonuses appear only inside the official app under the Bonus section.",
+  "🔗 Stay safe: bookmark lootmarket.store, avoid links from unknown sources, and never install APKs or apps shared by strangers claiming to be LOOT. Only download from the official website to make sure your money and data stay protected.",
+];
+
 function formatTimeAgo(dateString) {
   const date = new Date(dateString);
   const now = new Date();
@@ -94,6 +108,15 @@ function Home() {
 
   const [recentActivities, setRecentActivities] = useState([]);
   const [lastWinners, setLastWinners] = useState([]);
+  const [noticeIdx, setNoticeIdx] = useState(0); // rotating safety-notice index
+
+  // Cycle the safety notice every few seconds.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNoticeIdx((i) => (i + 1) % SAFETY_NOTICES.length);
+    }, 5000);
+    return () => clearInterval(id);
+  }, []);
 
   // Android APK download banner
   const APK_URL = '/loot.apk';
@@ -404,10 +427,56 @@ function Home() {
         {/* Banner Carousel */}
         <BannerCarousel />
 
+        {/* Safety notice — rotating warnings against scams / fake platforms. */}
+        <div className="relative rounded-xl overflow-hidden border border-amber-500/20 bg-gradient-to-r from-amber-500/[0.12] via-amber-500/[0.04] to-transparent">
+          {/* Left accent bar */}
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-orange-500" />
+          <div className="flex items-center gap-3 pl-4 pr-3 py-2.5">
+            {/* Pulsing warning icon */}
+            <div className="relative shrink-0">
+              <span className="absolute inset-0 rounded-full bg-amber-500/30 animate-ping" />
+              <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300">
+                <FiAlertTriangle className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              {/* Label header */}
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-400">Stay Safe</span>
+                <span className="w-1 h-1 rounded-full bg-amber-500/50" />
+                <span className="text-[9px] font-medium uppercase tracking-wider text-amber-500/60">Scam Alert</span>
+              </div>
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={noticeIdx}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.4, ease: "easeInOut" }}
+                  className="text-[11px] font-medium text-amber-100/90 leading-snug line-clamp-2"
+                >
+                  {SAFETY_NOTICES[noticeIdx]}
+                </motion.p>
+              </AnimatePresence>
+              {/* Progress indicators */}
+              <div className="flex items-center gap-1 mt-1.5">
+                {SAFETY_NOTICES.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`h-0.5 rounded-full transition-all duration-300 ${
+                      i === noticeIdx ? 'w-3 bg-amber-400' : 'w-1 bg-amber-500/25'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Free money / bonuses entry — daily, weekly, monthly + 2x first deposit */}
-        <Link to="/bonus" className="block">
+        <Link to="/bonus" className="block group">
           <div
-            className="relative rounded-2xl overflow-hidden border border-emerald-500/15 cursor-pointer"
+            className="relative rounded-2xl overflow-hidden border border-emerald-500/25 cursor-pointer transition-transform group-hover:-translate-y-0.5 group-active:translate-y-0 shadow-lg shadow-emerald-950/40"
             style={{
               background:
                 'linear-gradient(135deg, #0f4c4a 0%, #082b2a 55%, #050a0a 100%)',
@@ -418,21 +487,49 @@ function Home() {
               className="absolute inset-0 pointer-events-none"
               style={{
                 background:
-                  'radial-gradient(circle at 82% 55%, rgba(16,185,129,0.22), transparent 62%)',
+                  'radial-gradient(circle at 82% 50%, rgba(16,185,129,0.28), transparent 60%)',
               }}
             />
+            {/* Sweeping shine */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_3.5s_infinite] pointer-events-none" />
+
+            {/* Top badge */}
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-400/20 border border-emerald-400/40 backdrop-blur-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-emerald-200 text-[9px] font-black uppercase tracking-wider">100% Bonus</span>
+            </div>
+
             <div className="relative flex items-center justify-between px-5 py-4 sm:py-5">
               <div className="min-w-0">
-                <h3 className="text-white text-xl sm:text-2xl font-black leading-tight tracking-tight">
-                  Free<br />money
-                </h3>
-                <p className="text-emerald-300/80 text-[10px] sm:text-[11px] uppercase tracking-[0.18em] mt-1.5">
-                  Daily · Weekly · Monthly
+                <p className="text-emerald-300/70 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">
+                  Grab your
                 </p>
+                <h3 className="text-white text-2xl sm:text-3xl font-black leading-[0.95] tracking-tight">
+                  Free Money
+                </h3>
+
+                {/* Bonus chips */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                  {['Daily', 'Weekly', 'Monthly', '2× First Deposit'].map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-0.5 rounded-md bg-white/5 border border-emerald-500/20 text-emerald-200/90 text-[10px] font-semibold"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+
+                {/* CTA */}
+                <span className="inline-flex items-center gap-1 mt-3 text-emerald-300 text-[11px] font-bold">
+                  Claim now
+                  <FiChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                </span>
               </div>
+
               <span
-                style={{ filter: 'drop-shadow(0 6px 14px rgba(16,185,129,0.35))' }}
-                className="text-7xl sm:text-6xl select-none shrink-0 ml-3"
+                style={{ filter: 'drop-shadow(0 6px 16px rgba(16,185,129,0.45))' }}
+                className="text-7xl sm:text-6xl select-none shrink-0 ml-3 transition-transform group-hover:scale-110 group-hover:rotate-6"
                 aria-hidden="true"
               >
                 💸

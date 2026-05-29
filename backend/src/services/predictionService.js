@@ -680,6 +680,20 @@ class PredictionService {
     };
   }
 
+  // Read-only: live in-flight bets + per-card payout exposure for the current
+  // round of (game, type), so the admin rig can see what users are betting on.
+  async getCustomRoundBets(game, cardCountType) {
+    const type = parseInt(cardCountType, 10);
+    if (!SUPPORTED_GAMES.includes(game) || !CARD_COUNT_TYPES.includes(type)) {
+      return { available: false, reason: 'bad_params', bets: [], exposure: [] };
+    }
+    const svc = this.gameServices[game];
+    if (!svc || typeof svc.getLiveBets !== 'function') {
+      return { available: false, reason: 'no_service', bets: [], exposure: [] };
+    }
+    return svc.getLiveBets(type);
+  }
+
   // Lock admin-picked cards into the next available betting round. Silent —
   // no Telegram post. Returns the round it bound to.
   async lockCustomPrediction({ game, cardCountType, cards }) {

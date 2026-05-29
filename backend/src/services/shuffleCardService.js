@@ -46,6 +46,11 @@ const isRedCard = (id) => {
   const s = cardSuit(id);
   return s === 1 || s === 2;
 };
+// Suit index → glyph/name (0=Clubs, 1=Diamonds, 2=Hearts, 3=Spades) — matches
+// the frontend decodeCard ordering.
+const SUIT_SYMBOLS = ['♣', '♦', '♥', '♠'];
+const SUIT_NAMES = ['Clubs', 'Diamonds', 'Hearts', 'Spades'];
+const RANK_LABELS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
 function secureSample(range, count) {
   if (count > range) throw new Error('Sample size exceeds range');
@@ -71,6 +76,86 @@ class ShuffleCardService {
 
   getCurrentRound(type) {
     return this.currentRounds.get(type) || null;
+  }
+
+  // True if a bet of (kind, details) would win when `card` is the revealed
+  // card. Mirrors the settlement logic in _completeRound — keep in sync.
+  _betWinsOn(card, kind, details) {
+    if (kind === 'cards') return Array.isArray(details.cards) && details.cards[0] === card;
+    if (kind === 'suit')  return Number.isInteger(details.suit) && cardSuit(card) === details.suit;
+    if (kind === 'color') return details.color === (isRedCard(card) ? 'red' : 'black');
+    return false;
+  }
+
+  _describeBet(kind, details) {
+    if (kind === 'cards' && Array.isArray(details.cards)) {
+      const id = details.cards[0];
+      const r = RANK_LABELS[cardRank(id)];
+      const s = SUIT_SYMBOLS[cardSuit(id)];
+      return `${r}${s}`;
+    }
+    if (kind === 'suit') return `${SUIT_NAMES[details.suit] || '?'} ${SUIT_SYMBOLS[details.suit] || ''}`.trim();
+    if (kind === 'color') return details.color;
+    return kind;
+  }
+
+  // Live, in-flight bets for the current round of a lane, with a per-card
+  // payout-exposure map so the admin rig can pick the cheapest result card.
+  async getLiveBets(type) {
+    const t = parseInt(type, 10);
+    if (!LANE_IDS.includes(t)) return { available: false, reason: 'bad_lane', bets: [], exposure: [] };
+    const round = this.currentRounds.get(t);
+    if (!round) return { available: false, reason: 'no_round', bets: [], exposure: [] };
+
+    const [rows] = await db.pool.query(
+      `SELECT b.id, b.user_id, b.kind, b.amount, b.multiplier, b.details, u.username
+         FROM shuffle_card_bets b
+         JOIN users u ON u.id = b.user_id
+        WHERE b.round_id = ? AND b.status = 'pending'
+        ORDER BY b.id DESC`,
+      [round.id]
+    );
+
+    const deckSize = 52;
+    const exposure = new Array(deckSize).fill(0);
+    const players = new Set();
+    let totalStaked = 0;
+    const bets = rows.map((r) => {
+      const details = r.details ? (typeof r.details === 'string' ? JSON.parse(r.details) : r.details) : {};
+      const amount = Number(r.amount);
+      const multiplier = Number(r.multiplier);
+      const potentialWin = Math.floor(amount * multiplier * WIN_PAYOUT_RATIO * 100) / 100;
+      totalStaked += amount;
+      players.add(r.user_id);
+      for (let c = 0; c < deckSize; c++) {
+        if (this._betWinsOn(c, r.kind, details)) exposure[c] += potentialWin;
+      }
+      return {
+        betId: r.id,
+        userId: r.user_id,
+        username: r.username,
+        kind: r.kind,
+        amount,
+        multiplier,
+        potentialWin,
+        details,
+        label: this._describeBet(r.kind, details),
+      };
+    });
+
+    return {
+      available: round.status === 'betting',
+      status: round.status,
+      roundId: round.id,
+      periodId: round.periodId,
+      completeAt: round.completeAt || null,
+      deckSize,
+      totalStaked: Math.round(totalStaked * 100) / 100,
+      playerCount: players.size,
+      betCount: bets.length,
+      bets,
+      exposure: exposure.map((v) => Math.round(v * 100) / 100),
+    };
   }
 
   async start() {
