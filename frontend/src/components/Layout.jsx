@@ -133,7 +133,7 @@ function Layout() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="w-80 fixed left-0 top-0 h-screen flex flex-col z-50 glass-strong"
+              className="w-80 fixed left-0 top-0 h-screen flex flex-col z-50 glass-strong pt-safe pb-safe"
             >
               {/* Sidebar Header */}
               <div className="p-5 border-b border-white/5 flex items-center justify-between">

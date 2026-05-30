@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiList, FiCrosshair, FiShield, FiGrid } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiArrowLeft, FiMenu, FiX, FiDownload, FiUpload, FiAward, FiPackage, FiDollarSign, FiShoppingCart, FiCreditCard, FiMessageCircle, FiTrendingUp, FiBell, FiActivity, FiSend, FiSmartphone, FiShare2, FiGlobe, FiImage, FiInbox, FiList, FiCrosshair, FiShield, FiGrid, FiRefreshCw } from 'react-icons/fi';
 import { GiTwoCoins, GiTrophy } from 'react-icons/gi';
 import useStore from '../store/useStore';
 import { getAdminSupportUnread } from '../services/api';
@@ -104,7 +104,7 @@ function AdminLayout() {
       )}
 
       {/* Sidebar */}
-      <aside className={`w-60 sidebar fixed left-0 top-0 h-full flex flex-col z-50 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`w-60 sidebar fixed left-0 top-0 h-full flex flex-col z-50 pt-safe pb-safe transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Logo */}
         <div className="p-5 border-b border-dark-400 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -209,13 +209,24 @@ function AdminLayout() {
               {navItems.find(item => item.path === location.pathname)?.label || 'Admin'}
             </h2>
           </div>
-          <div className="text-sm text-gray-500 hidden sm:block shrink-0">
-            {new Date().toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Hard reload — useful in standalone PWA mode where there's no browser refresh */}
+            <button
+              onClick={() => window.location.reload()}
+              title="Reload app"
+              aria-label="Reload app"
+              className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <FiRefreshCw className="w-5 h-5" />
+            </button>
+            <div className="text-sm text-gray-500 hidden sm:block">
+              {new Date().toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })}
+            </div>
           </div>
         </header>
 
