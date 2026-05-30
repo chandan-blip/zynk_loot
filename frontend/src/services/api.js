@@ -410,6 +410,11 @@ export const claimBonus = (type) => api.post('/bonuses/claim', { type });
 // Admin user freeze
 export const freezeUser = (id, note) => api.post(`/admin/users/${id}/freeze`, { note });
 export const unfreezeUser = (id) => api.post(`/admin/users/${id}/unfreeze`);
+export const forceLogoutUser = (id) => api.post(`/admin/users/${id}/force-logout`);
+// Assign an admin role to a user (promotes to admin); adminRoleId=null demotes. Super-only.
+export const assignUserRole = (id, adminRoleId) => api.post(`/admin/users/${id}/role`, { adminRoleId });
+// Reset a user's password; revokes all their existing sessions.
+export const resetUserPassword = (id, newPassword) => api.post(`/admin/users/${id}/password`, { newPassword });
 export const getUserDetails = (id) => api.get(`/admin/users/${id}/details`);
 
 // Admin SMM queue

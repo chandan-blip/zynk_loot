@@ -18,7 +18,7 @@ const authenticateToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     const [users] = await db.pool.query(
-      `SELECT u.id, u.username, u.email, u.balance, u.is_admin, u.is_active, u.admin_role_id,
+      `SELECT u.id, u.username, u.email, u.balance, u.is_admin, u.is_active, u.admin_role_id, u.token_version,
               r.name AS role_name, r.permissions AS role_permissions, r.is_system AS role_is_system
          FROM users u
          LEFT JOIN admin_roles r ON r.id = u.admin_role_id
@@ -32,6 +32,14 @@ const authenticateToken = async (req, res, next) => {
 
     if (!users[0].is_active) {
       return res.status(403).json({ success: false, message: 'Account is deactivated' });
+    }
+
+    // Credential-change session invalidation: the token carries the user's
+    // token_version (tv) as of login; the DB bumps token_version whenever
+    // email/phone/password changes (see ensureTokenVersionSchema). A mismatch
+    // means the credentials changed after this token was issued — force re-login.
+    if ((users[0].token_version || 0) !== (decoded.tv || 0)) {
+      return res.status(401).json({ success: false, message: 'Session expired, please log in again' });
     }
 
     const u = users[0];
@@ -73,8 +81,8 @@ const requireModule = (moduleKey) => (req, res, next) => {
   return res.status(403).json({ success: false, message: 'You do not have access to this module' });
 };
 
-const generateToken = (userId) => {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+const generateToken = (userId, tokenVersion = 0) => {
+  return jwt.sign({ userId, tv: tokenVersion }, JWT_SECRET, { expiresIn: '7d' });
 };
 
 module.exports = {

@@ -15,6 +15,7 @@ dotenv.config({ path: fs.existsSync(rootEnv) ? rootEnv : undefined });
 
 const db = require('./config/database');
 const ensureRbacSchema = require('./utils/ensureRbacSchema');
+const ensureTokenVersionSchema = require('./utils/ensureTokenVersionSchema');
 const ensureThirdPartySchema = require('./utils/ensureThirdPartySchema');
 const seedAdmin = require('./utils/seedAdmin');
 const seedDemo = require('./utils/seedDemo');
@@ -354,6 +355,9 @@ const startServer = async () => {
 
     // Ensure RBAC schema (admin_roles, users.admin_role_id, Super Admin role)
     await ensureRbacSchema();
+
+    // Ensure token_version column + trigger (invalidate sessions on credential change)
+    await ensureTokenVersionSchema();
 
     // Ensure third-party games catalog table
     await ensureThirdPartySchema();

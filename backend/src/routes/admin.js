@@ -59,13 +59,13 @@ router.post('/login', async (req, res) => {
 
     let query, param;
     if (email) {
-      query = `SELECT u.id, u.username, u.email, u.phone, u.password_hash, u.balance, u.is_admin, u.is_active,
+      query = `SELECT u.id, u.username, u.email, u.phone, u.password_hash, u.balance, u.is_admin, u.is_active, u.token_version,
                       r.name AS role_name, r.permissions AS role_permissions, r.is_system AS role_is_system
                  FROM users u LEFT JOIN admin_roles r ON r.id = u.admin_role_id
                 WHERE u.email = ? AND u.is_admin = 1`;
       param = email.trim().toLowerCase();
     } else {
-      query = `SELECT u.id, u.username, u.email, u.phone, u.password_hash, u.balance, u.is_admin, u.is_active,
+      query = `SELECT u.id, u.username, u.email, u.phone, u.password_hash, u.balance, u.is_admin, u.is_active, u.token_version,
                       r.name AS role_name, r.permissions AS role_permissions, r.is_system AS role_is_system
                  FROM users u LEFT JOIN admin_roles r ON r.id = u.admin_role_id
                 WHERE u.phone = ? AND u.is_admin = 1`;
@@ -89,7 +89,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, user.token_version);
 
     const permissions = parsePerms(user.role_permissions);
     const isSuper = !!user.role_is_system || permissions.includes('*');
@@ -329,16 +329,22 @@ router.get('/users', async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
 
+    // Super admins see everyone (so they can manage / demote admins from this
+    // list); everyone else sees only regular users.
+    const where = req.user.is_super ? '' : 'WHERE u.is_admin = 0';
+
     const [users] = await db.pool.query(
-      `SELECT id, username, email, balance, total_spent, total_earned, is_active,
-              is_frozen, freeze_note, frozen_at, created_at
-       FROM users WHERE is_admin = 0
-       ORDER BY created_at DESC
+      `SELECT u.id, u.username, u.email, u.balance, u.total_spent, u.total_earned, u.is_active,
+              u.is_frozen, u.freeze_note, u.frozen_at, u.created_at,
+              u.is_admin, u.admin_role_id, r.name AS role_name, r.is_system AS role_is_system
+       FROM users u LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+       ${where}
+       ORDER BY u.created_at DESC
        LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`
     );
 
     const [countResult] = await db.pool.query(
-      'SELECT COUNT(*) as total FROM users WHERE is_admin = 0'
+      `SELECT COUNT(*) as total FROM users u ${where}`
     );
 
     res.json({
@@ -502,6 +508,147 @@ router.post('/users/:id/unfreeze', async (req, res) => {
   } catch (error) {
     console.error('Unfreeze user error:', error);
     res.status(500).json({ success: false, message: 'Failed to unfreeze user' });
+  }
+});
+
+// Force-logout: bump token_version so every existing JWT for this user is
+// rejected on its next request (see authenticateToken). Use to revoke a
+// compromised or stale session without touching the user's credentials.
+// Bumping token_version directly does NOT fire users_bump_token_version (that
+// trigger only reacts to email/phone/password changes), so this +1 is the sole
+// increment. Allowed on admins too — revoking an admin session is the point.
+router.post('/users/:id/force-logout', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
+    const [result] = await db.pool.query(
+      'UPDATE users SET token_version = token_version + 1 WHERE id = ?',
+      [userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const [[row]] = await db.pool.query(
+      'SELECT token_version FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'All sessions for this user have been revoked',
+      data: { id: userId, tokenVersion: row.token_version }
+    });
+  } catch (error) {
+    console.error('Force-logout user error:', error);
+    res.status(500).json({ success: false, message: 'Failed to force-logout user' });
+  }
+});
+
+// Change a user's admin role from the user list. Super-admin only (superOnly).
+// Assigning a role promotes the user to admin (is_admin = 1); passing
+// adminRoleId = null removes the role AND demotes them (is_admin = 0). Because
+// authenticateToken reads is_admin / permissions live on every request, the
+// change takes effect on the target's next request — no token bump needed.
+router.post('/users/:id/role', async (req, res) => {
+  if (superOnly(req, res)) return;
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+    const roleId = req.body?.adminRoleId == null ? null : parseInt(req.body.adminRoleId, 10);
+    if (roleId != null && !Number.isFinite(roleId)) {
+      return res.status(400).json({ success: false, message: 'Invalid role id' });
+    }
+
+    const [u] = await db.pool.query(
+      `SELECT u.id, u.is_admin, cur.is_system AS cur_is_system
+         FROM users u LEFT JOIN admin_roles cur ON cur.id = u.admin_role_id
+        WHERE u.id = ?`,
+      [userId]
+    );
+    if (!u.length) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    let role = null;
+    if (roleId != null) {
+      const [r] = await db.pool.query(
+        'SELECT id, name, is_system FROM admin_roles WHERE id = ?',
+        [roleId]
+      );
+      if (!r.length) {
+        return res.status(400).json({ success: false, message: 'Role not found' });
+      }
+      role = r[0];
+    }
+
+    // Never strip the last Super Admin (covers both "remove role" and
+    // "switch a super to a non-system role").
+    const losingSuper = u[0].cur_is_system && !(role && role.is_system);
+    if (losingSuper) {
+      const [[{ c }]] = await db.pool.query(
+        `SELECT COUNT(*) AS c FROM users
+          WHERE is_admin = 1 AND admin_role_id IN (SELECT id FROM admin_roles WHERE is_system = 1)`
+      );
+      if (c <= 1) {
+        return res.status(400).json({ success: false, message: 'Cannot remove the last Super Admin' });
+      }
+    }
+
+    if (roleId == null) {
+      await db.pool.query('UPDATE users SET admin_role_id = NULL, is_admin = 0 WHERE id = ?', [userId]);
+    } else {
+      await db.pool.query('UPDATE users SET admin_role_id = ?, is_admin = 1 WHERE id = ?', [roleId, userId]);
+    }
+
+    res.json({
+      success: true,
+      message: roleId == null ? 'Admin role removed' : `Role set to ${role.name}`,
+      data: { id: userId, adminRoleId: roleId, isAdmin: roleId != null, roleName: role ? role.name : null }
+    });
+  } catch (error) {
+    console.error('Change user role error:', error);
+    res.status(500).json({ success: false, message: 'Failed to change role' });
+  }
+});
+
+// Reset a user's password from the user list. Resetting an ADMIN's password
+// requires Super Admin (a users-module admin must not be able to take over an
+// admin account); resetting a regular user's password only needs the users
+// module (same gate as freeze/force-logout). Changing password_hash trips the
+// users_bump_token_version trigger, so all of the target's existing sessions
+// are revoked automatically — they must log in again with the new password.
+router.post('/users/:id/password', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+    const newPassword = String(req.body?.newPassword || '');
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const [users] = await db.pool.query('SELECT id, is_admin FROM users WHERE id = ?', [userId]);
+    if (!users.length) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (users[0].is_admin && !req.user.is_super) {
+      return res.status(403).json({ success: false, message: "Only a Super Admin can reset an admin's password" });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await db.pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+
+    res.json({ success: true, message: 'Password reset; the user has been logged out of all sessions' });
+  } catch (error) {
+    console.error('Reset user password error:', error);
+    res.status(500).json({ success: false, message: 'Failed to reset password' });
   }
 });
 

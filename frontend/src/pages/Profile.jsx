@@ -47,7 +47,23 @@ import usePageTitle from "../hooks/usePageTitle";
 function Profile() {
   usePageTitle("Profile");
   const navigate = useNavigate();
-  const { logout } = useStore();
+  const { logout, user, checkAuth } = useStore();
+  const isAdmin = !!user?.isAdmin;
+  const [enteringAdmin, setEnteringAdmin] = useState(false);
+
+  // Admins browsing the normal app can jump straight into the admin panel —
+  // the same session token already authorizes admin routes. We refresh the
+  // user first (checkAuth → /auth/me) so RBAC fields (permissions/isSuper) are
+  // populated before AdminLayout gates the modules, then navigate.
+  const handleEnterAdmin = async () => {
+    setEnteringAdmin(true);
+    try {
+      await checkAuth();
+      navigate("/admin");
+    } finally {
+      setEnteringAdmin(false);
+    }
+  };
 
   const { formatCurrency, formatCurrencyFull } = useCurrency();
 
@@ -1282,6 +1298,29 @@ function Profile() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Admin panel access — only shown to admin accounts */}
+      {isAdmin && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="mt-6"
+        >
+          <button
+            onClick={handleEnterAdmin}
+            disabled={enteringAdmin}
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-semibold hover:bg-red-500/20 transition-colors disabled:opacity-50"
+          >
+            {enteringAdmin ? (
+              <div className="w-5 h-5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <FiShield className="w-5 h-5" />
+            )}
+            {enteringAdmin ? "Opening…" : "Login as Admin"}
+          </button>
+        </motion.div>
+      )}
 
       {/* Logout Button */}
       <motion.div

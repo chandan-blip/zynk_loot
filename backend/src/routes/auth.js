@@ -183,7 +183,7 @@ router.post('/login', async (req, res) => {
 
     let query, param;
     if (email) {
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, is_frozen, freeze_note FROM users WHERE email = ?';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, is_frozen, freeze_note, token_version FROM users WHERE email = ?';
       param = email.trim().toLowerCase();
     } else {
       // Normalize phone for lookup
@@ -191,7 +191,7 @@ router.post('/login', async (req, res) => {
       if (!phoneResult.valid) {
         return res.status(400).json({ success: false, message: 'Invalid phone number' });
       }
-      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, is_frozen, freeze_note FROM users WHERE phone = ?';
+      query = 'SELECT id, username, email, phone, password_hash, balance, is_admin, is_active, is_frozen, freeze_note, token_version FROM users WHERE phone = ?';
       param = phoneResult.phone;
     }
 
@@ -212,7 +212,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, user.token_version);
 
     // Fire-and-forget login tracking (skip admins)
     if (!user.is_admin) {

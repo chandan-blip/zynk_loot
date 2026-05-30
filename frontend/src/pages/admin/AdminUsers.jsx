@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiSearch, FiPlus, FiActivity, FiEye, FiClock, FiMousePointer, FiX, FiLock, FiUnlock, FiAlertOctagon, FiUser, FiArrowDownCircle, FiArrowUpCircle, FiTarget, FiCreditCard } from 'react-icons/fi';
+import { FiSearch, FiPlus, FiActivity, FiEye, FiClock, FiMousePointer, FiX, FiLock, FiUnlock, FiLogOut, FiShield, FiKey, FiAlertOctagon, FiUser, FiArrowDownCircle, FiArrowUpCircle, FiTarget, FiCreditCard } from 'react-icons/fi';
 import { GiTwoCoins } from 'react-icons/gi';
 import toast from 'react-hot-toast';
-import api, { getUserTrackingSummary, freezeUser, unfreezeUser, getUserDetails } from '../../services/api';
+import useStore from '../../store/useStore';
+import api, { getUserTrackingSummary, freezeUser, unfreezeUser, forceLogoutUser, getAdminRoles, assignUserRole, resetUserPassword, getUserDetails } from '../../services/api';
 
 function AdminUsers() {
+  const { user: currentUser } = useStore();
+  const isSuper = !!currentUser?.isSuper;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -20,6 +23,13 @@ function AdminUsers() {
   const [freezeTarget, setFreezeTarget] = useState(null);   // user object opened in freeze modal
   const [freezeNote, setFreezeNote] = useState('');
   const [freezing, setFreezing] = useState(false);
+  const [roleTarget, setRoleTarget] = useState(null);       // user object opened in change-role modal
+  const [roles, setRoles] = useState([]);                   // available admin roles (lazy-loaded)
+  const [selectedRoleId, setSelectedRoleId] = useState('');
+  const [assigningRole, setAssigningRole] = useState(false);
+  const [pwTarget, setPwTarget] = useState(null);           // user object opened in change-password modal
+  const [newPassword, setNewPassword] = useState('');
+  const [resettingPw, setResettingPw] = useState(false);
   const [detailUser, setDetailUser] = useState(null);       // user object opened in the details modal
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -95,6 +105,66 @@ function AdminUsers() {
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to unfreeze');
+    }
+  };
+
+  const handleForceLogout = async (user) => {
+    if (!window.confirm(`Force logout ${user.username}? This revokes all their active sessions; they'll need to log in again.`)) return;
+    try {
+      await forceLogoutUser(user.id);
+      toast.success(`${user.username}'s sessions revoked`);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to force-logout user');
+    }
+  };
+
+  const openRoleModal = async (user) => {
+    setRoleTarget(user);
+    // Preselect the current role for an existing admin so the dropdown reflects state.
+    setSelectedRoleId(user.is_admin && user.admin_role_id ? String(user.admin_role_id) : '');
+    if (!roles.length) {
+      try {
+        const res = await getAdminRoles();
+        setRoles(res.data.data || []);
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Failed to load roles');
+      }
+    }
+  };
+
+  const handleAssignRole = async () => {
+    if (!roleTarget || selectedRoleId === '') return;
+    // 'none' demotes the user back to a regular account (is_admin = 0).
+    const adminRoleId = selectedRoleId === 'none' ? null : parseInt(selectedRoleId, 10);
+    setAssigningRole(true);
+    try {
+      const res = await assignUserRole(roleTarget.id, adminRoleId);
+      toast.success(res.data?.message || (adminRoleId == null ? `${roleTarget.username} demoted to user` : `Role updated for ${roleTarget.username}`));
+      setRoleTarget(null);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to change role');
+    } finally {
+      setAssigningRole(false);
+    }
+  };
+
+  const openPasswordModal = (user) => {
+    setPwTarget(user);
+    setNewPassword('');
+  };
+
+  const handleResetPassword = async () => {
+    if (!pwTarget || newPassword.length < 6) return;
+    setResettingPw(true);
+    try {
+      const res = await resetUserPassword(pwTarget.id, newPassword);
+      toast.success(res.data?.message || `Password reset for ${pwTarget.username}`);
+      setPwTarget(null);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to reset password');
+    } finally {
+      setResettingPw(false);
     }
   };
 
@@ -207,6 +277,18 @@ function AdminUsers() {
                                 <FiLock className="w-2.5 h-2.5" /> Frozen
                               </span>
                             ) : null}
+                            {user.is_admin ? (
+                              <span
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                                  user.role_is_system
+                                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                    : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                                }`}
+                                title={user.role_name || 'Admin'}
+                              >
+                                <FiShield className="w-2.5 h-2.5" /> {user.role_name || 'Admin'}
+                              </span>
+                            ) : null}
                           </div>
                           <span className="text-xs text-gray-500 sm:hidden">{user.email}</span>
                         </div>
@@ -266,6 +348,32 @@ function AdminUsers() {
                           >
                             <FiLock className="inline mr-0.5 w-3 h-3" />
                             <span className="hidden lg:inline">Freeze</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleForceLogout(user)}
+                          className="px-2 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors text-xs font-medium"
+                          title="Revoke all active sessions (force re-login)"
+                        >
+                          <FiLogOut className="inline mr-0.5 w-3 h-3" />
+                          <span className="hidden lg:inline">Logout</span>
+                        </button>
+                        <button
+                          onClick={() => openPasswordModal(user)}
+                          className="px-2 py-1.5 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 transition-colors text-xs font-medium"
+                          title="Reset password (logs the user out everywhere)"
+                        >
+                          <FiKey className="inline mr-0.5 w-3 h-3" />
+                          <span className="hidden lg:inline">Password</span>
+                        </button>
+                        {isSuper && (
+                          <button
+                            onClick={() => openRoleModal(user)}
+                            className="px-2 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors text-xs font-medium"
+                            title="Assign an admin role (promotes to admin)"
+                          >
+                            <FiShield className="inline mr-0.5 w-3 h-3" />
+                            <span className="hidden lg:inline">Role</span>
                           </button>
                         )}
                       </div>
@@ -557,6 +665,155 @@ function AdminUsers() {
                     <FiLock className="w-4 h-4" />
                   )}
                   {freezing ? 'Freezing…' : 'Freeze Account'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Change Role Modal (Super Admin only) */}
+      <AnimatePresence>
+        {roleTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            onClick={() => !assigningRole && setRoleTarget(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 16 }}
+              className="bg-dark-800 border border-indigo-500/30 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 rounded-xl bg-indigo-500/15 border border-indigo-500/40 flex items-center justify-center">
+                  <FiShield className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    {roleTarget.is_admin ? 'Change role for' : 'Assign role to'} {roleTarget.username}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    {roleTarget.is_admin
+                      ? 'Pick a different role, or remove admin to demote them back to a regular user.'
+                      : 'Assigning a role promotes this user to admin.'}
+                  </p>
+                </div>
+              </div>
+
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Role
+              </label>
+              <select
+                value={selectedRoleId}
+                onChange={(e) => setSelectedRoleId(e.target.value)}
+                className="input-premium w-full"
+                autoFocus
+              >
+                <option value="">Select a role…</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}{r.isSystem ? ' (Super Admin)' : ''}
+                  </option>
+                ))}
+                {roleTarget.is_admin && (
+                  <option value="none">— Remove admin (demote to user) —</option>
+                )}
+              </select>
+
+              <div className="flex gap-3 mt-5">
+                <button
+                  type="button"
+                  onClick={() => setRoleTarget(null)}
+                  disabled={assigningRole}
+                  className="flex-1 py-3 rounded-lg bg-dark-700 hover:bg-dark-600 text-white font-semibold transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAssignRole}
+                  disabled={assigningRole || selectedRoleId === ''}
+                  className="flex-1 py-3 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {assigningRole ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <FiShield className="w-4 h-4" />
+                  )}
+                  {assigningRole ? 'Saving…' : selectedRoleId === 'none' ? 'Remove Admin' : 'Save Role'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Change Password Modal */}
+      <AnimatePresence>
+        {pwTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            onClick={() => !resettingPw && setPwTarget(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 16 }}
+              className="bg-dark-800 border border-sky-500/30 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 rounded-xl bg-sky-500/15 border border-sky-500/40 flex items-center justify-center">
+                  <FiKey className="w-5 h-5 text-sky-300" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Reset password for {pwTarget.username}</h3>
+                  <p className="text-xs text-gray-500">Sets a new password and logs the user out of all active sessions.</p>
+                </div>
+              </div>
+
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                New password <span className="text-sky-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                className="input-premium w-full"
+                autoFocus
+              />
+              <p className="text-[11px] text-gray-500 mt-1">{newPassword.length < 6 ? `${6 - newPassword.length} more character(s) needed` : 'Share this with the user securely.'}</p>
+
+              <div className="flex gap-3 mt-5">
+                <button
+                  type="button"
+                  onClick={() => setPwTarget(null)}
+                  disabled={resettingPw}
+                  className="flex-1 py-3 rounded-lg bg-dark-700 hover:bg-dark-600 text-white font-semibold transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetPassword}
+                  disabled={resettingPw || newPassword.length < 6}
+                  className="flex-1 py-3 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {resettingPw ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <FiKey className="w-4 h-4" />
+                  )}
+                  {resettingPw ? 'Resetting…' : 'Reset Password'}
                 </button>
               </div>
             </motion.div>
