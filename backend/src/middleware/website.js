@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { renderPortalPage } = require('../lib/portalPage');
 
 const getAppDomain = (req) => (process.env.APP_DOMAIN || '').toLowerCase() || null;
 
@@ -78,7 +79,22 @@ const sendTrackedHtml = (res, html) => {
   res.send(html);
 };
 
-// Middleware: if Host is sub.APP_DOMAIN and site is published, serve HTML directly.
+// Look up an enabled merchant portal by subdomain and serve its dashboard page.
+// Returns true if it handled the response, false to fall through.
+const tryServePortal = async (req, res, sub) => {
+  const [rows] = await db.pool.query(
+    `SELECT name FROM gateway_merchants
+      WHERE portal_subdomain = ? AND is_active = 1 AND portal_enabled = 1 LIMIT 1`,
+    [sub]
+  );
+  if (!rows.length) return false;
+  const html = renderPortalPage({ apiBase: apiBaseFor(req), merchantName: rows[0].name });
+  sendTrackedHtml(res, html);
+  return true;
+};
+
+// Middleware: if Host is sub.APP_DOMAIN, serve a published landing page or, if
+// the subdomain belongs to a gateway merchant, the merchant portal.
 const subdomainMiddleware = async (req, res, next) => {
   try {
     if (req.path.startsWith('/api') || req.path.startsWith('/sites/')) return next();
@@ -89,12 +105,30 @@ const subdomainMiddleware = async (req, res, next) => {
       `SELECT id, content FROM websites WHERE sub_domain = ? AND status = 'published' AND is_active = 1 LIMIT 1`,
       [sub]
     );
-    if (!rows.length) return next();
-    const html = injectTracker(rows[0].content, rows[0].id, apiBaseFor(req));
-    return sendTrackedHtml(res, html);
+    if (rows.length) {
+      const html = injectTracker(rows[0].content, rows[0].id, apiBaseFor(req));
+      return sendTrackedHtml(res, html);
+    }
+    // No landing page — maybe it's a merchant portal subdomain.
+    if (await tryServePortal(req, res, sub)) return;
+    return next();
   } catch (error) {
     console.error('Subdomain middleware error:', error);
     return next();
+  }
+};
+
+// GET /portal/:sub — direct path-based portal serving for dev/testing without
+// wildcard DNS (mirrors /sites/:sub for landing pages).
+const portalByPathHandler = async (req, res) => {
+  try {
+    const sub = String(req.params.sub || '').trim().toLowerCase();
+    if (!sub) return res.status(404).send('Not found');
+    if (await tryServePortal(req, res, sub)) return;
+    return res.status(404).send('Portal not found');
+  } catch (error) {
+    console.error('Portal by path error:', error);
+    res.status(500).send('Server error');
   }
 };
 
@@ -116,4 +150,4 @@ const siteByPathHandler = async (req, res) => {
   }
 };
 
-module.exports = { subdomainMiddleware, siteByPathHandler };
+module.exports = { subdomainMiddleware, siteByPathHandler, portalByPathHandler };

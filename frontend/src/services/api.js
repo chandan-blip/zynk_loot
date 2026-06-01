@@ -403,6 +403,22 @@ export const adminPublishWebsite = (id) => api.post(`/admin/websites/${id}/publi
 export const adminUnpublishWebsite = (id) => api.post(`/admin/websites/${id}/unpublish`);
 export const adminDeleteWebsite = (id) => api.delete(`/admin/websites/${id}`);
 
+// Payment Gateway (bridge over OkPay — merchants = client domains)
+export const adminGetGatewayConfig = () => api.get('/admin/gateway/config');
+export const adminGetGatewayBalance = () => api.get('/admin/gateway/balance');
+export const adminCreateGatewayTestPayment = (data) => api.post('/admin/gateway/test-payment', data);
+export const adminGetGatewayMerchants = () => api.get('/admin/gateway/merchants');
+export const adminCreateGatewayMerchant = (data) => api.post('/admin/gateway/merchants', data);
+export const adminUpdateGatewayMerchant = (id, data) => api.put(`/admin/gateway/merchants/${id}`, data);
+export const adminDeleteGatewayMerchant = (id) => api.delete(`/admin/gateway/merchants/${id}`);
+export const adminRotateGatewaySecret = (id) => api.post(`/admin/gateway/merchants/${id}/rotate-secret`);
+export const adminSetGatewayPortalPassword = (id, password) => api.post(`/admin/gateway/merchants/${id}/portal-password`, { password });
+export const adminGetGatewayOrders = (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return api.get(`/admin/gateway/orders${qs ? `?${qs}` : ''}`);
+};
+export const adminResendGatewayOrder = (id) => api.post(`/admin/gateway/orders/${id}/resend`);
+
 // Bonus module
 export const getBonusStatus = () => api.get('/bonuses/status');
 export const claimBonus = (type) => api.post('/bonuses/claim', { type });

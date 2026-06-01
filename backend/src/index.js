@@ -17,6 +17,7 @@ const db = require('./config/database');
 const ensureRbacSchema = require('./utils/ensureRbacSchema');
 const ensureTokenVersionSchema = require('./utils/ensureTokenVersionSchema');
 const ensureThirdPartySchema = require('./utils/ensureThirdPartySchema');
+const ensureGatewaySchema = require('./utils/ensureGatewaySchema');
 const seedAdmin = require('./utils/seedAdmin');
 const seedDemo = require('./utils/seedDemo');
 const authRoutes = require('./routes/auth');
@@ -52,8 +53,11 @@ const trackingRoutes = require('./routes/tracking');
 const websiteTrackingRoutes = require('./routes/websiteTracking');
 const enrollRoutes = require('./routes/enroll');
 const telegramRoutes = require('./routes/telegram');
+const gatewayRoutes = require('./routes/gateway');
+const gatewayAdminRoutes = require('./routes/gatewayAdmin');
+const portalRoutes = require('./routes/portal');
 const prerenderMiddleware = require('./middleware/prerender');
-const { subdomainMiddleware, siteByPathHandler } = require('./middleware/website');
+const { subdomainMiddleware, siteByPathHandler, portalByPathHandler } = require('./middleware/website');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -298,6 +302,8 @@ const apiLimiter = rateLimit({
 // Serve published landing pages by subdomain (Host header) or /sites/:sub path
 app.use(subdomainMiddleware);
 app.get('/sites/:sub', siteByPathHandler);
+// Merchant portal by path (dev/testing without wildcard DNS)
+app.get('/portal/:sub', portalByPathHandler);
 
 // Routes
 app.use('/api/auth', authLimiter, authRoutes);
@@ -314,6 +320,12 @@ app.use('/api/bonuses', apiLimiter, bonusRoutes);
 app.use('/api/tracking', apiLimiter, trackingRoutes);
 app.use('/api/websites', apiLimiter, websiteTrackingRoutes);
 app.use('/api/enroll', apiLimiter, enrollRoutes);
+// Payment-gateway bridge: public client API (api_key + HMAC) and OkPay callback.
+app.use('/api/gateway', apiLimiter, gatewayRoutes);
+// Merchant self-serve portal API (per-merchant JWT, scope=portal).
+app.use('/api/portal', apiLimiter, portalRoutes);
+// Admin module for managing gateway merchants + monitoring orders.
+app.use('/api/admin/gateway', gatewayAdminRoutes);
 // Telegram webhook: no auth/limiter — verified via secret-token header inside.
 app.use('/api/telegram', telegramRoutes);
 
@@ -361,6 +373,9 @@ const startServer = async () => {
 
     // Ensure third-party games catalog table
     await ensureThirdPartySchema();
+
+    // Ensure payment-gateway bridge tables (merchants + orders)
+    await ensureGatewaySchema();
 
     // Seed admin user if not exists
     await seedAdmin();

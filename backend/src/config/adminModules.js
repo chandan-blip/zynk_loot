@@ -35,6 +35,7 @@ const ADMIN_MODULES = [
   { key: 'social-links',      label: 'Social Links',      prefixes: ['/social-links'] },
   { key: 'banners',           label: 'Banners',           prefixes: ['/banners'] },
   { key: 'third-party',       label: 'Third Party Games', prefixes: ['/third-party'] },
+  { key: 'gateway',           label: 'Payment Gateway',   prefixes: ['/gateway'] },
   { key: 'websites',          label: 'Websites',          prefixes: ['/websites'] },
   { key: 'website-leads',     label: 'Website Leads',     prefixes: ['/website-leads'] },
   { key: 'settings',          label: 'Settings',          prefixes: ['/settings', '/cron-config', '/cron-status', '/jobs'] },

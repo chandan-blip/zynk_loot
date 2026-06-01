@@ -67,6 +67,7 @@ import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminWebsites from './pages/admin/AdminWebsites';
 import AdminBanners from './pages/admin/AdminBanners';
 import AdminThirdParty from './pages/admin/AdminThirdParty';
+import AdminGateway from './pages/admin/AdminGateway';
 import AdminWebsiteLeads from './pages/admin/AdminWebsiteLeads';
 import useTracking from './hooks/useTracking';
 import AppLoader from './components/AppLoader';
@@ -317,6 +318,7 @@ function App() {
           <Route path="websites" element={<AdminWebsites />} />
           <Route path="banners" element={<AdminBanners />} />
           <Route path="third-party" element={<AdminThirdParty />} />
+          <Route path="gateway" element={<AdminGateway />} />
           <Route path="website-leads" element={<AdminWebsiteLeads />} />
         </Route>
 
