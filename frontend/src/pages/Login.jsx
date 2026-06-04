@@ -101,7 +101,8 @@ function Login() {
                 authMethod === 'email'
                   ? 'bg-dark-500 text-white shadow-sm'
                   : 'text-gray-500 hover:text-gray-300'
-              }`}
+              } disabled:opacity-30`}
+              disabled
             >
               <FiMail className="w-4 h-4" />
               Email
